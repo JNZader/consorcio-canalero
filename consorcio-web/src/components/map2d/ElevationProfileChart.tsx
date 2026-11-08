@@ -602,6 +602,10 @@ export function ElevationProfileChart({
                   setRange({ a: dragStart.current, b: distance });
                 }
               }}
+              onPointerCancel={() => {
+                dragStart.current = null;
+                dragged.current = false;
+              }}
               onPointerUp={(event) => {
                 if (event.pointerType === 'mouse') {
                   return;

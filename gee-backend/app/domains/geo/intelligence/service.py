@@ -267,15 +267,12 @@ def generate_zones(
     if gdf.empty:
         return {"zonas_creadas": 0, "zonas": []}
 
-    from geoalchemy2.shape import from_shape
-
     zonas = []
     for idx, row in gdf.iterrows():
-        wkt = from_shape(row.geometry, srid=4326)
         zona = intel_repo.create_zona(
             db,
             nombre=f"{cuenca}_zona_{row.get('basin_id', idx)}",
-            geometria=wkt,
+            geometria=f"SRID=4326;{row.geometry.wkt}",
             cuenca=cuenca,
             superficie_ha=row.get("superficie_ha", 0.0),
         )

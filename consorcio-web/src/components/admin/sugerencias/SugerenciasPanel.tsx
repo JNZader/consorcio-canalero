@@ -17,8 +17,33 @@ import { SuggestionDetailModal } from './components/SuggestionDetailModal';
 import { ITEMS_PER_PAGE } from './constants';
 import { getStatusBadge } from './sugerenciasPanelUtils';
 
+function readSugerenciaQuery() {
+  if (typeof window === 'undefined') {
+    return {
+      q: '',
+      estado: null as string | null,
+      tipo: null as string | null,
+      page: 1,
+      sort: 'created_at',
+      order: 'desc' as 'asc' | 'desc',
+    };
+  }
+  const params = new URLSearchParams(window.location.search);
+  const page = Number(params.get('page') || '1');
+  return {
+    q: params.get('q') ?? '',
+    estado: params.get('estado'),
+    tipo: params.get('tipo'),
+    page: Number.isFinite(page) && page > 0 ? page : 1,
+    sort: params.get('sort') || 'created_at',
+    // Cualquier valor no reconocido cae en el default del backend.
+    order: params.get('order') === 'asc' ? ('asc' as const) : ('desc' as const),
+  };
+}
+
 export default function SugerenciasPanel() {
   const [sugerencias, setSugerencias] = useState<Sugerencia[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedSugerencia, setSelectedSugerencia] = useState<Sugerencia | null>(null);
   const [detailOpened, { open: openDetail, close: closeDetail }] = useDisclosure(false);
@@ -32,10 +57,13 @@ export default function SugerenciasPanel() {
   const [_loadingProxima, setLoadingProxima] = useState(true);
 
   // Filters
-  const [filterEstado, setFilterEstado] = useState<string | null>(null);
-  const [filterTipo, setFilterTipo] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchInputValue, setSearchInputValue] = useState('');
+  const sugerenciaQuery = readSugerenciaQuery();
+  const [filterEstado, setFilterEstado] = useState<string | null>(sugerenciaQuery.estado);
+  const [filterTipo, setFilterTipo] = useState<string | null>(sugerenciaQuery.tipo);
+  const [searchQuery, setSearchQuery] = useState(sugerenciaQuery.q);
+  const [searchInputValue, setSearchInputValue] = useState(sugerenciaQuery.q);
+  const [sort, setSort] = useState(sugerenciaQuery.sort);
+  const [order, setOrder] = useState<'asc' | 'desc'>(sugerenciaQuery.order);
 
   const debouncedSetSearch = useDebouncedCallback((value: string) => {
     setSearchQuery(value);
@@ -52,8 +80,54 @@ export default function SugerenciasPanel() {
     setPage(1);
   }, []);
 
+  /**
+   * Encabezado clicable: mismo key invierte la dirección; key nuevo
+   * arranca en 'desc' (predecible). Siempre vuelve a la página 1.
+   */
+  const handleSortChange = useCallback(
+    (sortKey: string) => {
+      setPage(1);
+      if (sortKey === sort) {
+        setOrder((current) => (current === 'desc' ? 'asc' : 'desc'));
+        return;
+      }
+      setSort(sortKey);
+      setOrder('desc');
+    },
+    [sort]
+  );
+
+  // El selector "Ordenar" de la vista móvil entrega key+dirección ya
+  // elegidos por el usuario; solo aplica y resetea la paginación.
+  const handleSortSelect = useCallback((nextSort: string, nextOrder: 'asc' | 'desc') => {
+    setSort(nextSort);
+    setOrder(nextOrder);
+    setPage(1);
+  }, []);
+
   // Pagination
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(sugerenciaQuery.page);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const put = (key: string, value: string | null) => {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    };
+    put('q', searchQuery || null);
+    put('estado', filterEstado);
+    put('tipo', filterTipo);
+    put('sort', sort === 'created_at' ? null : sort);
+    put('order', order === 'desc' ? null : order);
+    if (page > 1) params.set('page', String(page));
+    else params.delete('page');
+    const query = params.toString();
+    window.history.replaceState(
+      window.history.state,
+      '',
+      `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`
+    );
+  }, [searchQuery, filterEstado, filterTipo, page, sort, order]);
   const [totalPages, setTotalPages] = useState(1);
 
   // Edit state
@@ -128,19 +202,24 @@ export default function SugerenciasPanel() {
         limit: ITEMS_PER_PAGE,
         estado: filterEstado || undefined,
         tipo: filterTipo || undefined,
+        sort,
+        order,
         ...(searchQuery ? { search: searchQuery } : {}),
       });
       setSugerencias(data.items);
       setTotalPages(Math.max(1, Math.ceil(data.total / ITEMS_PER_PAGE)));
+      setLoadError(null);
       announceRef.current(`${data.items.length} sugerencias cargadas`);
     } catch (error) {
       logger.error('Error loading sugerencias:', error);
+      setSugerencias([]);
+      setLoadError('No se pudieron cargar las sugerencias');
       showError('Error', 'No se pudieron cargar las sugerencias');
       announceRef.current('No se pudieron cargar las sugerencias');
     } finally {
       setLoading(false);
     }
-  }, [page, filterEstado, filterTipo, searchQuery]);
+  }, [page, filterEstado, filterTipo, searchQuery, sort, order]);
 
   // Load all data on mount
   useEffect(() => {
@@ -285,6 +364,9 @@ export default function SugerenciasPanel() {
         setFilterEstado={handleFilterEstadoChange}
         filterTipo={filterTipo}
         setFilterTipo={handleFilterTipoChange}
+        sort={sort}
+        order={order}
+        onSortChange={handleSortSelect}
         onRefresh={refreshAll}
       />
 
@@ -292,12 +374,15 @@ export default function SugerenciasPanel() {
       <Paper shadow="sm" p="lg" radius="md">
         <SugerenciasTableContent
           loading={loading}
+          loadError={loadError}
+          onRetry={() => void loadSugerencias()}
           sugerencias={sugerencias}
           totalPages={totalPages}
           page={page}
           onPageChange={setPage}
           onViewDetail={handleViewDetail}
           getStatusBadge={getStatusBadge}
+          sorting={{ active: sort, direction: order, onChange: handleSortChange }}
         />
       </Paper>
 

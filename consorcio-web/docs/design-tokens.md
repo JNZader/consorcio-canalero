@@ -23,6 +23,13 @@ claro y oscuro siguen al tema.
 | warning | `--cc-color-warning` | `orange` 6 / 4 |
 | success | `--cc-color-success` | `exito` 6 / 4 |
 
+`PRIMARY_GREEN` (`#2d8f68`) es la marca. El botón filled usa el tono 6
+`#16654a` con texto blanco: blanco sobre `#2d8f68` queda en 4,01:1 y no
+llega a AA de texto chico. No hay que igualarlos.
+
+`--cc-color-status-review` es el texto de «en revisión»: institucional 7
+en claro e institucional 3 en oscuro, medido sobre el tint del badge.
+
 `PRIMARY_GREEN` en `theme.ts` es el verde de `index.html` (`theme-color`,
 `msapplication-TileColor`) y de `theme_color` en el manifest de
 `vite.config.ts`.

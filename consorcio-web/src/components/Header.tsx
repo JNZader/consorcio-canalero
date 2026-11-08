@@ -138,6 +138,7 @@ export const HeaderContent = memo(function HeaderContent() {
           <Group gap="xs" hiddenFrom="sm">
             <ThemeToggle />
             <Burger
+              className="cc-site-burger"
               opened={opened}
               onClick={toggle}
               aria-label={opened ? 'Cerrar menú de navegación' : 'Abrir menú de navegación'}

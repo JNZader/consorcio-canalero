@@ -1,4 +1,4 @@
-import { Badge, Box, Group, Pagination, Text, Tooltip } from '@mantine/core';
+import { Badge, Box, Button, Group, Pagination, Text, Tooltip } from '@mantine/core';
 import type { Sugerencia } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/formatters';
 import { IconButton } from '../../../ui/IconButton';
@@ -7,25 +7,61 @@ import { LoadingState } from '../../../ui/LoadingState';
 import { ResponsiveRecordList } from '../../../ui/ResponsiveRecordList';
 import { getCategoriaLabel } from '../sugerenciasPanelUtils';
 
+/**
+ * Columnas ordenables de la bandeja. Los `sortKey` son los que acepta
+ * el backend para sugerencias: created_at | estado | categoria.
+ */
+const COLUMNS = [
+  { label: 'Fecha', sortKey: 'created_at' },
+  'Título',
+  { label: 'Categoría', sortKey: 'categoria' },
+  'Tipo',
+  { label: 'Estado', sortKey: 'estado' },
+  'Acciones',
+] as const;
+
 export function SugerenciasTableContent({
   loading,
+  loadError,
+  onRetry,
   sugerencias,
   totalPages,
   page,
   onPageChange,
   onViewDetail,
   getStatusBadge,
+  sorting,
 }: Readonly<{
   loading: boolean;
+  loadError?: string | null;
+  onRetry?: () => void;
   sugerencias: Sugerencia[];
   totalPages: number;
   page: number;
   onPageChange: (page: number) => void;
   onViewDetail: (sugerencia: Sugerencia) => void;
   getStatusBadge: (status: string) => React.ReactNode;
+  sorting?: React.ComponentProps<typeof ResponsiveRecordList>['sorting'];
 }>) {
   if (loading) {
     return <LoadingState compact message="Cargando sugerencias..." />;
+  }
+
+  if (loadError) {
+    return (
+      <LoadingState
+        status="error"
+        title="No pudimos cargar las sugerencias"
+        message={loadError}
+        action={
+          onRetry ? (
+            <Button mt="sm" onClick={onRetry}>
+              Reintentar
+            </Button>
+          ) : undefined
+        }
+      />
+    );
   }
 
   if (sugerencias.length === 0) {
@@ -42,10 +78,11 @@ export function SugerenciasTableContent({
     <Box aria-live="polite">
       <ResponsiveRecordList
         label="Tabla de sugerencias"
-        columns={['Fecha', 'Título', 'Categoría', 'Tipo', 'Estado', 'Acciones']}
+        columns={COLUMNS}
         minWidth={760}
         striped
         highlightOnHover
+        sorting={sorting}
         records={sugerencias.map((sug) => ({
           id: sug.id,
           cells: [

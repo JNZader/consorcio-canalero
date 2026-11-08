@@ -50,11 +50,14 @@ function ReportarContent() {
           icon={<IconInfoCircle size={20} />}
         >
           <List size="sm" spacing="xs">
-            <List.Item>Los reportes son revisados en un plazo de 24-48 horas hábiles.</List.Item>
+            <List.Item>Los reportes son revisados en un plazo de 5 días hábiles.</List.Item>
             <List.Item>
               Incluir una foto ayuda a priorizar y resolver el problema más rápido.
             </List.Item>
-            <List.Item>Recibirás una notificación cuando tu reporte sea atendido.</List.Item>
+            <List.Item>
+              El seguimiento está en tu perfil, en Mis denuncias. El aviso por correo solo sale si
+              el consorcio lo tiene activado.
+            </List.Item>
           </List>
         </Alert>
 

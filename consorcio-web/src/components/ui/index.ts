@@ -11,9 +11,10 @@ export { LoadingState } from './LoadingState';
 export { PageHeader } from './PageHeader';
 export {
   RECORD_VIRTUALIZE_THRESHOLD,
+  type RecordColumn,
+  type RecordListSorting,
   type ResponsiveRecord,
   ResponsiveRecordList,
   type ResponsiveRecordListProps,
 } from './ResponsiveRecordList';
-export { StatCard } from './StatCard';
 export { StatusBadge } from './StatusBadge';

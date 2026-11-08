@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import shutil
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -472,7 +473,7 @@ def calcular_desactualizado(db: Session, area_id: str, calculada_en: Optional[da
 
 def dem_resultados_por_area(db: Session, area_id: str) -> list[dict[str, Any]]:
     """The DEM runs' ``resultado`` payloads for this area, newest first."""
-    rows = (
+    rows: Sequence[Any] = (
         db.execute(SQL_DEM_RESULTADOS, {"tipos": list(DEM_JOB_TIPOS), "area_id": area_id})
         .scalars()
         .all()

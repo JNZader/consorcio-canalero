@@ -12,7 +12,9 @@ import {
   Text,
   Title,
 } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import { lazy, Suspense, useState } from 'react';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { CUENCA_COLORS as DEFAULT_CUENCA_COLORS } from '../../constants';
 import { API_URL, getAuthToken } from '../../lib/api';
 import { withBasePath } from '../../lib/basePath';
@@ -46,6 +48,8 @@ export default function AdminDashboard() {
   const config = useConfigStore((state) => state.config);
   const [exporting, setExporting] = useState(false);
   const [basinsFile, setBasinsFile] = useState<File | null>(null);
+  const [confirmBasins, confirmBasinsModal] = useDisclosure(false);
+  const [confirmZones, confirmZonesModal] = useDisclosure(false);
   const [approvedZonesFile, setApprovedZonesFile] = useState<File | null>(null);
   const [bundleFile, setBundleFile] = useState<File | null>(null);
   const [importingBasins, setImportingBasins] = useState(false);
@@ -311,6 +315,30 @@ export default function AdminDashboard() {
         <DashboardEstadisticas />
       </Suspense>
 
+      <ConfirmDialog
+        opened={confirmBasins}
+        title="Reemplazar subcuencas"
+        message="Esto reemplaza las subcuencas operativas actuales. ¿Seguimos?"
+        confirmLabel="Reemplazar"
+        onClose={confirmBasinsModal.close}
+        loading={importingBasins}
+        onConfirm={() => {
+          confirmBasinsModal.close();
+          void handleImportBasins();
+        }}
+      />
+      <ConfirmDialog
+        opened={confirmZones}
+        title="Reemplazar zonificación"
+        message="Esto carga el archivo como nueva zonificación aprobada. ¿Seguimos?"
+        confirmLabel="Reemplazar"
+        onClose={confirmZonesModal.close}
+        loading={importingApprovedZones}
+        onConfirm={() => {
+          confirmZonesModal.close();
+          void handleImportApprovedZones();
+        }}
+      />
       <Divider my="xl" label="Detalle de Operaciones" labelPosition="center" />
 
       <Paper shadow="sm" p="md" radius="md" withBorder mb="xl">
@@ -341,7 +369,7 @@ export default function AdminDashboard() {
                 aria-label="Seleccionar GeoJSON de subcuencas a importar"
                 clearable
               />
-              <Button onClick={handleImportBasins} loading={importingBasins} disabled={!basinsFile}>
+              <Button onClick={confirmBasinsModal.open} loading={importingBasins} disabled={!basinsFile}>
                 Importar subcuencas
               </Button>
             </Stack>
@@ -364,7 +392,7 @@ export default function AdminDashboard() {
                 clearable
               />
               <Button
-                onClick={handleImportApprovedZones}
+                onClick={confirmZonesModal.open}
                 loading={importingApprovedZones}
                 disabled={!approvedZonesFile}
               >

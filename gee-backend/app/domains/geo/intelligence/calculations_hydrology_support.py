@@ -1264,9 +1264,13 @@ def generar_zonificacion_impl(
     from shapely.geometry import shape
 
     if rasterio_module is None:
-        import rasterio as rasterio_module  # noqa: PLC0415
+        import rasterio as _rasterio  # noqa: PLC0415
+
+        rasterio_module = _rasterio
     if shapes_fn is None:
-        from rasterio.features import shapes as shapes_fn  # noqa: PLC0415
+        from rasterio.features import shapes as _shapes  # noqa: PLC0415
+
+        shapes_fn = _shapes
 
     rasterio = rasterio_module
     rasterio_shapes = shapes_fn

@@ -156,6 +156,14 @@ export function MapWorkspace({
   }, [isDesktop, closeDrawer]);
 
   useEffect(() => {
+    const onClose = () => {
+      if (!isDesktop) closeDrawer();
+    };
+    window.addEventListener('cc-close-map-drawer', onClose);
+    return () => window.removeEventListener('cc-close-map-drawer', onClose);
+  }, [isDesktop, closeDrawer]);
+
+  useEffect(() => {
     if (!hasSelection) return;
     if (isDesktop) {
       if (useMapWorkspaceStore.getState().sidebarCollapsed) setSidebarCollapsed(false);

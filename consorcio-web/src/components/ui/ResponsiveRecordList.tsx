@@ -1,4 +1,4 @@
-import { Box, Card, Group, Stack, Table, Text } from '@mantine/core';
+import { Box, Card, Group, Stack, Table, Text, UnstyledButton } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import {
   observeElementOffset,
@@ -8,6 +8,7 @@ import {
 } from '@tanstack/react-virtual';
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { mediaBelow } from '../../lib/breakpoints';
+import { IconArrowDown, IconArrowUp } from './icons';
 
 /**
  * Por debajo de `sm` (768px) las tablas anchas del admin pasan a fichas.
@@ -65,10 +66,33 @@ export interface ResponsiveRecord {
   readonly cells: readonly ReactNode[];
 }
 
+/**
+ * Columna con ordenamiento opcional. Un plain `string` sigue siendo
+ * válido (columna sin orden); con `sortKey` el encabezado de la tabla
+ * de escritorio se vuelve clicable y delega el cambio en `sorting.onChange`.
+ */
+export interface RecordColumn {
+  readonly label: string;
+  readonly sortKey?: string;
+}
+
+export interface RecordListSorting {
+  /** `sortKey` de la columna activa. */
+  readonly active: string;
+  readonly direction: 'asc' | 'desc';
+  /** El padre decide: mismo key = invertir dirección, key nuevo = arrancar en `desc`. */
+  readonly onChange: (sortKey: string) => void;
+}
+
+/** Resuelve el texto visible de una columna sea plain string o descriptor. */
+function columnLabel(column: string | RecordColumn): string {
+  return typeof column === 'string' ? column : column.label;
+}
+
 export interface ResponsiveRecordListProps {
   /** Nombre accesible. Es el `aria-label` de la tabla y de la lista de fichas. */
   readonly label: string;
-  readonly columns: readonly string[];
+  readonly columns: readonly (string | RecordColumn)[];
   readonly records: readonly ResponsiveRecord[];
   /** Ancho mínimo de la tabla de escritorio, dentro de su propio scroll. */
   readonly minWidth?: number;
@@ -85,6 +109,12 @@ export interface ResponsiveRecordListProps {
    * Por debajo de ese tamaño se montan todas las filas.
    */
   readonly virtualize?: boolean;
+  /**
+   * Habilita encabezados ordenables SOLO en la tabla de escritorio.
+   * Las fichas (<sm) no ordenan: la vista móvil usa el selector "Ordenar"
+   * del panel en su lugar.
+   */
+  readonly sorting?: RecordListSorting;
 }
 
 export function useCompactViewport(): boolean {
@@ -108,28 +138,29 @@ function measureRecord(
 function RecordFields({
   columns,
   cells,
-}: Readonly<{ columns: readonly string[]; cells: readonly ReactNode[] }>) {
+}: Readonly<{ columns: readonly (string | RecordColumn)[]; cells: readonly ReactNode[] }>) {
   return (
     <Stack gap="xs">
       {columns.map((column, index) => {
         const cell = cells[index];
-        if (column === ACTIONS_COLUMN) {
+        const label = columnLabel(column);
+        if (label === ACTIONS_COLUMN) {
           return (
-            <Group key={`${column}-${index}`} gap="xs" justify="flex-end" wrap="wrap">
+            <Group key={`${label}-${index}`} gap="xs" justify="flex-end" wrap="wrap">
               {cell}
             </Group>
           );
         }
         return (
           <Group
-            key={`${column}-${index}`}
+            key={`${label}-${index}`}
             justify="space-between"
             align="flex-start"
             wrap="nowrap"
             gap="sm"
           >
             <Text component="span" size="xs" c="dimmed" fw={600} style={{ flex: '0 0 auto' }}>
-              {column}
+              {label}
             </Text>
             <Box
               style={{
@@ -151,7 +182,7 @@ function RecordFields({
 function RecordCard({
   columns,
   record,
-}: Readonly<{ columns: readonly string[]; record: ResponsiveRecord }>) {
+}: Readonly<{ columns: readonly (string | RecordColumn)[]; record: ResponsiveRecord }>) {
   return (
     <Card withBorder padding="sm" radius="md" data-record-id={record.id}>
       <RecordFields columns={columns} cells={record.cells} />
@@ -195,6 +226,58 @@ function DataCells({ record }: Readonly<{ record: ResponsiveRecord }>) {
   ));
 }
 
+/**
+ * Encabezado ordenable de la tabla de escritorio. `aria-sort` va en el
+ * `th` (no en el botón) según el spec de ARIA: 'ascending'/'descending'
+ * para la columna activa, 'none' para ordenables inactivas, ausente en
+ * columnas sin orden. El componente solo DELEGA el click — la política
+ * (invertir dirección vs. cambiar key) es del padre vía `sorting.onChange`.
+ */
+function RecordHeaderCell({
+  column,
+  sorting,
+}: Readonly<{ column: string | RecordColumn; sorting?: RecordListSorting }>) {
+  const label = columnLabel(column);
+  const sortKey = typeof column === 'string' ? undefined : column.sortKey;
+  if (!sortKey || !sorting) {
+    return <Table.Th>{label}</Table.Th>;
+  }
+  const isActive = sorting.active === sortKey;
+  const SortIcon = sorting.direction === 'asc' ? IconArrowUp : IconArrowDown;
+  return (
+    <Table.Th
+      aria-sort={isActive ? (sorting.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      <UnstyledButton
+        onClick={() => sorting.onChange(sortKey)}
+        aria-label={`Ordenar por ${label}`}
+        title={`Ordenar por ${label}`}
+        style={{ cursor: 'pointer' }}
+      >
+        <Group gap={4} wrap="nowrap" align="center">
+          <Text component="span" fw={isActive ? 700 : undefined} inherit>
+            {label}
+          </Text>
+          {isActive ? <SortIcon size={14} aria-hidden="true" /> : null}
+        </Group>
+      </UnstyledButton>
+    </Table.Th>
+  );
+}
+
+function RecordTableHead({
+  columns,
+  sorting,
+}: Readonly<{ columns: readonly (string | RecordColumn)[]; sorting?: RecordListSorting }>) {
+  return (
+    <Table.Tr>
+      {columns.map((column) => (
+        <RecordHeaderCell key={columnLabel(column)} column={column} sorting={sorting} />
+      ))}
+    </Table.Tr>
+  );
+}
+
 function StaticTable({
   label,
   columns,
@@ -204,6 +287,7 @@ function StaticTable({
   highlightOnHover,
   verticalSpacing,
   scrollLabel,
+  sorting,
 }: Readonly<Omit<ResponsiveRecordListProps, 'virtualize'>>) {
   return (
     <Table.ScrollContainer
@@ -221,11 +305,7 @@ function StaticTable({
         data-layout="table"
       >
         <Table.Thead>
-          <Table.Tr>
-            {columns.map((column) => (
-              <Table.Th key={column}>{column}</Table.Th>
-            ))}
-          </Table.Tr>
+          <RecordTableHead columns={columns} sorting={sorting} />
         </Table.Thead>
         <Table.Tbody>
           {records.map((record) => (
@@ -263,6 +343,7 @@ export function ResponsiveRecordList({
   verticalSpacing,
   scrollLabel,
   virtualize = false,
+  sorting,
 }: ResponsiveRecordListProps) {
   const compact = useCompactViewport();
   const shouldVirtualize = virtualize && records.length >= RECORD_VIRTUALIZE_THRESHOLD;
@@ -370,6 +451,7 @@ export function ResponsiveRecordList({
         highlightOnHover={highlightOnHover}
         verticalSpacing={verticalSpacing}
         scrollLabel={scrollLabel}
+        sorting={sorting}
       />
     );
   }
@@ -457,11 +539,7 @@ export function ResponsiveRecordList({
         style={{ minWidth }}
       >
         <Table.Thead ref={headerRef}>
-          <Table.Tr>
-            {columns.map((column) => (
-              <Table.Th key={column}>{column}</Table.Th>
-            ))}
-          </Table.Tr>
+          <RecordTableHead columns={columns} sorting={sorting} />
         </Table.Thead>
         <Table.Tbody>
           <SpacerRow height={paddingTop} cols={columns.length} />

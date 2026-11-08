@@ -18,8 +18,8 @@ export function getStatusConfig(status: StatusType | string): StatusConfigItem {
  */
 export const STATUS_COLOR_VAR: Record<string, string> = {
   pendiente: 'var(--cc-color-warning)',
-  en_revision: 'var(--cc-color-primary)',
-  revisada: 'var(--cc-color-primary)',
+  en_revision: 'var(--cc-color-status-review)',
+  revisada: 'var(--cc-color-status-review)',
   resuelto: 'var(--cc-color-success)',
   implementada: 'var(--cc-color-success)',
   descartado: 'var(--cc-color-danger)',

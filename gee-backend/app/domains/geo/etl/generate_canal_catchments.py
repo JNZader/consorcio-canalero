@@ -284,7 +284,9 @@ def _resolve_io(
     Keeps the imports lazy — no rasterio or WhiteboxTools at module import time.
     """
     if rasterio_module is None:
-        import rasterio as rasterio_module  # noqa: PLC0415
+        import rasterio as _rasterio  # noqa: PLC0415
+
+        rasterio_module = _rasterio
     if rasterize_fn is None or shapes_fn is None:
         from rasterio.features import rasterize as _rasterize  # noqa: PLC0415
         from rasterio.features import shapes as _shapes  # noqa: PLC0415

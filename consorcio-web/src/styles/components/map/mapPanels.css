@@ -346,8 +346,10 @@
     order: 1;
   }
 
+  /* El header queda en el orden del DOM, arriba del mapa, para que
+     Reportar incidente entre en 360 y 390 sin un segundo botón. */
   .mapPageContainer > .mapPageHeader {
-    order: 2;
+    order: 0;
   }
 
   /* Presupuesto de alto propio. Arriba del canvas queda SOLO la cabecera del
@@ -367,7 +369,7 @@
   .canvasHeightBudget,
   .mapSkeletonWrapper,
   .workspaceSidebar {
-    --map-canvas-height: calc(100dvh - 96px);
+    --map-canvas-height: calc(100dvh - 220px);
   }
 }
 

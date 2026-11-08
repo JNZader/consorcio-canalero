@@ -21,6 +21,7 @@ import {
   type SetStateAction,
   Suspense,
   useCallback,
+  useEffect,
   useRef,
   useState,
 } from 'react';
@@ -32,7 +33,10 @@ import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
 import type { HazardPrecipMonth, HazardRiskClass } from '../../hooks/useHazardUrlState';
 import { FICHA_MAX_BUFFER_M } from '../../lib/api/ficha';
 import { erroresUi } from '../../lib/userFacingError';
+import { useReportAnchorStore } from '../../stores/reportAnchorStore';
+import { useIsAuthenticated } from '../../stores/authStore';
 import { useMapWorkspaceStore } from '../../stores/mapWorkspaceStore';
+import { MapActionsPanel } from './MapActionsPanel';
 import styles from '../../styles/components/map/classNames';
 import type { Etapa } from '../../types/canales';
 import type { PilarVerdeData } from '../../types/pilarVerde';
@@ -269,6 +273,9 @@ export interface MapaMapLibreViewProps {
 }
 
 export function MapaMapLibreView(props: MapaMapLibreViewProps) {
+  // Exportar como botón flotante es un atajo para autenticados; los
+  // anónimos acceden desde Herramientas → Exportar PNG.
+  const isAuthenticated = useIsAuthenticated();
   const {
     activeDemLayerId,
     activeLegendItems,
@@ -477,6 +484,26 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
   // desktop `.mapTopBar`, and — on mobile — `LayerControlsPanel`'s own "Base"
   // section inside the Drawer. `MapBaseSelectorPanel` and `LayerControlsPanel`
   // take the exact same three props, so the object is spread into either one.
+  useEffect(() => {
+    const feature = selectedFeatures[0];
+    const geometry = feature?.geometry;
+    if (!geometry) {
+      useReportAnchorStore.getState().setAnchor(null);
+      return;
+    }
+    const coords =
+      geometry.type === 'Point'
+        ? geometry.coordinates
+        : geometry.type === 'LineString'
+          ? geometry.coordinates[0]
+          : null;
+    if (!coords || coords.length < 2) {
+      useReportAnchorStore.getState().setAnchor(null);
+      return;
+    }
+    useReportAnchorStore.getState().setAnchor({ lng: coords[0], lat: coords[1] });
+  }, [selectedFeatures]);
+
   const baseControls = {
     baseLayer,
     onBaseLayerChange: setBaseLayer,
@@ -516,7 +543,12 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
               });
             }}
             onGeolocate={() => {
-              requestMapGeolocate(mapRef.current);
+              requestMapGeolocate(mapRef.current, undefined, (coords) => {
+                useReportAnchorStore.getState().setGeolocatePin({
+                  lat: coords.latitude,
+                  lng: coords.longitude,
+                });
+              });
             }}
           />
         }
@@ -773,10 +805,9 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                   onOpenExportPng={() => setExportPngModalOpen(true)}
                   onExportApprovedZonesPdf={handleExportApprovedZonesPdf}
                   onExportKmz={handleExportKmz}
-                  onExportMenuOpen={handleExportIntent}
                   portalTarget={canvasShellRef}
                   /* Draw / canal / multi-select callbacks are login-gated: absent for
-                   anonymous visitors, so those entries are not rendered at all. */
+                     anonymous visitors, so those entries are not rendered at all. */
                   {...analysisToolProps}
                 />
               }
@@ -980,6 +1011,18 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                     return { ...prev, [layerType]: next };
                   })
                 }
+              />
+            )}
+            {/* El botón flotante de exportar es un atajo para usuarios
+                autenticados. Los anónimos acceden desde el dropdown de
+                Herramientas, que ya ofrece Exportar PNG. */}
+            {isAuthenticated && (
+              <MapActionsPanel
+                hasApprovedZones={hasApprovedZones}
+                onOpenExportPng={() => setExportPngModalOpen(true)}
+                onExportApprovedZonesPdf={handleExportApprovedZonesPdf}
+                onExportKmz={handleExportKmz}
+                onExportMenuOpen={handleExportIntent}
               />
             )}
           </Stack>

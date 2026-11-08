@@ -15,6 +15,7 @@ import { useGeoLayers } from '../hooks/useGeoLayers';
 import { useMultiHazardGate } from '../hooks/useMultiHazardGate';
 import { useSelectedImageListener } from '../hooks/useSelectedImage';
 import { withBasePath } from '../lib/basePath';
+import { useReportAnchorStore } from '../stores/reportAnchorStore';
 import { useCanAccess } from '../stores/authStore';
 import mapStyles from '../styles/components/map/classNames';
 import { MapaContenido } from './MapaInteractivo';
@@ -54,6 +55,7 @@ export function MapaContent() {
     hasDemRaw: !!demRawLayer,
   });
   const terrainHint = terrainAvailabilityHint(terrainStatus);
+  const reportAnchor = useReportAnchorStore((state) => state.anchor);
 
   // 2D/3D view toggle — UX-17 keeps 2D mounted after first 3D open.
   const [mapViewMode, setMapViewMode] = useState<MapViewMode>('2d');
@@ -137,7 +139,11 @@ export function MapaContent() {
               </Group>
               <Button
                 component="a"
-                href={withBasePath('/participacion')}
+                href={withBasePath(
+                  reportAnchor
+                    ? `/participacion?ubicacion=elegida&lat=${reportAnchor.lat}&lng=${reportAnchor.lng}`
+                    : '/participacion'
+                )}
                 size="sm"
                 leftSection={<IconAlertTriangle size={16} />}
               >

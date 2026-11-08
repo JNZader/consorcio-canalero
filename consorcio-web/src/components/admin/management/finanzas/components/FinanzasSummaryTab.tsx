@@ -29,7 +29,12 @@ export function FinanzasSummaryTab({
       <Paper withBorder p="xl" radius="md" mt="xl">
         <Group justify="space-between" mb="xl">
           <Title order={4}>Resumen financiero {currentYear}</Title>
-          <Button variant="outline" onClick={onDownloadPdf} loading={exportingPdf}>
+          <Button
+            variant="outline"
+            onClick={onDownloadPdf}
+            loading={exportingPdf}
+            disabled={balance == null}
+          >
             Descargar resumen financiero PDF
           </Button>
         </Group>

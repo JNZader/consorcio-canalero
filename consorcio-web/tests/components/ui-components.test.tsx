@@ -7,10 +7,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import { MantineProvider } from '@mantine/core';
 import { LoadingState } from '../../src/components/ui/LoadingState';
-import PieChart from '../../src/components/ui/PieChart';
-import { StatCard } from '../../src/components/ui/StatCard';
 import { StatusBadge } from '../../src/components/ui/StatusBadge';
-import { IconHome } from '@tabler/icons-react';
 
 function renderWithMantine(component: React.ReactNode) {
   return render(<MantineProvider env="test">{component}</MantineProvider>);
@@ -56,122 +53,6 @@ describe('UI Components', () => {
       expect(container).toHaveAttribute('aria-busy', 'true');
     });
   });
-
-  describe('PieChart', () => {
-    const sampleData = [
-      { label: 'Category A', value: 30, color: '#FF6B6B' },
-      { label: 'Category B', value: 20, color: '#4ECDC4' },
-      { label: 'Category C', value: 50, color: '#45B7D1' },
-    ];
-
-    it('should render pie chart with data', () => {
-      renderWithMantine(<PieChart data={sampleData} />);
-      expect(screen.getByRole('img')).toBeInTheDocument();
-    });
-
-    it('should not render when all values are zero', () => {
-      const emptyData = [
-        { label: 'Category A', value: 0, color: '#FF6B6B' },
-      ];
-      const { container } = renderWithMantine(<PieChart data={emptyData} />);
-      expect(container.querySelector('svg')).not.toBeInTheDocument();
-    });
-
-    it('should render title when provided', () => {
-      renderWithMantine(<PieChart data={sampleData} title="Distribution Chart" />);
-      expect(screen.getByText('Distribution Chart')).toBeInTheDocument();
-    });
-
-    it('should render legend by default', () => {
-      renderWithMantine(<PieChart data={sampleData} />);
-      expect(screen.getByText('Category A')).toBeInTheDocument();
-      expect(screen.getByText('Category B')).toBeInTheDocument();
-      expect(screen.getByText('Category C')).toBeInTheDocument();
-    });
-
-    it('should not render legend when showLegend is false', () => {
-      renderWithMantine(<PieChart data={sampleData} showLegend={false} />);
-      // SVG should still exist
-      expect(screen.getByRole('img')).toBeInTheDocument();
-      // But legend entries should not be visible as separate text
-      // (they're inside the SVG)
-    });
-
-    it('should use custom size', () => {
-      const { container } = renderWithMantine(<PieChart data={sampleData} size={300} />);
-      const svg = container.querySelector('svg');
-      expect(svg).toHaveAttribute('width', '300');
-      expect(svg).toHaveAttribute('height', '300');
-    });
-
-    it('should display percentage in legend', () => {
-      renderWithMantine(<PieChart data={sampleData} />);
-      expect(screen.getByText('30.0%')).toBeInTheDocument();
-      expect(screen.getByText('20.0%')).toBeInTheDocument();
-      expect(screen.getByText('50.0%')).toBeInTheDocument();
-    });
-
-    it('should handle single data item', () => {
-      const singleData = [{ label: 'Only', value: 100, color: '#FF6B6B' }];
-      renderWithMantine(<PieChart data={singleData} />);
-      expect(screen.getByRole('img')).toBeInTheDocument();
-    });
-  });
-
-  describe('StatCard', () => {
-    it('should render with required props', () => {
-      renderWithMantine(<StatCard title="Total Users" value={1234} />);
-      // Title is uppercase
-      const elements = screen.queryAllByText((content, element) => {
-        return element?.textContent?.toUpperCase().includes('TOTAL USERS') || false;
-      });
-      expect(elements.length).toBeGreaterThan(0);
-    });
-
-    it('should render with unit', () => {
-      renderWithMantine(<StatCard title="Revenue" value={5000} unit="USD" />);
-      expect(screen.getByText('USD')).toBeInTheDocument();
-    });
-
-    it('should format large numbers with locale', () => {
-      const { container } = renderWithMantine(<StatCard title="Count" value={1000000} />);
-      // Just verify component renders without error
-      expect(container.querySelector('[class*="Card"]')).toBeInTheDocument();
-    });
-
-    it('should render with string value', () => {
-      renderWithMantine(<StatCard title="Status" value="Active" />);
-      expect(screen.getByText('Active')).toBeInTheDocument();
-    });
-
-    it('should render positive trend', () => {
-      renderWithMantine(
-        <StatCard title="Growth" value={100} trend={{ value: 15, positive: true }} />
-      );
-      expect(screen.getByText(/↑/)).toBeInTheDocument();
-      expect(screen.getByText(/15%/)).toBeInTheDocument();
-    });
-
-    it('should render negative trend', () => {
-      renderWithMantine(
-        <StatCard title="Decline" value={50} trend={{ value: 10, positive: false }} />
-      );
-      expect(screen.getByText(/↓/)).toBeInTheDocument();
-      expect(screen.getByText(/10%/)).toBeInTheDocument();
-    });
-
-    it('should render with icon', () => {
-      renderWithMantine(
-        <StatCard title="Users" value={100} icon={<IconHome data-testid="card-icon" />} />
-      );
-      expect(screen.getByTestId('card-icon')).toBeInTheDocument();
-    });
-
-    it('should apply custom color', () => {
-       const { container } = renderWithMantine(<StatCard title="Test" value={1} color="red" />);
-       expect(container.querySelector('[class*="Card"]')).toBeInTheDocument();
-     });
-   });
 
   describe('StatusBadge', () => {
     it('should render with known status', () => {

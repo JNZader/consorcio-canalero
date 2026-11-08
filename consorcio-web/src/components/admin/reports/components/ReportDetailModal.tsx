@@ -14,9 +14,10 @@ import {
   Timeline,
   Title,
 } from '@mantine/core';
+import { useEffect, useState } from 'react';
 import { CATEGORY_OPTIONS, getAllowedNextEstados } from '../../../../constants';
 import type { Report } from '../../../../lib/api';
-import { API_URL } from '../../../../lib/api';
+import { API_URL, apiFetch } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/formatters';
 import { AuthenticatedImage } from '../../../shared/AuthenticatedImage';
 
@@ -96,12 +97,7 @@ export function ReportDetailModal({
   updating: boolean;
 }>) {
   return (
-    <Modal
-      opened={opened}
-      onClose={onClose}
-      title="Detalle de Denuncia"
-      size="lg"
-    >
+    <Modal opened={opened} onClose={onClose} title="Detalle de Denuncia" size="lg">
       {selectedReport && (
         <Stack gap="md">
           <SimpleGrid cols={2}>
@@ -261,6 +257,11 @@ export function ReportDetailModal({
                   selectedReport.estado === 'resuelto' || selectedReport.estado === 'descartado'
                 }
               />
+              <AssigneeField
+                key={selectedReport.id}
+                denunciaId={selectedReport.id}
+                initialAsignado={selectedReport.asignado_a ?? null}
+              />
               <Textarea
                 label="Comentario Público"
                 placeholder="Lo que el ciudadano verá..."
@@ -324,5 +325,55 @@ export function ReportDetailModal({
         </Stack>
       )}
     </Modal>
+  );
+}
+
+/**
+ * El asignado guardado llega como `initialAsignado`. El modal se reutiliza
+ * entre denuncias, así que el call site lo remonta con `key={denunciaId}`
+ * — el estado local (value) arranca desde cero por denuncia en vez de
+ * arrastrar el operador de la denuncia anterior.
+ */
+function AssigneeField({
+  denunciaId,
+  initialAsignado,
+}: {
+  denunciaId: string;
+  initialAsignado?: string | null;
+}) {
+  const [options, setOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const [value, setValue] = useState<string | null>(initialAsignado ?? null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void apiFetch<Array<{ id: string; nombre: string; email: string }>>('/denuncias/operadores')
+      .then((rows) => {
+        if (cancelled) return;
+        setOptions(rows.map((row) => ({ value: row.id, label: `${row.nombre} (${row.email})` })));
+      })
+      .catch(() => {
+        if (!cancelled) setError('No se pudo cargar la lista de operadores');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <Select
+      label="Asignar operador"
+      description={error ?? 'Solo operadores y admins. Vacío quita la asignación.'}
+      data={options}
+      value={value}
+      clearable
+      onChange={(next) => {
+        setValue(next);
+        void apiFetch(`/denuncias/${denunciaId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ asignado_a: next }),
+        }).catch(() => setError('No se pudo guardar la asignación'));
+      }}
+    />
   );
 }

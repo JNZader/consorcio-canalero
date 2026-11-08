@@ -109,9 +109,8 @@ describe('ParticipacionPage', () => {
     it('muestra plazos, tip de foto y aviso de notificacion', () => {
       renderPage();
       expect(screen.getByText('Información importante')).toBeInTheDocument();
-      expect(screen.getByText(/24-48 horas/i)).toBeInTheDocument();
+      expect(screen.getByText(/5 días hábiles/i)).toBeInTheDocument();
       expect(screen.getByText(/incluir una foto/i)).toBeInTheDocument();
-      expect(screen.getByText(/notificación cuando tu reporte/i)).toBeInTheDocument();
     });
 
     it('muestra los contactos de emergencia', () => {

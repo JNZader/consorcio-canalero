@@ -23,6 +23,7 @@ import type { Sugerencia } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/formatters';
 import { CATEGORIA_OPTIONS, getAllowedNextEstadosSugerencia } from '../constants';
 import { SugerenciaGeometryMap } from './SugerenciaGeometryMap';
+import { withBasePath } from '../../../../lib/basePath';
 
 export function SuggestionDetailModal({
   opened,
@@ -71,6 +72,9 @@ export function SuggestionDetailModal({
   onUpdate: () => void;
   updating: boolean;
 }>) {
+  const point = selectedSugerencia?.geometry?.features?.[0]?.geometry?.coordinates?.[0];
+  const lng = point?.[0];
+  const lat = point?.[1];
   return (
     <Modal opened={opened} onClose={onClose} title="Detalle de Sugerencia" size="lg">
       {selectedSugerencia && (
@@ -80,6 +84,16 @@ export function SuggestionDetailModal({
               Título
             </Text>
             <Text>{selectedSugerencia.titulo}</Text>
+            {typeof lat === 'number' && typeof lng === 'number' ? (
+              <Button
+                component="a"
+                mt="xs"
+                variant="light"
+                href={withBasePath(`/mapa?lat=${lat}&lng=${lng}&zoom=15`)}
+              >
+                Ver en el mapa
+              </Button>
+            ) : null}
           </div>
 
           <div>

@@ -107,7 +107,7 @@ class GeoRepositoryJobsLayersMixin:
             .values(**values)
             .execution_options(synchronize_session=False)
         )
-        return int(result.rowcount or 0) == 1
+        return int(getattr(result, "rowcount", 0) or 0) == 1
 
     def get_layer_by_id(self, db: Session, layer_id: uuid.UUID) -> Optional[GeoLayer]:
         return db.execute(select(GeoLayer).where(GeoLayer.id == layer_id)).scalar_one_or_none()
@@ -173,7 +173,11 @@ class GeoRepositoryJobsLayersMixin:
             .distinct(mes_key)
         )
         layers = db.execute(stmt).scalars().all()
-        return {str(layer.metadata_extra["mes"]): layer for layer in layers}
+        return {
+            str(meta["mes"]): layer
+            for layer in layers
+            if (meta := layer.metadata_extra) is not None and "mes" in meta
+        }
 
     def create_layer(
         self,
@@ -247,4 +251,4 @@ class GeoRepositoryJobsLayersMixin:
 
         result = db.execute(delete(GeoLayer).where(GeoLayer.area_id == area_id))
         db.flush()
-        return result.rowcount
+        return int(getattr(result, "rowcount", 0) or 0)
