@@ -117,7 +117,7 @@ describe('IconButton', () => {
 describe('StatusBadge', () => {
   it.each([
     ['pendiente', 'var(--cc-color-warning)'],
-    ['en_revision', 'var(--cc-color-primary)'],
+    ['en_revision', 'var(--cc-color-status-review)'],
     ['resuelto', 'var(--cc-color-success)'],
     ['descartado', 'var(--cc-color-danger)'],
     ['descartada', 'var(--cc-color-text-muted)'],

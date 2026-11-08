@@ -362,6 +362,21 @@ body {
     padding-top: 10px;
     padding-bottom: 10px;
   }
+
+  button.cc-site-burger {
+    min-width: var(--cc-touch-min, 44px);
+    min-height: var(--cc-touch-min, 44px);
+  }
+
+  .cc-bandeja-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cc-bandeja-filters :is(.mantine-TextInput-root, .mantine-Select-root, .mantine-Button-root) {
+    width: 100% !important;
+    min-height: var(--cc-touch-min, 44px);
+  }
 }
 
 /* IconButton: el piso de 44px vale solo con puntero grueso.
