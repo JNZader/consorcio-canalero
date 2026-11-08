@@ -65,6 +65,7 @@ export default function PadronPanel() {
     null
   );
   const [deleting, setDeleting] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fetchConsorcistas = useCallback(async () => {
     setLoading(true);
@@ -74,7 +75,10 @@ export default function PadronPanel() {
       );
       const data = Array.isArray(response) ? response : (response.items ?? []);
       setConsorcistas(data);
+      setLoadError(null);
     } catch (err) {
+      setConsorcistas([]);
+      setLoadError(erroresUi.cargarPadron.detalle);
       handleError(err, {
         title: erroresUi.cargarPadron.titulo,
         fallbackMessage: erroresUi.cargarPadron.detalle,
@@ -226,7 +230,21 @@ export default function PadronPanel() {
     }
   };
 
-  if (loading && consorcistas.length === 0) return <LoadingState />;
+  if (loading && consorcistas.length === 0 && !loadError) return <LoadingState />;
+  if (loadError && consorcistas.length === 0) {
+    return (
+      <LoadingState
+        status="error"
+        title={erroresUi.cargarPadron.titulo}
+        message={loadError}
+        action={
+          <Button mt="sm" onClick={() => void fetchConsorcistas()}>
+            Reintentar
+          </Button>
+        }
+      />
+    );
+  }
 
   return (
     <Container size="xl" py="md">

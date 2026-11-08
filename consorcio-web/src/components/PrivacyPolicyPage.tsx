@@ -156,9 +156,9 @@ export default function PrivacyPolicyPage() {
               Consorcio recibe la identidad que Google confirma y no la contraseña de esa cuenta.
             </List.Item>
             <List.Item>
-              <strong>Correo transaccional</strong> — los avisos (recuperación de contraseña y
-              mensajes operativos) salen por el servidor SMTP que configura el propio consorcio. No
-              hay un proveedor de correo fijo en la aplicación.
+              <strong>Correo transaccional</strong> — la recuperación de contraseña sale por el
+              SMTP que configura el consorcio. El aviso de estado de una denuncia solo se envía si
+              esa opción está activada y hay SMTP. No hay un proveedor de correo fijo.
             </List.Item>
           </List>
 

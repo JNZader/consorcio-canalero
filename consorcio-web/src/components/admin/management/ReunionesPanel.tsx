@@ -1,4 +1,5 @@
-import { Button, Container } from '@mantine/core';
+import { Button, Container, Text } from '@mantine/core';
+import { erroresUi } from '../../../lib/userFacingError';
 import { ConfirmDialog } from '../../ui/ConfirmDialog';
 import { IconCalendar } from '../../ui/icons';
 import { LoadingState } from '../../ui/LoadingState';
@@ -38,7 +39,22 @@ export default function ReunionesPanel() {
         submitting={controller.submitting}
       />
 
-      <ReunionesGrid reuniones={controller.reuniones} onViewAgenda={controller.handleViewAgenda} />
+      {controller.loadError ? (
+        <LoadingState
+          status="error"
+          title={erroresUi.cargarReuniones.titulo}
+          message={erroresUi.cargarReuniones.detalle}
+          action={
+            <Button mt="sm" onClick={() => void controller.fetchReuniones()}>
+              Reintentar
+            </Button>
+          }
+        />
+      ) : controller.reuniones.length === 0 ? (
+        <Text c="dimmed">No hay reuniones cargadas.</Text>
+      ) : (
+        <ReunionesGrid reuniones={controller.reuniones} onViewAgenda={controller.handleViewAgenda} />
+      )}
 
       <AgendaModal
         opened={controller.agendaOpened}

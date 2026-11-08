@@ -123,7 +123,7 @@ const FEATURES: Array<{ icon: ReactNode; title: string; description: string; hre
 const FAQ_ITEMS: Array<{ q: string; a: string }> = [
   {
     q: '¿Necesito una cuenta para reportar un problema?',
-    a: 'Sí. Pedimos registración para evitar spam y poder darte seguimiento (notificarte cuando el operador del consorcio responde). El registro es gratuito y solo necesita tu email.',
+    a: 'Sí. Pedimos registración para evitar spam y para que veas el seguimiento en Mis denuncias. El registro es gratuito y solo necesita tu email. El aviso por correo no está prometido: solo se envía si el consorcio activó esa opción.',
   },
   {
     q: '¿Quién ve mis reportes?',
@@ -139,7 +139,7 @@ const FAQ_ITEMS: Array<{ q: string; a: string }> = [
   },
   {
     q: '¿Cómo se garantiza que el reporte llega al operador?',
-    a: 'El sistema notifica al panel del consorcio en cuanto se envía. Los operadores tienen 5 días hábiles para una primera respuesta. Si no hay respuesta en ese plazo, podés escalar por mail directo a contacto@consorcio10demayo.gob.ar.',
+    a: 'El reporte queda en la bandeja del consorcio en cuanto se envía. Los operadores tienen 5 días hábiles para una primera respuesta. Si no hay respuesta en ese plazo, podés escalar por mail directo a contacto@consorcio10demayo.gob.ar.',
   },
   {
     q: '¿Es gratis?',

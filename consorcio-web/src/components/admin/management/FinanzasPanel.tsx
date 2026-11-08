@@ -1,4 +1,5 @@
 import { Button, Container, Tabs } from '@mantine/core';
+import { erroresUi } from '../../../lib/userFacingError';
 import { IconArrowUpRight, IconCoin, IconPlus, IconReceipt } from '../../ui/icons';
 import { LoadingState } from '../../ui/LoadingState';
 import { PageHeader } from '../../ui/PageHeader';
@@ -13,7 +14,21 @@ import { useFinanzasController } from './finanzas/useFinanzasController';
 
 export default function FinanzasPanel() {
   const controller = useFinanzasController();
-  if (controller.loading && !controller.balance) return <LoadingState />;
+  if (controller.loading && !controller.balance && !controller.loadError) return <LoadingState />;
+  if (controller.loadError) {
+    return (
+      <LoadingState
+        status="error"
+        title={erroresUi.cargarFinanzas.titulo}
+        message={erroresUi.cargarFinanzas.detalle}
+        action={
+          <Button mt="sm" onClick={() => void controller.fetchFinanzas()}>
+            Reintentar
+          </Button>
+        }
+      />
+    );
+  }
 
   return (
     <Container size="xl" py="md">

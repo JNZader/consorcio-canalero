@@ -28,6 +28,7 @@ export function useFinanzasController() {
   const [ingresos, setIngresos] = useState<Ingreso[]>([]);
   const [balance, setBalance] = useState<Balance | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [exportingSummaryPdf, setExportingSummaryPdf] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<string | null>('balance');
@@ -93,8 +94,11 @@ export function useFinanzasController() {
       setGastos(normalizeArray(gastosRaw));
       setIngresos(normalizeArray(ingresosRaw));
       setBalance(balanceData);
+      setLoadError(null);
     } catch (error) {
       logger.error('Error fetching finanzas:', error);
+      setBalance(null);
+      setLoadError(textoError(erroresUi.cargarFinanzas));
     } finally {
       setLoading(false);
     }
@@ -264,6 +268,8 @@ export function useFinanzasController() {
     ingresos,
     balance,
     loading,
+    loadError,
+    fetchFinanzas,
     activeTab,
     setActiveTab,
     editingIngreso,

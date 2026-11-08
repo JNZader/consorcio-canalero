@@ -15,6 +15,7 @@ import {
 export function useReunionesController() {
   const [reuniones, setReuniones] = useState<Reunion[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [selectedReunion, setSelectedReunion] = useState<Reunion | null>(null);
   const [agenda, setAgenda] = useState<AgendaItem[]>([]);
@@ -62,12 +63,13 @@ export function useReunionesController() {
   const fetchReuniones = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await apiFetch<{ items: Reunion[]; total: number }>('/reuniones').catch(
-        () => ({ items: [] as Reunion[], total: 0 })
-      );
+      const response = await apiFetch<{ items: Reunion[]; total: number }>('/reuniones');
       setReuniones(normalizeArrayResponse<Reunion>(response));
+      setLoadError(null);
     } catch (err) {
       logger.error('Error fetching reuniones:', err);
+      setReuniones([]);
+      setLoadError(textoError(erroresUi.cargarReuniones));
     } finally {
       setLoading(false);
     }
@@ -269,6 +271,8 @@ export function useReunionesController() {
   return {
     reuniones,
     loading,
+    loadError,
+    fetchReuniones,
     exporting,
     selectedReunion,
     agenda,

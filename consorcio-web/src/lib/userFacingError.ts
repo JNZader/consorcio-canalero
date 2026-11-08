@@ -139,6 +139,14 @@ export const erroresUi = {
     'No pudimos importar el paquete geoespacial',
     'Revisá que el ZIP sea el paquete exportado y volvé a subirlo.'
   ),
+  cargarFinanzas: mensajeError(
+    'No pudimos cargar las finanzas',
+    'Los importes en cero de un año vacío no se muestran cuando falla la carga. Tocá Reintentar.'
+  ),
+  cargarReuniones: mensajeError(
+    'No pudimos cargar las reuniones',
+    'Tocá Reintentar. Una lista vacía significa que no hay reuniones cargadas.'
+  ),
   cargarDashboard: mensajeError(
     'No pudimos cargar los datos del tablero',
     'Verificá que el servidor esté activo y tocá Reintentar.'
