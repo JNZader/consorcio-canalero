@@ -34,6 +34,7 @@ import type { HazardPrecipMonth, HazardRiskClass } from '../../hooks/useHazardUr
 import { FICHA_MAX_BUFFER_M } from '../../lib/api/ficha';
 import { erroresUi } from '../../lib/userFacingError';
 import { useReportAnchorStore } from '../../stores/reportAnchorStore';
+import { useIsAuthenticated } from '../../stores/authStore';
 import { useMapWorkspaceStore } from '../../stores/mapWorkspaceStore';
 import { MapActionsPanel } from './MapActionsPanel';
 import styles from '../../styles/components/map/classNames';
@@ -272,6 +273,9 @@ export interface MapaMapLibreViewProps {
 }
 
 export function MapaMapLibreView(props: MapaMapLibreViewProps) {
+  // Exportar como botón flotante es un atajo para autenticados; los
+  // anónimos acceden desde Herramientas → Exportar PNG.
+  const isAuthenticated = useIsAuthenticated();
   const {
     activeDemLayerId,
     activeLegendItems,
@@ -798,9 +802,12 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                   poiPlaceActive={puntosInteres.placing}
                   onTogglePoiPlace={puntosInteres.onTogglePoiPlace}
                   hasApprovedZones={hasApprovedZones}
+                  onOpenExportPng={() => setExportPngModalOpen(true)}
+                  onExportApprovedZonesPdf={handleExportApprovedZonesPdf}
+                  onExportKmz={handleExportKmz}
                   portalTarget={canvasShellRef}
                   /* Draw / canal / multi-select callbacks are login-gated: absent for
-                   anonymous visitors, so those entries are not rendered at all. */
+                     anonymous visitors, so those entries are not rendered at all. */
                   {...analysisToolProps}
                 />
               }
@@ -1006,13 +1013,18 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                 }
               />
             )}
-            <MapActionsPanel
-              hasApprovedZones={hasApprovedZones}
-              onOpenExportPng={() => setExportPngModalOpen(true)}
-              onExportApprovedZonesPdf={handleExportApprovedZonesPdf}
-              onExportKmz={handleExportKmz}
-              onExportMenuOpen={handleExportIntent}
-            />
+            {/* El botón flotante de exportar es un atajo para usuarios
+                autenticados. Los anónimos acceden desde el dropdown de
+                Herramientas, que ya ofrece Exportar PNG. */}
+            {isAuthenticated && (
+              <MapActionsPanel
+                hasApprovedZones={hasApprovedZones}
+                onOpenExportPng={() => setExportPngModalOpen(true)}
+                onExportApprovedZonesPdf={handleExportApprovedZonesPdf}
+                onExportKmz={handleExportKmz}
+                onExportMenuOpen={handleExportIntent}
+              />
+            )}
           </Stack>
         }
       />

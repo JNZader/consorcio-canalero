@@ -52,6 +52,8 @@ def _denuncia_stub(**overrides):
     d.user_id = overrides.get("user_id", uuid.uuid4())
     d.tipo = overrides.get("tipo", "desborde")
     d.descripcion = overrides.get("descripcion", "x" * 30)
+    d.respuesta = overrides.get("respuesta", None)
+    d.contacto_email = overrides.get("contacto_email", None)
     return d
 
 
