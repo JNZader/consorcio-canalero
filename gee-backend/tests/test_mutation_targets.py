@@ -570,3 +570,177 @@ class TestMonitoringServiceGetPersistedIds:
 
         ids = svc._get_persisted_sugerencia_ids()
         assert ids == {"AAA", "BBB"}
+
+
+class TestDenunciaServiceBulkUpdate:
+    """Mutation targets for bulk_update — the newest service surface."""
+
+    def test_same_estado_skips_update(self):
+        from app.domains.denuncias.models import EstadoDenuncia
+
+        svc, repo = _make_denuncia_service()
+        d = _denuncia_stub(estado=EstadoDenuncia.EN_REVISION)
+        repo.get_by_id.return_value = d
+        repo.update.return_value = d
+
+        import uuid as _uuid
+
+        from unittest.mock import MagicMock as _MM
+
+        db = _MM()
+        # Simulate the receipt query returning None (first time)
+        db.execute.return_value.scalar_one_or_none.return_value = None
+
+        results = svc.bulk_update(
+            db,
+            ids=[d.id],
+            estado="en_revision",
+            comentario=None,
+            idempotency_key="mutation-test-1",
+            operator_id=_uuid.uuid4(),
+        )
+        # Same estado → ok without calling update
+        assert results[0]["ok"] is True
+        repo.update.assert_not_called()
+
+    def test_different_estado_calls_update(self):
+        from app.domains.denuncias.models import EstadoDenuncia
+
+        svc, repo = _make_denuncia_service()
+        d = _denuncia_stub(estado=EstadoDenuncia.PENDIENTE)
+        d.respuesta = None
+        d.contacto_email = None
+        repo.get_by_id.return_value = d
+        d2 = _denuncia_stub(estado=EstadoDenuncia.EN_REVISION)
+        d2.respuesta = None
+        d2.contacto_email = None
+        repo.update.return_value = d2
+
+        import uuid as _uuid
+
+        from unittest.mock import MagicMock as _MM
+
+        db = _MM()
+        db.execute.return_value.scalar_one_or_none.return_value = None
+
+        results = svc.bulk_update(
+            db,
+            ids=[d.id],
+            estado="en_revision",
+            comentario=None,
+            idempotency_key="mutation-test-2",
+            operator_id=_uuid.uuid4(),
+        )
+        assert results[0]["ok"] is True
+        repo.update.assert_called_once()
+
+    def test_existing_receipt_same_hash_returns_cached(self):
+        from app.domains.denuncias.models import EstadoDenuncia
+
+        svc, repo = _make_denuncia_service()
+        d = _denuncia_stub(estado=EstadoDenuncia.PENDIENTE)
+
+        import uuid as _uuid
+
+        from unittest.mock import MagicMock as _MM
+
+        receipt = _MM()
+        receipt.payload_hash = None  # Will be set below
+        receipt.resultado = [{"id": str(d.id), "ok": True, "error": None}]
+        db = _MM()
+        db.execute.return_value.scalar_one_or_none.return_value = receipt
+
+        import hashlib as _hl
+
+        ids_sorted = sorted([str(d.id)])
+        raw = "|".join(["en_revision", ""] + ids_sorted)
+        receipt.payload_hash = _hl.sha256(raw.encode()).hexdigest()
+
+        results = svc.bulk_update(
+            db,
+            ids=[d.id],
+            estado="en_revision",
+            comentario=None,
+            idempotency_key="mutation-test-3",
+            operator_id=_uuid.uuid4(),
+        )
+        # Returns the cached receipt without calling update
+        assert results == [{"id": str(d.id), "ok": True, "error": None}]
+        repo.update.assert_not_called()
+
+    def test_invalid_estado_raises_validation_error(self):
+        svc, repo = _make_denuncia_service()
+        d = _denuncia_stub(estado="pendiente")
+        repo.get_by_id.return_value = d
+
+        import uuid as _uuid
+
+        from unittest.mock import MagicMock as _MM
+
+        db = _MM()
+        db.execute.return_value.scalar_one_or_none.return_value = None
+
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            svc.bulk_update(
+                db,
+                ids=[d.id],
+                estado="estado_inexistente",
+                comentario=None,
+                idempotency_key="mutation-test-4",
+                operator_id=_uuid.uuid4(),
+            )
+
+    def test_validate_assignee_rejects_non_operator(self):
+        from app.auth.models import UserRole
+        from app.domains.denuncias.schemas import DenunciaUpdate
+
+        svc, _repo = _make_denuncia_service()
+        d = _denuncia_stub(estado="pendiente")
+
+        from unittest.mock import MagicMock as _MM
+
+        db = _MM()
+        citizen = _MM()
+        citizen.role = UserRole.CIUDADANO
+        db.get.return_value = citizen
+
+        import uuid as _uuid
+
+        update = DenunciaUpdate(asignado_a=_uuid.uuid4())
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc_info:
+            svc._validate_assignee(db, update)
+        assert exc_info.value.status_code == 400
+
+    def test_validate_assignee_accepts_operator(self):
+        from app.auth.models import UserRole
+        from app.domains.denuncias.schemas import DenunciaUpdate
+
+        svc, _repo = _make_denuncia_service()
+
+        from unittest.mock import MagicMock as _MM
+
+        db = _MM()
+        operator = _MM()
+        operator.role = UserRole.OPERADOR
+        db.get.return_value = operator
+
+        import uuid as _uuid
+
+        update = DenunciaUpdate(asignado_a=_uuid.uuid4())
+        svc._validate_assignee(db, update)  # No raise
+
+    def test_validate_assignee_none_returns_early(self):
+        from app.domains.denuncias.schemas import DenunciaUpdate
+
+        svc, _repo = _make_denuncia_service()
+
+        from unittest.mock import MagicMock as _MM
+
+        db = _MM()
+        update = DenunciaUpdate(asignado_a=None)
+        svc._validate_assignee(db, update)
+        db.get.assert_not_called()
