@@ -604,6 +604,9 @@ export const InfoPanel = memo(function InfoPanel({
                 onClick={() => {
                   onOpenElevationProfile?.(profileGeometry);
                   onElevationProfileShare?.();
+                  if (typeof window !== 'undefined' && window.matchMedia('(max-width: 47.9375em)').matches) {
+                    window.dispatchEvent(new CustomEvent('cc-close-map-drawer'));
+                  }
                 }}
               >
                 <Text size="xs" c="blue">

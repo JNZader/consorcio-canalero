@@ -225,7 +225,6 @@ describe('design tokens', () => {
       'src/components/admin/sugerencias/components/SuggestionDetailModal.tsx',
       'src/components/ui/EmptyState.tsx',
       'src/components/ui/LoadingState.tsx',
-      'src/components/ui/StatCard.tsx',
       'src/components/ui/ParticipacionStepHeader.tsx',
       'src/components/report-form/LocationSection.tsx',
       'src/components/report-form/PhotoSection.tsx',

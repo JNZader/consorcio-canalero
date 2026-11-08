@@ -124,7 +124,9 @@ export const sugerenciasApi = {
   checkLimit: (): Promise<RateLimitInfo> => apiFetch('/sugerencias/rate-limit'),
 
   /**
-   * Listar sugerencias (requiere auth).
+   * Listar sugerencias (requiere auth). `sort` acepta created_at |
+   * estado | categoria y `order` asc | desc — cualquier otro valor
+   * lo rechaza el backend con 400.
    */
   getAll: (
     params: {
@@ -135,6 +137,8 @@ export const sugerenciasApi = {
       categoria?: string;
       search?: string;
       prioridad?: string;
+      sort?: string;
+      order?: string;
     } = {}
   ): Promise<{ items: Sugerencia[]; total: number; page: number; limit: number }> => {
     const searchParams = new URLSearchParams();
@@ -145,6 +149,8 @@ export const sugerenciasApi = {
     if (params.categoria) searchParams.set('categoria', params.categoria);
     if (params.search) searchParams.set('search', params.search);
     if (params.prioridad) searchParams.set('prioridad', params.prioridad);
+    if (params.sort) searchParams.set('sort', params.sort);
+    if (params.order) searchParams.set('order', params.order);
 
     return apiFetch(`/sugerencias?${searchParams.toString()}`);
   },

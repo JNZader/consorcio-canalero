@@ -94,9 +94,10 @@ describe('map skeleton geometry (T3c fix 5a)', () => {
     const body = query?.[1] ?? '';
 
     // 61 header + 12 container-py + 12 Paper mb + 11 slack.
-    expect(body).toContain('--map-canvas-height: calc(100dvh - 96px)');
-    // El titulo, el banner satelital y Reportar bajan DEBAJO del mapa.
-    expect(body).toContain('order: 2');
+    expect(body).toContain('--map-canvas-height: calc(100dvh - 220px)');
+    // Reportar queda en el header, arriba del mapa.
+    expect(body).toContain('order: 0');
+    expect(body).not.toContain('order: 2');
     // Nada se oculta: el reflow es `order`, no `display: none`.
     expect(body).not.toContain('display: none');
   });

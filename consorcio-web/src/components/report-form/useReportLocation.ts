@@ -1,5 +1,5 @@
 import type { UseFormReturnType } from '@mantine/form';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { Ubicacion } from './reportFormTypes';
 import { handleGeoError, handleGeoSuccess, showNotification } from './reportFormUtils';
 
@@ -19,6 +19,16 @@ export function useReportLocation({ announce, form }: Readonly<UseReportLocation
   const [obteniendoUbicacion, setObteniendoUbicacion] = useState(false);
   const [mostrarInputManual, setMostrarInputManual] = useState(false);
   const [fotoPreview, setFotoPreview] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('ubicacion') !== 'elegida') return;
+    const lat = Number(params.get('lat'));
+    const lng = Number(params.get('lng'));
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    setUbicacion({ lat, lng });
+    setMostrarInputManual(true);
+  }, []);
 
   const obtenerUbicacionGPS = useCallback(() => {
     if (!navigator.geolocation) {

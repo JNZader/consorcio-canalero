@@ -21,6 +21,7 @@ import {
   type SetStateAction,
   Suspense,
   useCallback,
+  useEffect,
   useRef,
   useState,
 } from 'react';
@@ -32,7 +33,9 @@ import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
 import type { HazardPrecipMonth, HazardRiskClass } from '../../hooks/useHazardUrlState';
 import { FICHA_MAX_BUFFER_M } from '../../lib/api/ficha';
 import { erroresUi } from '../../lib/userFacingError';
+import { useReportAnchorStore } from '../../stores/reportAnchorStore';
 import { useMapWorkspaceStore } from '../../stores/mapWorkspaceStore';
+import { MapActionsPanel } from './MapActionsPanel';
 import styles from '../../styles/components/map/classNames';
 import type { Etapa } from '../../types/canales';
 import type { PilarVerdeData } from '../../types/pilarVerde';
@@ -477,6 +480,26 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
   // desktop `.mapTopBar`, and — on mobile — `LayerControlsPanel`'s own "Base"
   // section inside the Drawer. `MapBaseSelectorPanel` and `LayerControlsPanel`
   // take the exact same three props, so the object is spread into either one.
+  useEffect(() => {
+    const feature = selectedFeatures[0];
+    const geometry = feature?.geometry;
+    if (!geometry) {
+      useReportAnchorStore.getState().setAnchor(null);
+      return;
+    }
+    const coords =
+      geometry.type === 'Point'
+        ? geometry.coordinates
+        : geometry.type === 'LineString'
+          ? geometry.coordinates[0]
+          : null;
+    if (!coords || coords.length < 2) {
+      useReportAnchorStore.getState().setAnchor(null);
+      return;
+    }
+    useReportAnchorStore.getState().setAnchor({ lng: coords[0], lat: coords[1] });
+  }, [selectedFeatures]);
+
   const baseControls = {
     baseLayer,
     onBaseLayerChange: setBaseLayer,
@@ -516,7 +539,12 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
               });
             }}
             onGeolocate={() => {
-              requestMapGeolocate(mapRef.current);
+              requestMapGeolocate(mapRef.current, undefined, (coords) => {
+                useReportAnchorStore.getState().setGeolocatePin({
+                  lat: coords.latitude,
+                  lng: coords.longitude,
+                });
+              });
             }}
           />
         }
@@ -770,10 +798,6 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                   poiPlaceActive={puntosInteres.placing}
                   onTogglePoiPlace={puntosInteres.onTogglePoiPlace}
                   hasApprovedZones={hasApprovedZones}
-                  onOpenExportPng={() => setExportPngModalOpen(true)}
-                  onExportApprovedZonesPdf={handleExportApprovedZonesPdf}
-                  onExportKmz={handleExportKmz}
-                  onExportMenuOpen={handleExportIntent}
                   portalTarget={canvasShellRef}
                   /* Draw / canal / multi-select callbacks are login-gated: absent for
                    anonymous visitors, so those entries are not rendered at all. */
@@ -982,6 +1006,13 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
                 }
               />
             )}
+            <MapActionsPanel
+              hasApprovedZones={hasApprovedZones}
+              onOpenExportPng={() => setExportPngModalOpen(true)}
+              onExportApprovedZonesPdf={handleExportApprovedZonesPdf}
+              onExportKmz={handleExportKmz}
+              onExportMenuOpen={handleExportIntent}
+            />
           </Stack>
         }
       />

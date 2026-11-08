@@ -1,4 +1,4 @@
-import { Badge, Box, Group, Pagination, Text, Tooltip } from '@mantine/core';
+import { Badge, Box, Button, Checkbox, Group, Pagination, Text, Tooltip } from '@mantine/core';
 import type { Report } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/formatters';
 import { IconButton } from '../../../ui/IconButton';
@@ -7,25 +7,66 @@ import { LoadingState } from '../../../ui/LoadingState';
 import { ResponsiveRecordList } from '../../../ui/ResponsiveRecordList';
 import { getCategoryLabel } from '../reportsPanelUtils';
 
+/**
+ * Columnas ordenables de la bandeja. Los `sortKey` son los que acepta
+ * el backend para denuncias: created_at | estado | tipo (la columna
+ * "Categoría" ordena por `tipo`, el nombre real del campo en la API).
+ */
+const COLUMNS = [
+  { label: 'Fecha', sortKey: 'created_at' },
+  { label: 'Categoría', sortKey: 'tipo' },
+  'Descripción',
+  'Ubicación',
+  { label: 'Estado', sortKey: 'estado' },
+  'Acciones',
+] as const;
+
 export function ReportsTableContent({
   loading,
+  loadError,
+  onRetry,
+  selectedIds,
+  onToggleSelected,
   filteredReports,
   totalPages,
   page,
   onPageChange,
   onViewDetail,
   getStatusBadge,
+  sorting,
 }: Readonly<{
   loading: boolean;
+  loadError?: string | null;
+  onRetry?: () => void;
+  selectedIds?: readonly string[];
+  onToggleSelected?: (id: string) => void;
   filteredReports: Report[];
   totalPages: number;
   page: number;
   onPageChange: (page: number) => void;
   onViewDetail: (report: Report) => void;
   getStatusBadge: (status: string) => React.ReactNode;
+  sorting?: React.ComponentProps<typeof ResponsiveRecordList>['sorting'];
 }>) {
   if (loading) {
     return <LoadingState compact message="Cargando denuncias..." />;
+  }
+
+  if (loadError) {
+    return (
+      <LoadingState
+        status="error"
+        title="No pudimos cargar las denuncias"
+        message={loadError}
+        action={
+          onRetry ? (
+            <Button mt="sm" onClick={onRetry}>
+              Reintentar
+            </Button>
+          ) : undefined
+        }
+      />
+    );
   }
 
   if (filteredReports.length === 0) {
@@ -42,10 +83,11 @@ export function ReportsTableContent({
     <Box aria-live="polite">
       <ResponsiveRecordList
         label="Tabla de denuncias"
-        columns={['Fecha', 'Categoría', 'Descripción', 'Ubicación', 'Estado', 'Acciones']}
+        columns={COLUMNS}
         minWidth={820}
         striped
         highlightOnHover
+        sorting={sorting}
         records={filteredReports.map((report) => ({
           id: report.id,
           cells: [
@@ -63,6 +105,13 @@ export function ReportsTableContent({
             </Text>,
             getStatusBadge(report.estado),
             <Group key="acciones" gap="xs" wrap="wrap">
+              {onToggleSelected ? (
+                <Checkbox
+                  aria-label={`Seleccionar denuncia ${report.id}`}
+                  checked={selectedIds?.includes(report.id) ?? false}
+                  onChange={() => onToggleSelected(report.id)}
+                />
+              ) : null}
               <Tooltip label="Ver detalle">
                 <IconButton
                   variant="light"
