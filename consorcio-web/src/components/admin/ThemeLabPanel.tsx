@@ -73,6 +73,18 @@ function PreviewChrome({ preset }: { preset: BrandPreset }) {
         <Badge color="orange" variant="light">
           Aviso
         </Badge>
+        {preset.accent ? (
+          <Badge
+            variant="filled"
+            style={{
+              background: preset.accent,
+              // Oro/ámbar portal fails AA with white — dark ink on the chip.
+              color: 'var(--mantine-color-dark-9)',
+            }}
+          >
+            Acento
+          </Badge>
+        ) : null}
       </Group>
       <Text size="sm" c="dimmed">
         Texto atenuado · agua UI {preset.water}

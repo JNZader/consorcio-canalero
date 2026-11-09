@@ -303,7 +303,7 @@ export function TerrainLegendsPanel({
       data-testid="terrain-3d-legends-panel"
       style={
         embedded
-          ? mapOnImageryStyle
+          ? undefined
           : {
               ...mapOnImageryStyle,
               position: 'absolute',

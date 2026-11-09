@@ -389,11 +389,14 @@ export const LeyendaPanel = memo(function LeyendaPanel({
     ? { overflow: 'visible' }
     : { maxHeight: '80vh', overflowY: 'auto' };
 
+  // Opaque sidebar/Drawer already paints the surface — do not nest the
+  // on-imagery scrim (same defect as LayerControlsPanel inside workspace).
+  const nestInOpaqueShell = embedded || insideScrollContainer;
   const baseStyle: CSSProperties = floatingOverMap
     ? { ...scrollStyle, ...floatingPosition }
     : {
         ...scrollStyle,
-        ...mapOnImageryStyle,
+        ...(nestInOpaqueShell ? {} : mapOnImageryStyle),
         ...(width !== undefined ? { width } : {}),
       };
 

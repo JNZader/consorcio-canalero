@@ -94,8 +94,10 @@ export function TerrainLayerTogglesPanel({
       className={styles.layerTogglesRoot}
       data-testid="terrain-3d-toggles-panel"
       style={
+        // Embedded = opaque 3D chrome shell already paints the surface.
+        // Nesting the on-imagery scrim there repeats the Capas dark-in-white defect.
         embedded
-          ? mapOnImageryStyle
+          ? undefined
           : {
               ...mapOnImageryStyle,
               position: 'absolute',
