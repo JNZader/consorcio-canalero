@@ -1,5 +1,6 @@
 import { MantineProvider } from '@mantine/core';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ReportDetailModal } from '../../src/components/admin/reports/components/ReportDetailModal';
@@ -49,6 +50,11 @@ function renderModal(report: typeof sampleReport) {
 }
 
 describe('ReportDetailModal (ADM-05)', () => {
+  beforeEach(() => {
+    vi.mocked(apiFetch).mockReset();
+    vi.mocked(apiFetch).mockResolvedValue([] as never);
+  });
+
   it('renders a "Ver en el mapa" deep link with the report coordinates', () => {
     renderModal(sampleReport);
 
@@ -73,5 +79,49 @@ describe('ReportDetailModal (ADM-05)', () => {
     expect(
       await screen.findByDisplayValue('Romina Torres (romina@consorcio.gob.ar)')
     ).toBeInTheDocument();
+  });
+
+  it('notifies the parent after a successful assignee PATCH (R3-001)', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce([
+        { id: 'op-7', nombre: 'Romina Torres', email: 'romina@consorcio.gob.ar' },
+      ] as never)
+      .mockResolvedValueOnce({} as never);
+
+    const onAssigneeChange = vi.fn();
+    render(
+      <MantineProvider env="test">
+        <ReportDetailModal
+          opened
+          onClose={vi.fn()}
+          selectedReport={{ ...sampleReport, asignado_a: null } as never}
+          history={[]}
+          loadingHistory={false}
+          newStatus="pendiente"
+          setNewStatus={vi.fn()}
+          publicComment=""
+          setPublicComment={vi.fn()}
+          adminNotes=""
+          setAdminNotes={vi.fn()}
+          onUpdate={vi.fn()}
+          updating={false}
+          onAssigneeChange={onAssigneeChange}
+        />
+      </MantineProvider>
+    );
+
+    // Mantine Select exposes role=combobox (same pattern as ReportsPanel filters).
+    const select = await screen.findByRole('combobox', { name: /Asignar operador/i });
+    await user.click(select);
+    await user.click(await screen.findByRole('option', { name: /Romina Torres/i }));
+
+    await waitFor(() => {
+      expect(onAssigneeChange).toHaveBeenCalledWith('rep-101', 'op-7');
+    });
+    expect(apiFetch).toHaveBeenCalledWith(
+      '/denuncias/rep-101',
+      expect.objectContaining({ method: 'PATCH' })
+    );
   });
 });

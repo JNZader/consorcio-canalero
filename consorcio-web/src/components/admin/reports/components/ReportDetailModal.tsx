@@ -81,6 +81,7 @@ export function ReportDetailModal({
   setAdminNotes,
   onUpdate,
   updating,
+  onAssigneeChange,
 }: Readonly<{
   opened: boolean;
   onClose: () => void;
@@ -95,6 +96,8 @@ export function ReportDetailModal({
   setAdminNotes: (value: string) => void;
   onUpdate: () => void;
   updating: boolean;
+  /** Keep parent list/selectedReport in sync after auto-save PATCH. */
+  onAssigneeChange?: (denunciaId: string, asignadoA: string | null) => void;
 }>) {
   return (
     <Modal opened={opened} onClose={onClose} title="Detalle de Denuncia" size="lg">
@@ -261,6 +264,7 @@ export function ReportDetailModal({
                 key={selectedReport.id}
                 denunciaId={selectedReport.id}
                 initialAsignado={selectedReport.asignado_a ?? null}
+                onAssigneeChange={onAssigneeChange}
               />
               <Textarea
                 label="Comentario Público"
@@ -337,9 +341,11 @@ export function ReportDetailModal({
 function AssigneeField({
   denunciaId,
   initialAsignado,
+  onAssigneeChange,
 }: {
   denunciaId: string;
   initialAsignado?: string | null;
+  onAssigneeChange?: (denunciaId: string, asignadoA: string | null) => void;
 }) {
   const [options, setOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [value, setValue] = useState<string | null>(initialAsignado ?? null);
@@ -368,11 +374,19 @@ function AssigneeField({
       value={value}
       clearable
       onChange={(next) => {
+        const previous = value;
         setValue(next);
         void apiFetch(`/denuncias/${denunciaId}`, {
           method: 'PATCH',
           body: JSON.stringify({ asignado_a: next }),
-        }).catch(() => setError('No se pudo guardar la asignación'));
+        })
+          .then(() => {
+            onAssigneeChange?.(denunciaId, next);
+          })
+          .catch(() => {
+            setValue(previous);
+            setError('No se pudo guardar la asignación');
+          });
       }}
     />
   );

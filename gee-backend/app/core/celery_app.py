@@ -75,6 +75,9 @@ celery_app = Celery(
         "app.domains.geo.gee_tasks_warming",
         "app.domains.geo.intelligence.tasks",
         "app.domains.geo.rainfall.tasks",
+        # Registers denuncias.notify_status on every prefork child so
+        # outbox-published status mails are not dropped when the flag is on.
+        "app.domains.denuncias.tasks",
     ],
 )
 
