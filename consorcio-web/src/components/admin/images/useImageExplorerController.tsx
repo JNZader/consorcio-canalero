@@ -111,6 +111,28 @@ function isImageScene(value: unknown): value is ImageSceneLike {
 
 const API_BASE = '/geo/gee/images';
 
+async function fetchShortlistResult(
+  row: ImageryShortlistRow,
+  maxCloud: string,
+  signal: AbortSignal
+): Promise<ImageResultLike | null> {
+  if (!isImageSensor(row.sensor)) return null;
+  const nextSensor = row.sensor;
+  const nextVis = explorerSceneVisualization(nextSensor, row.visualization);
+  const isL7 = nextSensor === 'landsat7';
+  const params = new URLSearchParams({
+    target_date: row.scene_date,
+    days_buffer: isL7 ? '20' : '1',
+    visualization: nextVis,
+    mode: isL7 ? 'composite' : 'scene',
+  });
+  if (isOpticalSensor(nextSensor)) params.append('max_cloud', maxCloud);
+  return apiFetch<ImageResultLike>(`${API_BASE}/${nextSensor}?${params}`, {
+    signal,
+    timeout: GEE_TIMEOUT,
+  });
+}
+
 export function useImageExplorerController() {
   // Escritorio desde `sm` (48em). El literal `max-width: 768px` no estaba en
   // la escala de Mantine y a 768px exacto no coincidía con el shell de admin.
@@ -243,27 +265,6 @@ export function useImageExplorerController() {
     [updateTileLayer, visualization]
   );
 
-  async function fetchShortlistResult(
-    row: ImageryShortlistRow,
-    signal: AbortSignal
-  ): Promise<ImageResultLike | null> {
-    if (!isImageSensor(row.sensor)) return null;
-    const nextSensor = row.sensor;
-    const nextVis = explorerSceneVisualization(nextSensor, row.visualization);
-    const isL7 = nextSensor === 'landsat7';
-    const params = new URLSearchParams({
-      target_date: row.scene_date,
-      days_buffer: isL7 ? '20' : '1',
-      visualization: nextVis,
-      mode: isL7 ? 'composite' : 'scene',
-    });
-    if (isOpticalSensor(nextSensor)) params.append('max_cloud', maxCloud);
-    return apiFetch<ImageResultLike>(`${API_BASE}/${nextSensor}?${params}`, {
-      signal,
-      timeout: GEE_TIMEOUT,
-    });
-  }
-
   const loadShortlistScene = useCallback(
     async (row: ImageryShortlistRow) => {
       if (!isImageSensor(row.sensor)) return;
@@ -284,7 +285,7 @@ export function useImageExplorerController() {
       setLoading(true);
       setError(null);
       try {
-        const data = await fetchShortlistResult(row, controller.signal);
+        const data = await fetchShortlistResult(row, maxCloud, controller.signal);
         if (controller.signal.aborted || !data) return;
         setResult(data);
         setSelectedSceneId(null);
@@ -316,8 +317,8 @@ export function useImageExplorerController() {
       setError(null);
       try {
         const [preData, postData] = await Promise.all([
-          fetchShortlistResult(pair.pre, controller.signal),
-          fetchShortlistResult(pair.post, controller.signal),
+          fetchShortlistResult(pair.pre, maxCloud, controller.signal),
+          fetchShortlistResult(pair.post, maxCloud, controller.signal),
         ]);
         if (controller.signal.aborted) return;
         const left = createSelectedImageFromResult(preData);
