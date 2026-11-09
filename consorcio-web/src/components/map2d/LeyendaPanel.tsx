@@ -11,7 +11,7 @@ import {
 } from '@mantine/core';
 import { type CSSProperties, memo, useState } from 'react';
 import type { ConsorcioInfo } from '../../hooks/useCaminosColoreados';
-import { mapColorTokens } from '../../lib/mapColorTokens';
+import { mapColorTokens, mapOnImageryStyle } from '../../lib/mapColorTokens';
 import styles from '../../styles/components/map/classNames';
 import { ALL_ETAPAS, type Etapa } from '../../types/canales';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
@@ -375,13 +375,12 @@ export const LeyendaPanel = memo(function LeyendaPanel({
   // external layout container, absolute positioning would fight the parent.
   const floatingOverMap = floating && !embedded;
   const floatingPosition: CSSProperties = {
+    ...mapOnImageryStyle,
     position: 'absolute',
     bottom: 'var(--mantine-spacing-md)',
     left: 'var(--mantine-spacing-md)',
     zIndex: MAP_Z.panel,
     maxWidth: 300,
-    background: 'light-dark(rgba(255,255,255,0.94), rgba(36,36,36,0.94))',
-    backdropFilter: 'blur(6px)',
   };
 
   // Inside a scrolling ancestor the legend must NOT bound itself (T5): its own
@@ -394,8 +393,7 @@ export const LeyendaPanel = memo(function LeyendaPanel({
     ? { ...scrollStyle, ...floatingPosition }
     : {
         ...scrollStyle,
-        background: 'light-dark(rgba(255,255,255,0.94), rgba(36,36,36,0.94))',
-        backdropFilter: 'blur(6px)',
+        ...mapOnImageryStyle,
         ...(width !== undefined ? { width } : {}),
       };
 

@@ -27,8 +27,8 @@
   width: min(360px, calc(100% - 72px));
   max-width: 360px;
   max-height: calc(100% - 124px);
-  background: light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96));
-  backdrop-filter: blur(6px);
+  background: var(--cc-map-chrome-surface);
+  backdrop-filter: blur(var(--cc-on-imagery-blur));
   pointer-events: none;
   display: flex;
   flex-direction: column;
@@ -42,8 +42,8 @@
   width: min(380px, calc(100% - 72px));
   max-width: 380px;
   max-height: calc(100% - 124px);
-  background: light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96));
-  backdrop-filter: blur(6px);
+  background: var(--cc-map-chrome-surface);
+  backdrop-filter: blur(var(--cc-on-imagery-blur));
   pointer-events: none;
   display: flex;
   flex-direction: column;
@@ -67,8 +67,8 @@
   width: min(340px, calc(100% - 72px));
   max-width: 340px;
   max-height: calc(100% - 124px);
-  background: light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96));
-  backdrop-filter: blur(6px);
+  background: var(--cc-map-chrome-surface);
+  backdrop-filter: blur(var(--cc-on-imagery-blur));
   pointer-events: none;
   display: flex;
   flex-direction: column;
@@ -93,10 +93,26 @@
   max-width: min(340px, calc(100% - 72px));
   padding: 6px 10px;
   border-radius: var(--mantine-radius-md);
-  background: light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96));
-  backdrop-filter: blur(6px);
+  background: var(--cc-map-chrome-surface);
+  backdrop-filter: blur(var(--cc-on-imagery-blur));
   box-shadow: var(--mantine-shadow-sm);
   pointer-events: none;
+}
+
+/* On-imagery text: dark APRHI scrim needs light copy. Scoped Mantine text
+   vars so Title/Text/dimmed inside the chrome follow without per-component
+   color props. Inputs keep their own opaque surfaces. */
+.infoPanel,
+.fichaPanel,
+.roadFlowPanel,
+.roadFlowDisclaimerChip,
+.panelSheet,
+.panelPill,
+.panelSheetPill {
+  backdrop-filter: blur(var(--cc-on-imagery-blur));
+  color: var(--cc-on-imagery-fg);
+  --mantine-color-text: var(--cc-on-imagery-fg);
+  --mantine-color-dimmed: var(--cc-on-imagery-fg-muted);
 }
 
 /* Scrollable body of the floating desktop cards. It owns `overflow-y: auto`
@@ -156,7 +172,7 @@
 
 /* ── Guillotina de contenido en los paneles de escritorio ─────────────────── */
 /* `.panelCardBody` es el scroller de las tarjetas de escritorio y su fondo es
-   opaco al 96%, asi que una tabla o un desglose cortado por el borde inferior
+   scrim on-imagery, asi que una tabla o un desglose cortado por el borde inferior
    termina exactamente igual que si terminara ahi: la ultima fila queda entera,
    con su linea inferior, y nada dice que abajo hay mas. Es la "guillotina" — el
    usuario no scrollea porque no sabe que hay que scrollear.
@@ -214,7 +230,7 @@
   margin-inline: calc(-1 * var(--mantine-spacing-md));
   background: linear-gradient(
     to top,
-    light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96)),
+    var(--cc-map-chrome-surface),
     transparent
   );
   pointer-events: none;
@@ -405,8 +421,8 @@
   flex-direction: column;
   overflow: hidden;
   border-radius: var(--mantine-radius-md) var(--mantine-radius-md) 0 0;
-  background: light-dark(rgba(255, 255, 255, 0.97), rgba(36, 36, 36, 0.97));
-  backdrop-filter: blur(6px);
+  background: var(--cc-map-chrome-surface);
+  backdrop-filter: blur(var(--cc-on-imagery-blur));
 }
 
 /* Peek — the DEFAULT opening stage (T3a, fix 3). ~25% of the canvas: the pinned
@@ -432,7 +448,7 @@
    revertirse sin arrastrar a la otra.
 
    Dos diferencias reales, no cosmeticas:
-     · el fondo es el del SHEET (0.97), no el de las tarjetas (0.96);
+     · el fondo es `--cc-map-chrome-surface` (mismo scrim que las tarjetas);
      · sin `margin-inline` negativo. `.panelSheetBody` es un div PELADO (el
        padding vive en el `Paper` que lo envuelve), asi que su caja de contenido
        ya es su caja de padding: sangrarlo 16px generaria overflow horizontal de
@@ -455,7 +471,7 @@
   height: 24px;
   background: linear-gradient(
     to top,
-    light-dark(rgba(255, 255, 255, 0.97), rgba(36, 36, 36, 0.97)),
+    var(--cc-map-chrome-surface),
     transparent
   );
   pointer-events: none;
@@ -522,8 +538,8 @@
   max-width: min(260px, calc(100% - 72px));
   padding: 6px 12px;
   border-radius: 999px;
-  background: light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96));
-  backdrop-filter: blur(6px);
+  background: var(--cc-map-chrome-surface);
+  backdrop-filter: blur(var(--cc-on-imagery-blur));
   box-shadow: var(--mantine-shadow-md);
   cursor: pointer;
 }
@@ -550,8 +566,8 @@
   min-height: 40px;
   padding: 0 12px;
   border-radius: var(--mantine-radius-md) var(--mantine-radius-md) 0 0;
-  background: light-dark(rgba(255, 255, 255, 0.97), rgba(36, 36, 36, 0.97));
-  backdrop-filter: blur(6px);
+  background: var(--cc-map-chrome-surface);
+  backdrop-filter: blur(var(--cc-on-imagery-blur));
   box-shadow: var(--mantine-shadow-md);
   cursor: pointer;
 }

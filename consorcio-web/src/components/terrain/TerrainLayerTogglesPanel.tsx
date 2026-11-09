@@ -29,6 +29,7 @@
 import { Box, CloseButton, Paper, Select, Slider, Stack, Text } from '@mantine/core';
 
 import { GEO_LAYER_LABELS, type GeoLayerInfo } from '../../hooks/useGeoLayers';
+import { mapOnImageryStyle } from '../../lib/mapColorTokens';
 import styles from '../../styles/components/map/classNames';
 import { CollapsibleSection } from '../ui/CollapsibleSection';
 
@@ -94,11 +95,9 @@ export function TerrainLayerTogglesPanel({
       data-testid="terrain-3d-toggles-panel"
       style={
         embedded
-          ? {
-              background: 'light-dark(rgba(255,255,255,0.96), rgba(36,36,36,0.96))',
-              backdropFilter: 'blur(6px)',
-            }
+          ? mapOnImageryStyle
           : {
+              ...mapOnImageryStyle,
               position: 'absolute',
               top: 56,
               right: 12,
@@ -106,8 +105,6 @@ export function TerrainLayerTogglesPanel({
               width: 280,
               maxHeight: 'calc(100vh - 96px)',
               overflowY: 'auto',
-              background: 'light-dark(rgba(255,255,255,0.96), rgba(36,36,36,0.96))',
-              backdropFilter: 'blur(6px)',
             }
       }
     >

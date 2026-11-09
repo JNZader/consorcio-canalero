@@ -15,8 +15,11 @@
   bottom: var(--mantine-spacing-md);
   right: var(--mantine-spacing-md);
   z-index: var(--z-map-panel);
-  background: light-dark(rgba(255, 255, 255, 0.92), rgba(36, 36, 36, 0.92));
-  backdrop-filter: blur(6px);
+  background: var(--cc-map-chrome-surface);
+  backdrop-filter: blur(var(--cc-on-imagery-blur));
+  color: var(--cc-on-imagery-fg);
+  --mantine-color-text: var(--cc-on-imagery-fg);
+  --mantine-color-dimmed: var(--cc-on-imagery-fg-muted);
   max-height: 50vh;
   overflow-y: auto;
 }
@@ -242,7 +245,7 @@ text.precipBarLabels {
   gap: 6px;
   padding: 4px 8px;
   border-radius: var(--mantine-radius-md);
-  background: light-dark(rgba(255, 255, 255, 0.96), rgba(36, 36, 36, 0.96));
+  background: var(--cc-map-chrome-surface);
   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
   max-width: calc(100% - 24px);
 }
@@ -263,10 +266,10 @@ text.precipBarLabels {
   top: 12px;
   z-index: var(--z-map-date-badge);
   pointer-events: none;
-  background: rgba(0, 0, 0, 0.55);
-  color: white;
+  background: var(--cc-map-chrome-surface);
+  color: var(--cc-on-imagery-fg);
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--cc-on-imagery-radius);
   font-size: 12px;
 }
 
@@ -360,7 +363,8 @@ text.precipBarLabels {
   z-index: var(--z-map-comparison);
   pointer-events: none;
   padding: 4px 10px;
-  background: rgba(0, 0, 0, 0.72);
+  background: var(--cc-map-chrome-surface);
+  color: var(--cc-on-imagery-fg);
 }
 
 @media (pointer: coarse) {

@@ -1,6 +1,7 @@
 import { Button, Checkbox, Divider, Group, Paper, Select, Stack, Text } from '@mantine/core';
 import { useEffect, useRef } from 'react';
 
+import { mapOnImageryStyle } from '../../lib/mapColorTokens';
 import { IconButton } from '../ui/IconButton';
 import {
   HAZARD_RISK_CLASSES,
@@ -20,7 +21,7 @@ const MONTH_OPTIONS = [
 ];
 
 const SHEET_STYLE = {
-  background: 'light-dark(rgba(255,255,255,0.97), rgba(36,36,36,0.97))',
+  ...mapOnImageryStyle,
   backdropFilter: 'blur(10px)',
   bottom: 12,
   left: 12,

@@ -248,9 +248,10 @@ describe('design tokens', () => {
     expect(header).toContain('var(--cc-color-wordmark)');
 
     const labels = readFileSync('src/components/map2d/measurement/MeasurementLabels.tsx', 'utf8');
-    expect(labels).toContain('var(--cc-color-text-muted)');
+    expect(labels).toContain('var(--cc-on-imagery-fg-muted)');
     expect(labels).toContain('var(--cc-color-border)');
     expect(labels).toContain('var(--cc-color-surface-raised)');
+    expect(labels).toContain('mapChromeVars.labelSurface');
 
     expect(readFileSync('src/components/HomePage.tsx', 'utf8')).toContain(
       'var(--cc-color-text-muted)'
@@ -286,17 +287,19 @@ describe('design tokens', () => {
     expect(resolved.variables['--cc-map-fd7e14']).toBe(mapColorTokens.hfd7e14);
     expect(mantineTheme.other?.mapColors).toBe(mapColorTokens);
 
-    expect(resolved.light['--cc-map-label-surface']).toBe('rgba(255, 255, 255, 0.96)');
-    expect(resolved.light['--cc-map-label-text']).toBe(mapColorTokens.h333);
+    expect(resolved.variables['--cc-overlay-scrim']).toBe('#0D0D0D94');
+    expect(resolved.variables['--cc-map-chrome-surface']).toBe('var(--cc-overlay-scrim)');
+    expect(resolved.light['--cc-map-label-surface']).toBe('var(--cc-overlay-scrim)');
+    expect(resolved.light['--cc-map-label-text']).toBe('var(--cc-on-imagery-fg)');
     expect(resolved.light['--cc-map-label-border']).toBe(mapColorTokens.hfd7e14);
     expect(resolved.light['--cc-map-profile-border']).toBe('var(--mantine-color-blue-3)');
     expect(resolved.light['--cc-map-profile-surface']).toBe('var(--mantine-color-blue-0)');
     expect(resolved.light['--cc-map-profile-text']).toBe('var(--mantine-color-blue-6)');
-    expect(resolved.dark['--cc-map-label-text']).toBe('var(--cc-color-text)');
+    expect(resolved.dark['--cc-map-label-text']).toBe('var(--cc-on-imagery-fg)');
     expect(resolved.dark['--cc-map-label-border']).toBe(mapColorTokens.hfd7e14);
     expect(resolved.dark['--cc-map-profile-surface']).toBe('var(--mantine-color-dark-5)');
     expect(resolved.dark['--cc-map-profile-text']).toBe('var(--mantine-color-blue-2)');
-    expect(resolved.dark['--cc-map-label-surface']).toContain('var(--mantine-color-dark-7)');
+    expect(resolved.dark['--cc-map-label-surface']).toBe('var(--cc-overlay-scrim)');
     expect(mapChromeVars.labelText).toBe('var(--cc-map-label-text)');
     expect(mapColorVar('h2563eb')).toBe('var(--cc-map-2563eb)');
 

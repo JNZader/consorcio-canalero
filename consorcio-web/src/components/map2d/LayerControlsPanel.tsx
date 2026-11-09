@@ -14,6 +14,7 @@ import {
 import type { ReactNode } from 'react';
 import { isValidElement, useEffect, useState } from 'react';
 import { MAP_DEFAULT_ZOOM } from '../../constants';
+import { mapOnImageryStyle } from '../../lib/mapColorTokens';
 import { useMapCameraStore } from '../../stores/mapCameraStore';
 import { useMapLayerSyncStore } from '../../stores/mapLayerSyncStore';
 import styles from '../../styles/components/map/classNames';
@@ -232,8 +233,6 @@ interface LayerControlsPanelProps {
   /** Time compare controls. Rendered as the panel's Tiempo section. */
   readonly timeSection?: ReactNode;
 }
-
-const GLASS_BG = 'light-dark(rgba(255,255,255,0.94), rgba(36,36,36,0.94))';
 
 /**
  * React Compiler is active → no manual `useMemo`/`useCallback`/`memo`.
@@ -596,7 +595,7 @@ export function LayerControlsPanel({
         shadow="md"
         p="xs"
         radius="md"
-        style={{ background: GLASS_BG, backdropFilter: 'blur(6px)' }}
+        style={mapOnImageryStyle}
       >
         <Stack gap={6}>
           {bannerText && (
