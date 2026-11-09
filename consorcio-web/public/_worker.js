@@ -82,6 +82,7 @@ const SPA_ROUTES = new Set([
   '/admin/dem-pipeline',
   '/admin/conocimiento',
   '/admin/canales',
+  '/admin/laboratorio-tema',
 ]);
 
 export function normalizePathname(pathname) {
