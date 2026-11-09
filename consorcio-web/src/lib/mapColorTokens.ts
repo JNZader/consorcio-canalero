@@ -8,8 +8,11 @@
  */
 export {
   type MapColorToken,
+  MAP_CHROME_BLUR,
+  MAP_CHROME_SURFACE,
   mapChromeVars,
   mapColorTokens,
   mapColorVar,
   mapCssVariable,
+  mapOnImageryStyle,
 } from './theme';

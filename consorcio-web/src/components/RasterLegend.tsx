@@ -1,7 +1,7 @@
 import { Box, Checkbox, Group, Paper, Stack, Text } from '@mantine/core';
 import { memo } from 'react';
 import { LAYER_LEGEND_CONFIG } from '../config/rasterLegend';
-import { mapColorTokens } from '../lib/mapColorTokens';
+import { mapColorTokens, mapOnImageryStyle } from '../lib/mapColorTokens';
 import styles from '../styles/components/map/classNames';
 
 interface RasterLegendProps {
@@ -44,13 +44,7 @@ export const RasterLegend = memo(function RasterLegend({
       p="xs"
       radius="md"
       className={floating ? styles.rasterLegendPanel : undefined}
-      style={
-        floating
-          ? undefined
-          : {
-              background: 'light-dark(rgba(255,255,255,0.92), rgba(36,36,36,0.92))',
-            }
-      }
+      style={floating ? undefined : mapOnImageryStyle}
     >
       <Stack gap={6}>
         {legendEntries.map(({ tipo, config }) => {

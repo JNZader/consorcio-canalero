@@ -14,6 +14,7 @@ import {
   defaultVariantColorsResolver,
   type VariantColorsResolver,
 } from '@mantine/core';
+import type { CSSProperties } from 'react';
 import { aboveBreakpoint, belowBreakpoint, breakpoints } from './breakpoints';
 import { Z_INDEX, Z_INDEX_VAR } from './zIndex';
 
@@ -245,10 +246,13 @@ export function mapColorVar(token: MapColorToken): `var(--cc-map-${string})` {
 }
 
 /**
- * Cromo del mapa que sigue a Río limpio y al oscuro.
- * Las rampas científicas no: `--cc-map-<hex>` vale igual en los dos esquemas.
+ * Cromo flotante sobre el mapa (pills, rótulos, paneles).
+ * Superficie = scrim APRHI on-imagery (`--cc-overlay-scrim`); no sigue el
+ * esquema claro/oscuro de la app. Las rampas científicas (`--cc-map-<hex>`)
+ * siguen intactas.
  */
 export const mapChromeVars = {
+  chromeSurface: 'var(--cc-map-chrome-surface)',
   labelSurface: 'var(--cc-map-label-surface)',
   labelText: 'var(--cc-map-label-text)',
   labelBorder: 'var(--cc-map-label-border)',
@@ -256,6 +260,20 @@ export const mapChromeVars = {
   profileSurface: 'var(--cc-map-profile-surface)',
   profileText: 'var(--cc-map-profile-text)',
 } as const;
+
+/** Fondo glass on-imagery para style props (misma fuente que el CSS del mapa). */
+export const MAP_CHROME_SURFACE = mapChromeVars.chromeSurface;
+export const MAP_CHROME_BLUR = 'blur(var(--cc-on-imagery-blur))';
+
+/** Style bag for floating map chrome (panels, legends, hazard sheet). */
+export const mapOnImageryStyle = {
+  background: MAP_CHROME_SURFACE,
+  backdropFilter: MAP_CHROME_BLUR,
+  color: 'var(--cc-on-imagery-fg)',
+  // Mantine Text `c="dimmed"` / default text resolve through these.
+  '--mantine-color-text': 'var(--cc-on-imagery-fg)',
+  '--mantine-color-dimmed': 'var(--cc-on-imagery-fg-muted)',
+} as CSSProperties;
 
 const SCALE = ['xs', 'sm', 'md', 'lg', 'xl'] as const;
 const HEADINGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] as const;
@@ -612,6 +630,14 @@ export const cssVariablesResolver: CSSVariablesResolver = (theme) => {
     '--cc-touch-min': String(theme.other.touchMin ?? TOUCH_MIN),
     '--cc-breakpoint-sm-max': belowBreakpoint('sm'),
     '--cc-breakpoint-md-above': aboveBreakpoint('md'),
+    // APRHI portal on-imagery glass (aprhi.gob.ar CTA overlays). Same in
+    // light and dark: the basemap is often satellite, not the app shell.
+    '--cc-overlay-scrim': '#0D0D0D94',
+    '--cc-on-imagery-fg': '#ffffff',
+    '--cc-on-imagery-fg-muted': 'rgba(255, 255, 255, 0.78)',
+    '--cc-on-imagery-blur': '6px',
+    '--cc-on-imagery-radius': '8px',
+    '--cc-map-chrome-surface': 'var(--cc-overlay-scrim)',
   };
 
   for (const size of SCALE) {
@@ -653,8 +679,8 @@ export const cssVariablesResolver: CSSVariablesResolver = (theme) => {
       '--cc-color-status-review': 'var(--mantine-color-institucional-7)',
       '--mantine-color-dimmed': String(theme.other.dimmedColorLight ?? '#4b5563'),
       '--mantine-color-placeholder': String(theme.other.dimmedColorLight ?? '#4b5563'),
-      '--cc-map-label-surface': 'rgba(255, 255, 255, 0.96)',
-      '--cc-map-label-text': mapColorTokens.h333,
+      '--cc-map-label-surface': 'var(--cc-overlay-scrim)',
+      '--cc-map-label-text': 'var(--cc-on-imagery-fg)',
       '--cc-map-label-border': mapColorTokens.hfd7e14,
       '--cc-map-profile-border': 'var(--mantine-color-blue-3)',
       '--cc-map-profile-surface': 'var(--mantine-color-blue-0)',
@@ -671,8 +697,8 @@ export const cssVariablesResolver: CSSVariablesResolver = (theme) => {
       '--mantine-color-placeholder': String(theme.other.dimmedColorDark ?? '#a3a3a3'),
       // gray-6 del tema es un gris oscuro pensado para texto sobre claro.
       '--mantine-color-gray-6': String(theme.other.dimmedColorDark ?? '#a3a3a3'),
-      '--cc-map-label-surface': 'color-mix(in srgb, var(--mantine-color-dark-7) 94%, transparent)',
-      '--cc-map-label-text': 'var(--cc-color-text)',
+      '--cc-map-label-surface': 'var(--cc-overlay-scrim)',
+      '--cc-map-label-text': 'var(--cc-on-imagery-fg)',
       '--cc-map-label-border': mapColorTokens.hfd7e14,
       '--cc-map-profile-border': 'var(--mantine-color-blue-4)',
       '--cc-map-profile-surface': 'var(--mantine-color-dark-5)',

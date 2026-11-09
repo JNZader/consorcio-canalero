@@ -1,5 +1,6 @@
 import { Center, Paper, SegmentedControl, Stack, Text, Tooltip } from '@mantine/core';
 import { memo, type ReactNode, useMemo } from 'react';
+import { mapOnImageryStyle } from '../../lib/mapColorTokens';
 import { IconGitCompare, IconLayers, IconPhoto } from '../ui/icons';
 
 export const MAP_VIEW_MODE = {
@@ -117,10 +118,7 @@ export const ViewModePanel = memo(function ViewModePanel({
       shadow="md"
       p="xs"
       radius="md"
-      style={{
-        background: 'light-dark(rgba(255,255,255,0.94), rgba(36,36,36,0.94))',
-        backdropFilter: 'blur(6px)',
-      }}
+      style={mapOnImageryStyle}
     >
       {body}
     </Paper>

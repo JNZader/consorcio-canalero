@@ -8,12 +8,10 @@ import {
   PRECIPITATION_PERIOD,
   type PrecipitationPeriod,
 } from './hazardControls.types';
+import { mapOnImageryStyle } from '../../lib/mapColorTokens';
 import { MAP_Z } from './mapZIndex';
 
-const GLASS_STYLE = {
-  background: 'light-dark(rgba(255,255,255,0.94), rgba(36,36,36,0.94))',
-  backdropFilter: 'blur(6px)',
-} as const;
+const GLASS_STYLE = mapOnImageryStyle;
 
 const MONTH_OPTIONS = [
   { value: PRECIPITATION_PERIOD.ANNUAL, label: 'Anual' },

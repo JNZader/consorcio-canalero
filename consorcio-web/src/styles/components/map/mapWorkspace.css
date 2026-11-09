@@ -135,7 +135,10 @@
   top: var(--mantine-spacing-sm);
   left: var(--mantine-spacing-sm);
   z-index: var(--z-map-burger);
-  background: light-dark(rgba(255, 255, 255, 0.94), rgba(36, 36, 36, 0.94));
+  background: var(--cc-map-chrome-surface);
+  color: var(--cc-on-imagery-fg);
+  --mantine-color-text: var(--cc-on-imagery-fg);
+  --mantine-color-dimmed: var(--cc-on-imagery-fg-muted);
   border-radius: var(--mantine-radius-sm);
   box-shadow: var(--mantine-shadow-sm);
   padding: 4px;
