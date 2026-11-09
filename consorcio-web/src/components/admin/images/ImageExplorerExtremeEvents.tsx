@@ -95,6 +95,13 @@ export function defaultOpticalPair(
   return { pre: sorted[0].scene_id, post: sorted[sorted.length - 1].scene_id };
 }
 
+export interface DetectDatePrefill {
+  floodDate: string;
+  normalDate?: string;
+  eventId: string;
+  eventName?: string;
+}
+
 interface ImageExplorerExtremeEventsProps {
   events: HistoricFloodEvent[];
   onLoadHistoricFlood: (floodId: string) => void;
@@ -103,6 +110,11 @@ interface ImageExplorerExtremeEventsProps {
   pairs?: Record<string, ImageryPair>;
   loading?: boolean;
   onShowWaterMask?: (tileUrl: string | null) => void;
+  /** Highlight + prefill Detectar from this event. */
+  onDetectFlood?: (prefill: DetectDatePrefill) => void;
+  selectedEventId?: string | null;
+  /** Skip outer Paper/title when nested in an Accordion. */
+  embedded?: boolean;
 }
 
 const SENSOR_SHORT: Record<string, string> = {
@@ -287,6 +299,9 @@ export function ImageExplorerExtremeEvents({
   pairs = {},
   loading = false,
   onShowWaterMask,
+  onDetectFlood,
+  selectedEventId = null,
+  embedded = false,
 }: ImageExplorerExtremeEventsProps) {
   const [onlyWithImagery, setOnlyWithImagery] = useState(false);
   const [waterDeltas, setWaterDeltas] = useState<Record<string, WaterDeltaPayload | 'error'>>({});
@@ -300,17 +315,20 @@ export function ImageExplorerExtremeEvents({
 
   if (events.length === 0) return null;
 
-  return (
-    <Paper p="md" withBorder radius="md">
-      <Title order={5} mb="xs">
-        <Group gap="xs">
-          <IconPhoto size={20} />
-          Eventos de lluvia extrema
-        </Group>
-      </Title>
+  const body = (
+    <>
+      {!embedded ? (
+        <Title order={5} mb="xs">
+          <Group gap="xs">
+            <IconPhoto size={20} />
+            Eventos de lluvia extrema
+          </Group>
+        </Title>
+      ) : null}
       <Text size="xs" c="dimmed" mb="sm">
         CHIRPS ordena de forma relativa, no en milímetros. Probar este usa la escena ya ranqueada;
-        Buscar imagen arma el compuesto. Después publicá con Usar esta imagen.
+        Buscar imagen arma el compuesto. Detectar inundación abre el tab Detectar con fechas
+        cargadas.
       </Text>
       <Checkbox
         label="Solo con imagen Sentinel"
@@ -330,8 +348,19 @@ export function ImageExplorerExtremeEvents({
           const optical = opticalShortlist(ranked);
           const autoPair = defaultOpticalPair(optical);
           const pick = deltaPick[flood.id] ?? autoPair;
+          const isSelected = selectedEventId === flood.id;
           return (
-            <Card key={`${flood.id}-${flood.date}`} padding="sm" radius="md" withBorder>
+            <Card
+              key={`${flood.id}-${flood.date}`}
+              padding="sm"
+              radius="md"
+              withBorder
+              style={
+                isSelected
+                  ? { borderColor: 'var(--mantine-color-institucional-5)', borderWidth: 2 }
+                  : undefined
+              }
+            >
               <Group justify="space-between" mb="xs" wrap="nowrap">
                 <Text fw={500}>{flood.name}</Text>
                 <Badge color={severityColor(flood.severity ?? '')} size="sm">
@@ -420,6 +449,27 @@ export function ImageExplorerExtremeEvents({
                   Δ agua: error al medir
                 </Text>
               ) : null}
+              {onDetectFlood ? (
+                <Button
+                  mt="sm"
+                  size="xs"
+                  fullWidth
+                  variant="light"
+                  color="institucional"
+                  data-testid={`detect-flood-${flood.id}`}
+                  onClick={() => {
+                    const normalFromPost = post?.scene_date;
+                    onDetectFlood({
+                      floodDate: flood.date,
+                      normalDate: normalFromPost,
+                      eventId: flood.id,
+                      eventName: flood.name,
+                    });
+                  }}
+                >
+                  Detectar inundación
+                </Button>
+              ) : null}
               <Button
                 mt="sm"
                 size="xs"
@@ -436,6 +486,13 @@ export function ImageExplorerExtremeEvents({
           );
         })}
       </SimpleGrid>
+    </>
+  );
+
+  if (embedded) return body;
+  return (
+    <Paper p="md" withBorder radius="md">
+      {body}
     </Paper>
   );
 }

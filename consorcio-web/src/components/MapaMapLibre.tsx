@@ -27,6 +27,7 @@ import '../lib/pmtilesProtocol';
 void bootMapLibreWorker();
 
 import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../constants';
+import { consumeMapPreferredView } from '../lib/mapPreferredView';
 import { useApprovedZones } from '../hooks/useApprovedZones';
 import { useAuth } from '../hooks/useAuth';
 import { useBasins } from '../hooks/useBasins';
@@ -537,6 +538,18 @@ export default function MapaMapLibre() {
     }
     prevSelectedImageRef.current = selectedImage;
   }, [selectedImage]);
+
+  // One-shot hint from /admin/images 「Abrir en mapa」 (sessionStorage).
+  // Comparison is otherwise never auto-activated from a restored pair.
+  useEffect(() => {
+    const preferred = consumeMapPreferredView();
+    if (!preferred) return;
+    if (preferred === 'comparison') {
+      setViewMode('comparison');
+      return;
+    }
+    setViewMode('single');
+  }, []);
 
   useEffect(() => {
     const mapContainer = sliderContainerRef.current;

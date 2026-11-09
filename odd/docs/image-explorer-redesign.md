@@ -1,6 +1,6 @@
 # Rediseño: Explorador de Imágenes (`/admin/images`)
 
-**Estado:** propuesta (2026-11-09)  
+**Estado:** implementado en `feat/image-explorer-redesign` (2026-11-09) — pendiente de merge ordenado  
 **Contexto:** #690 productizó detección GEE flood en esta vista; en uso real la página se siente como un panel de API, no como herramienta de operador.  
 **Alcance:** rediseño de **toda** la superficie de `/admin/images`, no solo la card de inundación.  
 **Fuera de alcance:** cambios de contratos GEE/backend salvo los que el UX exija (p. ej. prefill de fechas desde un evento). Deploy de box y Pages no forman parte de las oleadas de UI.

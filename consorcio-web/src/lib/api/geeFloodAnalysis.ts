@@ -76,7 +76,7 @@ export function validateFloodAnalysisDates(
   const span = daySpanInclusiveStartExclusiveEnd(startDate, endDate);
   if (span == null) return 'Fechas inválidas.';
   if (span < FUSION_COMPARISON_MIN_SPAN_DAYS) {
-    return 'La fecha de referencia (normal) tiene que ser al menos 1 día después de la crecida.';
+    return 'La fecha sin agua tiene que ser al menos 1 día después de la crecida.';
   }
   return null;
 }

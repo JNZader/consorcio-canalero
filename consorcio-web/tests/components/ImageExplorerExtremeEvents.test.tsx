@@ -71,7 +71,9 @@ describe('ImageExplorerExtremeEvents', () => {
     );
 
     expect(screen.getByText('Eventos de lluvia extrema')).toBeInTheDocument();
-    expect(screen.getByText(/publicá con Usar esta imagen/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Detectar inundación abre el tab Detectar/i)
+    ).toBeInTheDocument();
   });
 
   it('searches GEE only from the Buscar imagen button of a candidate', async () => {

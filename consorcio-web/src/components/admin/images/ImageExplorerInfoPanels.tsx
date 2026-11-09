@@ -34,6 +34,8 @@ interface ImageExplorerInfoPanelsProps {
   selectedSceneId: string | null;
   onSelectScene: (scene: ImageSceneLike) => void;
   compositionMode: 'scene' | 'composite';
+  /** When true, skip imagen/par banners (publish tray owns that). */
+  hidePublishBanners?: boolean;
 }
 
 export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
@@ -53,6 +55,7 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
     selectedSceneId,
     onSelectScene,
     compositionMode,
+    hidePublishBanners = false,
   } = props;
 
   return (
@@ -104,22 +107,22 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
               >
                 {isCurrentImageSelected ? 'Seleccionada' : 'Usar esta imagen'}
               </Button>
-              <Tooltip label="Comparar: imagen izquierda (antes)">
+              <Tooltip label="Usar como Antes (referencia / sin agua)">
                 <Button
                   variant={comparison?.left?.tile_url === result?.tile_url ? 'light' : 'outline'}
                   size="sm"
                   onClick={onSetLeftImage}
                 >
-                  Izquierda
+                  Antes
                 </Button>
               </Tooltip>
-              <Tooltip label="Comparar: imagen derecha (después)">
+              <Tooltip label="Usar como Después (crecida / detección)">
                 <Button
                   variant={comparison?.right?.tile_url === result?.tile_url ? 'light' : 'outline'}
                   size="sm"
                   onClick={onSetRightImage}
                 >
-                  Derecha
+                  Después
                 </Button>
               </Tooltip>
             </Group>
@@ -176,7 +179,7 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
         </Paper>
       )}
 
-      {selectedImage && (
+      {!hidePublishBanners && selectedImage && (
         <Paper p="sm" withBorder radius="md" bg="exito.0">
           <Group justify="space-between">
             <Group gap="xs">
@@ -204,28 +207,28 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
         </Paper>
       )}
 
-      {comparison && (
+      {!hidePublishBanners && comparison && (
         <Paper p="sm" withBorder radius="md" bg="institucional.0">
           <Group justify="space-between">
             <Group gap="md">
               <IconGitCompare size={18} color="var(--mantine-color-institucional-7)" />
               <Text size="sm" fw={500} c="institucional.7">
-                Comparacion activa:
+                Par en bandeja:
               </Text>
               <Group gap="xs">
                 <Badge variant="light" color="institucional">
-                  {comparison.left?.target_date || 'Sin seleccionar'}
+                  Antes {comparison.left?.target_date || '—'}
                 </Badge>
                 <Text size="sm" c="dimmed">
                   vs
                 </Text>
                 <Badge variant="light" color="exito">
-                  {comparison.right?.target_date || 'Sin seleccionar'}
+                  Después {comparison.right?.target_date || '—'}
                 </Badge>
               </Group>
               {comparisonReady && (
                 <Text size="xs" c="dimmed">
-                  (Ve al Mapa para ver la comparacion)
+                  Usá Abrir en mapa arriba
                 </Text>
               )}
             </Group>
