@@ -37,19 +37,59 @@ describe('brandPresets', () => {
     expect(isBrandId(null)).toBe(false);
   });
 
-  it('pins official portal marks for the three Córdoba packs', () => {
-    expect(BRAND_PRESETS.aprhi.institucional[5]).toBe('#368EB8');
-    expect(BRAND_PRESETS.aprhi.institucional[6]).toBe('#005686');
+  it('pins AA marca/acción for Córdoba packs; portal cielos stay in shade[4]', () => {
+    expect(BRAND_PRESETS.aprhi.institucional[4]).toBe('#368EB8');
+    expect(BRAND_PRESETS.aprhi.institucional[5]).toBe('#005686');
+    expect(BRAND_PRESETS.aprhi.institucional[6]).toBe('#004469');
     expect(BRAND_PRESETS.aprhi.accent).toBe('#F7BC30');
-    expect(BRAND_PRESETS.idecor.institucional[5]).toBe('#34BAF8');
-    expect(BRAND_PRESETS.idecor.institucional[6]).toBe('#0C71C3');
+    expect(BRAND_PRESETS.idecor.institucional[4]).toBe('#34BAF8');
+    expect(BRAND_PRESETS.idecor.institucional[5]).toBe('#0C71C3');
+    expect(BRAND_PRESETS.idecor.institucional[6]).toBe('#0a5a9c');
     expect(BRAND_PRESETS.idecor.accent).toBe('#F8A310');
-    expect(BRAND_PRESETS.hidrico.institucional[5]).toBe('#28B5E8');
-    expect(BRAND_PRESETS.hidrico.institucional[6]).toBe('#155e75');
+    expect(BRAND_PRESETS.hidrico.institucional[4]).toBe('#28B5E8');
+    expect(BRAND_PRESETS.hidrico.institucional[5]).toBe('#155e75');
+    expect(BRAND_PRESETS.hidrico.institucional[6]).toBe('#0f4c5c');
     expect(BRAND_PRESETS.hidrico.water).toBe('#0e7490');
     expect(BRAND_PRESETS.hidrico.accent).toBe('#E8A317');
   });
+
+  it('keeps institucional[6] AA vs white; marca[5] AA except known-short río', () => {
+    const white = '#ffffff';
+    for (const preset of Object.values(BRAND_PRESETS)) {
+      expect(
+        contrastRatio(white, preset.institucional[6]!),
+        `${preset.id} acción ${preset.institucional[6]}`
+      ).toBeGreaterThanOrEqual(4.5);
+      // Río limpio marca #2d8f68 is ~4.01 by design (theme.ts); filled uses [6].
+      if (preset.id === BRAND_IDS.RIO) continue;
+      expect(
+        contrastRatio(white, preset.institucional[5]!),
+        `${preset.id} marca ${preset.institucional[5]}`
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  });
 });
+
+/** WCAG 2.1 relative-luminance contrast (same formula as the audit script). */
+function contrastRatio(a: string, b: string): number {
+  const lin = (c: number) => {
+    const s = c / 255;
+    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  const lum = (hex: string) => {
+    const n = hex.replace('#', '');
+    const full = n.length === 3 ? n.split('').map((c) => c + c).join('') : n;
+    const r = lin(Number.parseInt(full.slice(0, 2), 16));
+    const g = lin(Number.parseInt(full.slice(2, 4), 16));
+    const bl = lin(Number.parseInt(full.slice(4, 6), 16));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+  };
+  const L1 = lum(a);
+  const L2 = lum(b);
+  const hi = Math.max(L1, L2);
+  const lo = Math.min(L1, L2);
+  return (hi + 0.05) / (lo + 0.05);
+}
 
 function BRAND_PRESET_LIST_MARKS(): string[] {
   return Object.values(BRAND_PRESETS).map((p) => p.institucional[5]!);

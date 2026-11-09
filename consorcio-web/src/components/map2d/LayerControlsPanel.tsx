@@ -592,10 +592,13 @@ export function LayerControlsPanel({
       />
 
       <Paper
-        shadow="md"
+        shadow={insideScrollContainer ? undefined : 'md'}
         p="xs"
         radius="md"
-        style={mapOnImageryStyle}
+        // Sidebar/Drawer already owns an opaque shell (white/dark-7). Applying
+        // the on-imagery scrim there nests dark-on-white and kills checkbox/
+        // label contrast. Scrim only when this panel floats over the basemap.
+        style={insideScrollContainer ? undefined : mapOnImageryStyle}
       >
         <Stack gap={6}>
           {bannerText && (

@@ -34,7 +34,12 @@ export type BrandId = (typeof BRAND_IDS)[keyof typeof BRAND_IDS];
 
 export const DEFAULT_BRAND_ID: BrandId = BRAND_IDS.RIO;
 
-/** Mantine 10-shade tuple. Index 5 = brand mark; index 6 = filled action. */
+/**
+ * Mantine 10-shade tuple.
+ * Index 5 = brand mark (`--cc-color-primary`) — must be AA vs white (≥4.5:1).
+ * Index 6 = filled action — must be AA vs white.
+ * Light portal cielos (IDECOR/APRHI/Hídrico) live in shade[4] + `water`/`accent`, not in [5].
+ */
 export type BrandShadeScale = readonly [
   string,
   string,
@@ -209,30 +214,30 @@ export const BRAND_PRESETS: Record<BrandId, BrandPreset> = {
     name: 'APRHI',
     tagline: 'Portal aprhi.gob.ar — autoridad hídrica',
     notes:
-      'Tokens tomados del sitio oficial: navy #004469/#005686, cyan Elementor #6EC1E4, acento #368EB8, oro #F7BC30. Rampas científicas del mapa intactas.',
+      'Portal: cyan #368EB8 y oro #F7BC30 como cielo/acento (swatches). Marca AA #005686 y acción #004469 (blanco ≥4.5:1). Agua UI #6EC1E4. Rampas científicas intactas.',
     institucional: [
       '#e8f4fa',
       '#c5e4f2',
       '#9dcee6',
       '#6eb6d6',
-      '#4a9ec4',
       '#368EB8',
       '#005686',
       '#004469',
       '#0c3550',
       '#091635',
+      '#050b14',
     ],
     surface: '#F2F5F7',
-    mutedLight: '#67768e',
+    mutedLight: '#475569',
     darkShell: '#091635',
     darkDeep: '#050b14',
     mutedDark: '#94a3b8',
     water: '#6EC1E4',
     accent: '#F7BC30',
     swatches: [
-      { label: 'Marca', hex: '#368EB8' },
-      { label: 'Acción', hex: '#005686' },
-      { label: 'Navy', hex: '#004469' },
+      { label: 'Marca', hex: '#005686' },
+      { label: 'Acción', hex: '#004469' },
+      { label: 'Cielo', hex: '#368EB8' },
       { label: 'Oro', hex: '#F7BC30' },
     ],
   },
@@ -241,17 +246,17 @@ export const BRAND_PRESETS: Record<BrandId, BrandPreset> = {
     name: 'IDECOR',
     tagline: 'Portal idecor.gob.ar — datos geo',
     notes:
-      'Tokens del portal renovado: cielo #34BAF8, link #0C71C3, soft #7EBEC5, ámbar CTA #F8A310, near-black #060815. Ámbar solo como chip (no botón danger). Mapas científicos intactos.',
+      'Portal cielo #34BAF8 queda en shade[4]/agua (decorativo). Marca AA = link #0C71C3; acción #0a5a9c. Ámbar #F8A310 solo chip con texto oscuro. Mapas científicos intactos.',
     institucional: [
       '#eaf7fd',
       '#c5ebfb',
       '#9adbf7',
       '#6ac8f2',
-      '#3eb8ec',
       '#34BAF8',
       '#0C71C3',
       '#0a5a9c',
       '#084578',
+      '#062a4a',
       '#060815',
     ],
     surface: '#F2FBFF',
@@ -262,9 +267,9 @@ export const BRAND_PRESETS: Record<BrandId, BrandPreset> = {
     water: '#7EBEC5',
     accent: '#F8A310',
     swatches: [
-      { label: 'Marca', hex: '#34BAF8' },
-      { label: 'Acción', hex: '#0C71C3' },
-      { label: 'Soft', hex: '#7EBEC5' },
+      { label: 'Marca', hex: '#0C71C3' },
+      { label: 'Acción', hex: '#0a5a9c' },
+      { label: 'Cielo', hex: '#34BAF8' },
       { label: 'Ámbar', hex: '#F8A310' },
     ],
   },
@@ -273,17 +278,17 @@ export const BRAND_PRESETS: Record<BrandId, BrandPreset> = {
     name: 'Hídrico Córdoba',
     tagline: 'Híbrido APRHI + IDECOR + verde río',
     notes:
-      'Marca cielo #28B5E8 (puente IDECOR), acción teal #155e75, shell navy #0B2A3D (puente APRHI), chip ámbar #E8A317, secundario río #2d8f68. Distinto de Cuenca (#0e7490) a propósito.',
+      'Cielo #28B5E8 en shade[4] (puente IDECOR). Marca AA #155e75; acción #0f4c5c; shell navy #0B2A3D (APRHI). Chip ámbar #E8A317 con texto oscuro. Distinto de Cuenca (#0e7490).',
     institucional: [
       '#e8f7fc',
       '#c8ebf8',
       '#9edaf2',
       '#6fc6e8',
-      '#45b8e0',
       '#28B5E8',
       '#155e75',
       '#0f4c5c',
       '#0B2A3D',
+      '#081e2c',
       '#060e16',
     ],
     surface: '#F0F7FA',
@@ -294,9 +299,9 @@ export const BRAND_PRESETS: Record<BrandId, BrandPreset> = {
     water: '#0e7490',
     accent: '#E8A317',
     swatches: [
-      { label: 'Marca', hex: '#28B5E8' },
-      { label: 'Acción', hex: '#155e75' },
-      { label: 'Teal', hex: '#0e7490' },
+      { label: 'Marca', hex: '#155e75' },
+      { label: 'Acción', hex: '#0f4c5c' },
+      { label: 'Cielo', hex: '#28B5E8' },
       { label: 'Ámbar', hex: '#E8A317' },
       { label: 'Río', hex: PRIMARY_GREEN },
     ],

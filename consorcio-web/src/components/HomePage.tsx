@@ -203,7 +203,15 @@ export function HomeContent() {
       <Box className={`${styles.heroSection} ${styles.heroGradient}`}>
         <Container size="lg">
           <Stack align="center" gap="xl">
-            <Badge size="lg" variant="light" color="white">
+            <Badge
+              size="lg"
+              variant="outline"
+              color="white"
+              style={{
+                background: 'rgba(0, 0, 0, 0.35)',
+                color: 'var(--mantine-color-white)',
+              }}
+            >
               Departamento Unión, Córdoba
             </Badge>
             <Title order={1} ta="center" c="white" size={48} maw={700}>
