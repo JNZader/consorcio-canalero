@@ -12,7 +12,10 @@ def test_fusion_builds_comparison_for_next_day_span() -> None:
     explorer = MagicMock()
     explorer.get_sentinel2_image.return_value = {"tile_url": "https://ee/opt"}
     explorer.get_sentinel1_image.return_value = {"tile_url": "https://ee/sar"}
-    explorer.get_flood_comparison.return_value = {"flood_date": "2024-01-01", "normal_date": "2024-01-02"}
+    explorer.get_flood_comparison.return_value = {
+        "flood_date": "2024-01-01",
+        "normal_date": "2024-01-02",
+    }
 
     result = build_flood_analysis_result(
         explorer=explorer,
