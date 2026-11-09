@@ -112,6 +112,8 @@ interface ImageExplorerExtremeEventsProps {
   onShowWaterMask?: (tileUrl: string | null) => void;
   /** Highlight + prefill Detectar from this event. */
   onDetectFlood?: (prefill: DetectDatePrefill) => void;
+  /** Publish persisted pre/post shortlist rows into Comparar (Antes/Después). */
+  onUseComparePair?: (pair: ImageryPair) => void;
   selectedEventId?: string | null;
   /** Skip outer Paper/title when nested in an Accordion. */
   embedded?: boolean;
@@ -300,6 +302,7 @@ export function ImageExplorerExtremeEvents({
   loading = false,
   onShowWaterMask,
   onDetectFlood,
+  onUseComparePair,
   selectedEventId = null,
   embedded = false,
 }: ImageExplorerExtremeEventsProps) {
@@ -327,8 +330,8 @@ export function ImageExplorerExtremeEvents({
       ) : null}
       <Text size="xs" c="dimmed" mb="sm">
         CHIRPS ordena de forma relativa, no en milímetros. Probar este usa la escena ya ranqueada;
-        Buscar imagen arma el compuesto. Detectar inundación abre el tab Detectar con fechas
-        cargadas.
+        Buscar imagen arma el compuesto. Usar par en Comparar llena Antes/Después. Detectar
+        inundación abre el tab Detectar con fechas cargadas.
       </Text>
       <Checkbox
         label="Solo con imagen Sentinel"
@@ -405,6 +408,20 @@ export function ImageExplorerExtremeEvents({
                   onClick={() => onTryShortlist?.(post)}
                 >
                   Después · {SENSOR_SHORT[post.sensor] ?? post.sensor} {post.scene_date}
+                </Button>
+              ) : null}
+              {pre && post && onUseComparePair ? (
+                <Button
+                  mt="xs"
+                  size="xs"
+                  fullWidth
+                  variant="filled"
+                  color="institucional"
+                  disabled={loading}
+                  data-testid={`use-compare-pair-${flood.id}`}
+                  onClick={() => onUseComparePair({ pre, post })}
+                >
+                  Usar par en Comparar
                 </Button>
               ) : null}
               <EventShortlistPicker

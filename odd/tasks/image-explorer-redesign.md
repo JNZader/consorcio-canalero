@@ -22,3 +22,4 @@ Objective: ship `odd/docs/image-explorer-redesign.md` as working UI in three mer
 
 - **L1** (2026-11-09): User: finish all code; merge later in order.
 - **L2** (2026-11-09): Implemented full UI on `feat/image-explorer-redesign`. Vitest focused suite green (PublishTray, FloodAnalysis, ExtremeEvents, mapPreferredView, InfoPanels, geeFloodAnalysis).
+- **L3** (2026-11-09): Closed gaps — `Usar par en Comparar` (event → tray) + Comparar tab CTAs `Usar preview como Antes/Después`. Tests 48 green. PR #691 body update; no merge.

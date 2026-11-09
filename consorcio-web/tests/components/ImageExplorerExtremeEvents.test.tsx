@@ -224,6 +224,47 @@ describe('ImageExplorerExtremeEvents', () => {
     await user.click(screen.getByRole('button', { name: /Antes · L8 2015-02-20/ }));
     expect(onTry).toHaveBeenCalledWith(pre);
   });
+
+  it('prefills Detectar from the event date and post scene when available', async () => {
+    const onDetect = vi.fn();
+    const user = userEvent.setup();
+    const pre = ranked('PRE', 'landsat8', '2015-02-20');
+    const post = ranked('POST', 'sentinel2', '2015-03-20');
+    render(
+      <ImageExplorerExtremeEvents
+        events={[candidate]}
+        onLoadHistoricFlood={() => {}}
+        onDetectFlood={onDetect}
+        pairs={{ [candidate.id]: { pre, post } }}
+      />,
+      { wrapper }
+    );
+    await user.click(screen.getByTestId(`detect-flood-${candidate.id}`));
+    expect(onDetect).toHaveBeenCalledWith({
+      floodDate: candidate.date,
+      normalDate: post.scene_date,
+      eventId: candidate.id,
+      eventName: candidate.name,
+    });
+  });
+
+  it('publishes the persisted pair into Comparar', async () => {
+    const onUsePair = vi.fn();
+    const user = userEvent.setup();
+    const pre = ranked('PRE', 'landsat8', '2015-02-20');
+    const post = ranked('POST', 'sentinel2', '2015-03-20');
+    render(
+      <ImageExplorerExtremeEvents
+        events={[candidate]}
+        onLoadHistoricFlood={() => {}}
+        onUseComparePair={onUsePair}
+        pairs={{ [candidate.id]: { pre, post } }}
+      />,
+      { wrapper }
+    );
+    await user.click(screen.getByTestId(`use-compare-pair-${candidate.id}`));
+    expect(onUsePair).toHaveBeenCalledWith({ pre, post });
+  });
 });
 
 describe('formatWaterDelta', () => {

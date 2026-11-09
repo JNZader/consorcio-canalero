@@ -183,4 +183,4 @@ Cada oleada: PR enfocado, squash-merge, Pages; **sin** deploy de box salvo que t
 
 ## 10. Próximo paso
 
-Aprobar esta propuesta → implementar **Oleada 1** en branch `feat/image-explorer-shell` (o nombre equivalente) desde `origin/main`.
+Código completo en `feat/image-explorer-redesign` (PR #691). Merge ordenado a cargo del operador: primero docs/contexto del PR, luego validar UI en Pages; box GEE solo si hace falta redeploy del worker.

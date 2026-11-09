@@ -1,5 +1,6 @@
 import {
   Accordion,
+  Button,
   Group,
   Paper,
   SegmentedControl,
@@ -15,6 +16,7 @@ import { IconCalendar } from '../../ui/icons';
 import { ImageExplorerCalendar } from './ImageExplorerCalendar';
 import {
   type DetectDatePrefill,
+  type ImageryPair,
   ImageExplorerExtremeEvents,
 } from './ImageExplorerExtremeEvents';
 import { ImageExplorerFloodAnalysis } from './ImageExplorerFloodAnalysis';
@@ -41,6 +43,11 @@ export default function ImageExplorerPanel() {
     setDetectFloodDate(prefill.floodDate);
     setDetectNormalDate(prefill.normalDate ?? null);
     setTab('detectar');
+  }
+
+  function handleUseComparePair(pair: ImageryPair) {
+    setTab('comparar');
+    void controller.publishPairFromShortlist(pair);
   }
 
   return (
@@ -183,15 +190,15 @@ export default function ImageExplorerPanel() {
           )}
 
           {tab === 'comparar' && (
-            <Paper p="sm" withBorder radius="md" mt="md">
+            <Paper p="sm" withBorder radius="md" mt="md" data-testid="compare-slot-panel">
               <Text size="sm" fw={500} mb={4}>
                 Armá el par Antes / Después
               </Text>
               <Text size="xs" c="dimmed" mb="sm">
-                Elegí un día en el calendario (preview a la derecha) y asignalo con Antes o
-                Después. También podés partir de un evento abajo.
+                Elegí un día en el calendario (preview a la derecha) y asignalo acá. También
+                podés partir de un evento abajo con «Usar par en Comparar».
               </Text>
-              <Group gap="xs">
+              <Group gap="xs" mb="sm">
                 <BadgeLike
                   label={`Antes: ${controller.comparison?.left?.target_date ?? '—'}`}
                 />
@@ -199,6 +206,30 @@ export default function ImageExplorerPanel() {
                   label={`Después: ${controller.comparison?.right?.target_date ?? '—'}`}
                 />
               </Group>
+              {controller.result ? (
+                <Group gap="xs" grow>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={controller.handleSetLeftImage}
+                    data-testid="compare-use-preview-antes"
+                  >
+                    Usar preview como Antes
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={controller.handleSetRightImage}
+                    data-testid="compare-use-preview-despues"
+                  >
+                    Usar preview como Después
+                  </Button>
+                </Group>
+              ) : (
+                <Text size="xs" c="dimmed">
+                  Todavía no hay preview: tocá un día del calendario o un atajo de evento.
+                </Text>
+              )}
             </Paper>
           )}
 
@@ -230,6 +261,7 @@ export default function ImageExplorerPanel() {
                   loading={controller.loading}
                   onShowWaterMask={controller.updateWaterMask}
                   onDetectFlood={handleDetectFromEvent}
+                  onUseComparePair={handleUseComparePair}
                   selectedEventId={selectedEventId}
                   embedded
                 />
