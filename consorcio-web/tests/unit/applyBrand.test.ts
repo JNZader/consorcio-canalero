@@ -123,4 +123,17 @@ describe('applyBrand', () => {
     const inline = document.documentElement.getAttribute('style') ?? '';
     expect(inline.includes('--cc-map-')).toBe(false);
   });
+
+  it('writes scheme-aware dimmed so dark mode keeps AA muted text', () => {
+    applyBrand(BRAND_IDS.CUENCA, { notify: false });
+    const dimmed = document.documentElement.style.getPropertyValue(
+      '--mantine-color-dimmed'
+    );
+    expect(dimmed).toBe(
+      `light-dark(${BRAND_PRESETS.cuenca.mutedLight}, ${BRAND_PRESETS.cuenca.mutedDark})`
+    );
+    expect(
+      document.documentElement.style.getPropertyValue('--mantine-color-placeholder')
+    ).toBe(dimmed);
+  });
 });

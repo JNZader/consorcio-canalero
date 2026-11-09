@@ -116,8 +116,12 @@ function writeBrandVars(root: HTMLElement, id: BrandId): void {
   root.style.setProperty('--mantine-primary-color-light-color', lightColor);
 
   root.style.setProperty('--mantine-color-gray-0', preset.surface);
-  root.style.setProperty('--mantine-color-dimmed', preset.mutedLight);
-  root.style.setProperty('--mantine-color-placeholder', preset.mutedLight);
+  // Scheme-aware: inline styles beat Mantine's dark resolver. A light muted
+  // hex left here permanently fails AA on darkShell (~2:1). light-dark()
+  // tracks data-mantine-color-scheme the same way theme shadows do.
+  const muted = `light-dark(${preset.mutedLight}, ${preset.mutedDark})`;
+  root.style.setProperty('--mantine-color-dimmed', muted);
+  root.style.setProperty('--mantine-color-placeholder', muted);
   root.style.setProperty('--mantine-color-dark-7', preset.darkShell);
   root.style.setProperty('--mantine-color-dark-8', preset.darkDeep);
   root.style.setProperty('--mantine-color-dark-9', preset.darkDeep);
