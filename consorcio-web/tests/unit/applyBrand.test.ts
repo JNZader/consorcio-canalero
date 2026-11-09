@@ -22,15 +22,32 @@ describe('brandPresets', () => {
     expect(rio.institucional).toHaveLength(10);
   });
 
-  it('exposes four packs with distinct brand marks', () => {
+  it('exposes seven packs with distinct brand marks', () => {
     const marks = BRAND_PRESET_LIST_MARKS();
-    expect(new Set(marks).size).toBe(4);
+    expect(marks).toHaveLength(7);
+    expect(new Set(marks).size).toBe(7);
   });
 
-  it('type-guards brand ids', () => {
+  it('type-guards brand ids including APRHI / IDECOR / hídrico', () => {
     expect(isBrandId('cuenca')).toBe(true);
+    expect(isBrandId('aprhi')).toBe(true);
+    expect(isBrandId('idecor')).toBe(true);
+    expect(isBrandId('hidrico')).toBe(true);
     expect(isBrandId('nope')).toBe(false);
     expect(isBrandId(null)).toBe(false);
+  });
+
+  it('pins official portal marks for the three Córdoba packs', () => {
+    expect(BRAND_PRESETS.aprhi.institucional[5]).toBe('#368EB8');
+    expect(BRAND_PRESETS.aprhi.institucional[6]).toBe('#005686');
+    expect(BRAND_PRESETS.aprhi.accent).toBe('#F7BC30');
+    expect(BRAND_PRESETS.idecor.institucional[5]).toBe('#34BAF8');
+    expect(BRAND_PRESETS.idecor.institucional[6]).toBe('#0C71C3');
+    expect(BRAND_PRESETS.idecor.accent).toBe('#F8A310');
+    expect(BRAND_PRESETS.hidrico.institucional[5]).toBe('#28B5E8');
+    expect(BRAND_PRESETS.hidrico.institucional[6]).toBe('#155e75');
+    expect(BRAND_PRESETS.hidrico.water).toBe('#0e7490');
+    expect(BRAND_PRESETS.hidrico.accent).toBe('#E8A317');
   });
 });
 
