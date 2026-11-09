@@ -9,14 +9,12 @@ import {
 
 describe('validateFloodAnalysisDates', () => {
   it('rejects end before or equal to start', () => {
-    expect(validateFloodAnalysisDates('2024-01-10', '2024-01-10', 'sar_only')).toMatch(/posterior/);
-    expect(validateFloodAnalysisDates('2024-01-10', '2024-01-09', 'fusion')).toMatch(/posterior/);
+    expect(validateFloodAnalysisDates('2024-01-10', '2024-01-10', 'sar_only')).toMatch(/1 día/);
+    expect(validateFloodAnalysisDates('2024-01-10', '2024-01-09', 'fusion')).toMatch(/1 día/);
   });
 
-  it('requires >5 day span for fusion comparison', () => {
-    expect(validateFloodAnalysisDates('2024-01-01', '2024-01-06', 'fusion')).toMatch(
-      />5 días|6 días/
-    );
+  it('allows next-day span for fusion (day-to-day deltas)', () => {
+    expect(validateFloodAnalysisDates('2024-01-01', '2024-01-02', 'fusion')).toBeNull();
     expect(validateFloodAnalysisDates('2024-01-01', '2024-01-07', 'fusion')).toBeNull();
   });
 
@@ -26,9 +24,9 @@ describe('validateFloodAnalysisDates', () => {
 });
 
 describe('fusionComparisonReady', () => {
-  it('matches backend end-start > 5', () => {
-    expect(fusionComparisonReady('2024-01-01', '2024-01-06')).toBe(false);
-    expect(fusionComparisonReady('2024-01-01', '2024-01-07')).toBe(true);
+  it('matches backend end-start >= 1', () => {
+    expect(fusionComparisonReady('2024-01-01', '2024-01-01')).toBe(false);
+    expect(fusionComparisonReady('2024-01-01', '2024-01-02')).toBe(true);
   });
 });
 

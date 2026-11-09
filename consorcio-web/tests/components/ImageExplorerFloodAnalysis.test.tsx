@@ -106,7 +106,7 @@ describe('ImageExplorerFloodAnalysis', () => {
     expect(onSetRight.mock.calls[0][0].visualization).toBe('inundacion');
   });
 
-  it('blocks fusion when span is too short', async () => {
+  it('blocks when reference is not after flood date', async () => {
     const user = userEvent.setup();
     render(
       <ImageExplorerFloodAnalysis onSetLeftImage={vi.fn()} onSetRightImage={vi.fn()} />,
@@ -114,9 +114,9 @@ describe('ImageExplorerFloodAnalysis', () => {
     );
 
     await user.type(screen.getByLabelText(/Fecha de crecida/i), '2024-01-10');
-    await user.type(screen.getByLabelText(/Fecha de referencia/i), '2024-01-12');
+    await user.type(screen.getByLabelText(/Fecha de referencia/i), '2024-01-10');
 
-    expect(screen.getByRole('alert')).toHaveTextContent(/5 días|6 días/i);
+    expect(screen.getByRole('alert')).toHaveTextContent(/1 día/i);
     expect(screen.getByRole('button', { name: /Correr detección/i })).toBeDisabled();
     expect(apiFetchMock).not.toHaveBeenCalled();
   });

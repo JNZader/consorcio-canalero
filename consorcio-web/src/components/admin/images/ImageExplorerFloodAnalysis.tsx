@@ -124,7 +124,7 @@ export function ImageExplorerFloodAnalysis({
         setState('failed');
         const detail =
           done.resultado?.comparison_error ||
-          'El job terminó sin tiles utilizables. Probá fusión con más de 5 días de separación.';
+          'El job terminó sin tiles utilizables. Probá fusión con referencia al menos 1 día después de la crecida.';
         setError(detail);
         showError('Sin tiles', detail);
         return;
@@ -179,11 +179,8 @@ export function ImageExplorerFloodAnalysis({
             onChange={(e) => setNormalDate(e.currentTarget.value)}
             size="sm"
             description={
-              method === 'fusion' &&
-              floodDate &&
-              normalDate &&
-              !fusionComparisonReady(floodDate, normalDate)
-                ? 'Hace falta >5 días después de la crecida'
+              floodDate && normalDate && !fusionComparisonReady(floodDate, normalDate)
+                ? 'La referencia tiene que ser al menos 1 día después de la crecida'
                 : undefined
             }
           />

@@ -47,8 +47,8 @@ export interface FloodAnalysisSubmitInput {
   method: FloodAnalysisMethod;
 }
 
-/** Minimum exclusive day span for backend fusion comparison (end - start > 5). */
-export const FUSION_COMPARISON_MIN_SPAN_DAYS = 6;
+/** Minimum day span for backend fusion comparison (end - start >= 1). */
+export const FUSION_COMPARISON_MIN_SPAN_DAYS = 1;
 
 export function daySpanInclusiveStartExclusiveEnd(
   startDate: string,
@@ -62,24 +62,21 @@ export function daySpanInclusiveStartExclusiveEnd(
 
 export function fusionComparisonReady(startDate: string, endDate: string): boolean {
   const span = daySpanInclusiveStartExclusiveEnd(startDate, endDate);
-  return span != null && span > 5;
+  return span != null && span >= FUSION_COMPARISON_MIN_SPAN_DAYS;
 }
 
 export function validateFloodAnalysisDates(
   startDate: string,
   endDate: string,
-  method: FloodAnalysisMethod
+  _method: FloodAnalysisMethod
 ): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
     return 'Usá fechas en formato AAAA-MM-DD.';
   }
   const span = daySpanInclusiveStartExclusiveEnd(startDate, endDate);
   if (span == null) return 'Fechas inválidas.';
-  if (span <= 0) {
-    return 'La fecha de referencia (normal) tiene que ser posterior a la de crecida.';
-  }
-  if (method === 'fusion' && span <= 5) {
-    return `Para fusión con par antes/después hace falta al menos ${FUSION_COMPARISON_MIN_SPAN_DAYS} días entre crecida y referencia (hoy: ${span}).`;
+  if (span < FUSION_COMPARISON_MIN_SPAN_DAYS) {
+    return 'La fecha de referencia (normal) tiene que ser al menos 1 día después de la crecida.';
   }
   return null;
 }
