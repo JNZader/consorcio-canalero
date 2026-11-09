@@ -377,7 +377,7 @@ def test_sentinel2_scene_uses_mosaic_not_median() -> None:
     fake = FakeEE({"size.getInfo": 4, "getMapId": map_id()})
     explorer = FakeExplorer(fake, dates=["2024-02-18"])
 
-    build_sentinel2_payload(
+    payload = build_sentinel2_payload(
         explorer,
         target_date=date(2024, 2, 20),
         days_buffer=10,
@@ -388,6 +388,35 @@ def test_sentinel2_scene_uses_mosaic_not_median() -> None:
 
     assert fake.called("mosaic")
     assert not fake.called("median")
+    # Scene mode must NOT Cloud Score+ mask — that punched transparent holes
+    # inside the zona with no temporal fill (operator: "no pinta completa").
+    assert explorer.cloudscore_calls == 0
+    assert payload["composition_mode"] == "scene"
+
+
+def test_sentinel2_scene_skips_cloudscore_composite_keeps_it() -> None:
+    fake = FakeEE({"size.getInfo": 4, "getMapId": map_id()})
+    explorer = FakeExplorer(fake, dates=["2024-02-18"])
+
+    build_sentinel2_payload(
+        explorer,
+        target_date=date(2024, 2, 20),
+        days_buffer=1,
+        max_cloud=40,
+        visualization="falso_color",
+        use_median=False,
+    )
+    assert explorer.cloudscore_calls == 0
+
+    build_sentinel2_payload(
+        explorer,
+        target_date=date(2024, 2, 20),
+        days_buffer=10,
+        max_cloud=40,
+        visualization="falso_color",
+        use_median=True,
+    )
+    assert explorer.cloudscore_calls == 1
 
 
 def test_sentinel2_never_applies_a_percentile_stretch() -> None:
