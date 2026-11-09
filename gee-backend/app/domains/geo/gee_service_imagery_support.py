@@ -663,15 +663,17 @@ def build_sentinel2_payload(
         }
 
     dates_list = explorer._collection_dates(collection)
-    # Cloud Score+ masks thin cloud/haze that SCL missed (it left white blobs on
-    # the map drape). Applies to TOA and SR alike; median composite over the
-    # window then yields a clean, cloud-free background.
-    masked_collection = explorer._mask_s2_cloudscore(collection)
-    composite = (
-        masked_collection.median().clip(explorer.zona)
-        if use_median
-        else masked_collection.mosaic().clip(explorer.zona)
-    )
+    # Cloud Score+ only in composite mode, where the temporal median can
+    # backfill holes. Scene mode stays raw — same rationale as Landsat
+    # (masking a single-date mosaic left transparent gaps inside the zona
+    # with nothing to fill; operators saw "la imagen no pinta completa").
+    if use_median:
+        masked_collection = explorer._mask_s2_cloudscore(collection)
+        composite = masked_collection.median().clip(explorer.zona)
+        composition_mode = "composite"
+    else:
+        composite = collection.mosaic().clip(explorer.zona)
+        composition_mode = "scene"
 
     preset = explorer.VIS_PRESETS.get(visualization, explorer.VIS_PRESETS["rgb"])
     if "index" in preset:
@@ -712,6 +714,7 @@ def build_sentinel2_payload(
         "visualization_description": preset["description"],
         "sensor": "Sentinel-2",
         "collection": collection_name,
+        "composition_mode": composition_mode,
         # Effective search params so the frontend can persist and later
         # regenerate this exact tile (auditoría 2026-07-09, hallazgo 2).
         "days_buffer": days_buffer,
