@@ -35,11 +35,12 @@ describe('pilarVerdeLayers · colors', () => {
 
   it('exports the semantic DEFAULT agro palette — each layer in its own hue family', () => {
     // Aceptada moved from green (conflicted with BPA gradient) to blue-600.
-    expect(PILAR_VERDE_COLORS.agroAceptadaFill).toBe('#2563EB');
+    // Hex case matches mapColorTokens after case-twin dedupe.
+    expect(PILAR_VERDE_COLORS.agroAceptadaFill).toBe('#2563eb');
     expect(PILAR_VERDE_COLORS.agroAceptadaLine).toBe('#1E40AF');
     // Presentada bumped from red-500 to red-600 for a stronger contrast with
     // the red-800 outline.
-    expect(PILAR_VERDE_COLORS.agroPresentadaFill).toBe('#DC2626');
+    expect(PILAR_VERDE_COLORS.agroPresentadaFill).toBe('#dc2626');
     expect(PILAR_VERDE_COLORS.agroPresentadaLine).toBe('#991B1B');
     // Zonas fallback now matches the Río Tercero anchor color (warm palette).
     expect(PILAR_VERDE_COLORS.agroZonasFill).toBe('#FCD34D');
@@ -51,7 +52,7 @@ describe('pilarVerdeLayers · colors', () => {
     // `leyenda` property. Palette redesign moved these from cool cyan/teal/sky
     // (which read as identical tones) to 3 warm hues with strong separation.
     expect(PILAR_VERDE_COLORS.agroZonaRioTercero).toBe('#FCD34D'); // amber-300
-    expect(PILAR_VERDE_COLORS.agroZonaCarcarana).toBe('#F97316'); // orange-500
+    expect(PILAR_VERDE_COLORS.agroZonaCarcarana).toBe('#f97316'); // orange-500
     expect(PILAR_VERDE_COLORS.agroZonaTortugas).toBe('#B45309'); // amber-700
   });
 
@@ -59,15 +60,15 @@ describe('pilarVerdeLayers · colors', () => {
     // Stops jump 100 → 500 → 900 (not 300/400/600) so the 3 tiers stay
     // visually distinct when rendered over the basemap.
     expect(PILAR_VERDE_COLORS.porcentajeForestacionBaja).toBe('#EDE9FE'); // violet-100
-    expect(PILAR_VERDE_COLORS.porcentajeForestacionMedia).toBe('#8B5CF6'); // violet-500
+    expect(PILAR_VERDE_COLORS.porcentajeForestacionMedia).toBe('#8b5cf6'); // violet-500
     expect(PILAR_VERDE_COLORS.porcentajeForestacionAlta).toBe('#4C1D95'); // violet-900
   });
 
   it('exports the eje palette used by InfoPanel (phase 3) — UNCHANGED by palette redesign', () => {
-    expect(PILAR_VERDE_COLORS.ejePersona).toBe('#3B82F6');
+    expect(PILAR_VERDE_COLORS.ejePersona).toBe('#3b82f6');
     expect(PILAR_VERDE_COLORS.ejePlaneta).toBe('#10B981');
     expect(PILAR_VERDE_COLORS.ejeProsperidad).toBe('#F59E0B');
-    expect(PILAR_VERDE_COLORS.ejeAlianza).toBe('#8B5CF6');
+    expect(PILAR_VERDE_COLORS.ejeAlianza).toBe('#8b5cf6');
   });
 });
 

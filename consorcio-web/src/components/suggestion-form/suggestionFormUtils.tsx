@@ -85,7 +85,7 @@ export function SuccessScreen({
           Tu propuesta fue recibida y será considerada en las próximas reuniones de la comisión.
         </Text>
         {showRemainingBadge && (
-          <Badge color="blue" size="lg">
+          <Badge color="institucional" size="lg">
             Te {remainingToday === 1 ? 'queda' : 'quedan'} {remainingToday} sugerencia
             {remainingToday === 1 ? '' : 's'} en las próximas 24 horas
           </Badge>
@@ -119,7 +119,7 @@ export function GeometrySummary({
   if (lines > 0) parts.push(`${lines} línea${lines > 1 ? 's' : ''}`);
 
   return (
-    <Badge color="blue" variant="light">
+    <Badge color="institucional" variant="light">
       {parts.join(' · ')}
     </Badge>
   );

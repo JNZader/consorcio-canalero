@@ -416,7 +416,7 @@ export function ImageExplorerExtremeEvents({
                 />
               ) : null}
               {waterDeltas[flood.id] === 'error' ? (
-                <Text size="xs" mt={4} c="red">
+                <Text size="xs" mt={4} c="alerta">
                   Δ agua: error al medir
                 </Text>
               ) : null}

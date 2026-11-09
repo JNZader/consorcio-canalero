@@ -94,7 +94,7 @@ export function SugerenciasTableContent({
                 {sug.titulo}
               </Text>
               {sug.geometry?.features?.length ? (
-                <Badge size="xs" color="blue" variant="light" mt={4}>
+                <Badge size="xs" color="institucional" variant="light" mt={4}>
                   Con línea
                 </Badge>
               ) : null}

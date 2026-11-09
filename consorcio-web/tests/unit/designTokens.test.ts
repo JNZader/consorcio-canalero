@@ -162,8 +162,13 @@ describe('design tokens', () => {
     const globalCss = readFileSync('src/styles/global.css', 'utf8');
     const headerCss = readFileSync('src/styles/components/header.module.css', 'utf8');
     const footerCss = readFileSync('src/styles/components/footer.module.css', 'utf8');
-    expect(footerCss).toContain('var(--mantine-color-institucional-9)');
+    expect(resolved.variables['--cc-color-brand-deep']).toBe('var(--mantine-color-institucional-9)');
+    expect(resolved.variables['--cc-color-brand-edge']).toBe('var(--mantine-color-institucional-7)');
+    expect(footerCss).toContain('var(--cc-color-brand-deep)');
+    expect(footerCss).toContain('var(--cc-color-brand-edge)');
     expect(footerCss).toContain('var(--mantine-color-gray-2)');
+    expect(headerCss).toContain('var(--cc-color-surface)');
+    expect(headerCss).toContain('var(--cc-color-border)');
     expect(headerCss).toContain('z-index: var(--z-header, 100)');
     expect(globalCss).toContain('z-index: var(--z-base, 0)');
     expect(globalCss).toContain('z-index: var(--z-portal, 9999)');
@@ -179,7 +184,10 @@ describe('design tokens', () => {
     expect(globalCss).toContain('.cc-install-bar');
     expect(globalCss).toContain('bottom: 0;');
     const homeCss = readFileSync('src/styles/components/home.module.css', 'utf8');
+    expect(homeCss).toContain('var(--cc-color-primary)');
     expect(homeCss).not.toContain('acento');
+    expect(globalCss).toContain('var(--mantine-color-institucional-5)');
+    expect(globalCss).toContain('var(--cc-color-danger)');
     const brandSurfaces = [
       'src/lib/theme.ts',
       'src/lib/semanticColors.ts',
@@ -290,7 +298,7 @@ describe('design tokens', () => {
     expect(resolved.dark['--cc-map-profile-text']).toBe('var(--mantine-color-blue-2)');
     expect(resolved.dark['--cc-map-label-surface']).toContain('var(--mantine-color-dark-7)');
     expect(mapChromeVars.labelText).toBe('var(--cc-map-label-text)');
-    expect(mapColorVar('h2563EB')).toBe('var(--cc-map-2563eb)');
+    expect(mapColorVar('h2563eb')).toBe('var(--cc-map-2563eb)');
 
     const registry = readFileSync('src/lib/mapColorTokens.ts', 'utf8');
     expect(registry).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);

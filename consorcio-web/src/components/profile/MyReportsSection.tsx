@@ -145,7 +145,7 @@ export function MyReportsSection() {
                         Enviada el {formatDate(report.created_at, { includeTime: true })}
                       </Text>
                       {report.respuesta && (
-                        <Text size="sm" c="green.7" mt={6} lineClamp={2}>
+                        <Text size="sm" c="exito.7" mt={6} lineClamp={2}>
                           Respuesta: {report.respuesta}
                         </Text>
                       )}
@@ -255,7 +255,7 @@ function ReportDetailModal({ report, onClose }: ReportDetailModalProps) {
               borderColor: 'var(--mantine-color-green-4)',
             }}
           >
-            <Text size="sm" fw={600} c="green.7" mb={4}>
+            <Text size="sm" fw={600} c="exito.7" mb={4}>
               Respuesta del consorcio
             </Text>
             <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>

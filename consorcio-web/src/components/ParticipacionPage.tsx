@@ -8,7 +8,6 @@ import {
   Stack,
   Tabs,
   Text,
-  Title,
 } from '@mantine/core';
 import { useState } from 'react';
 import { isConfiguredSupportPhone, SUPPORT_PHONE } from '../constants';
@@ -16,6 +15,7 @@ import { FormularioContenido } from './FormularioReporte';
 import { FormularioSugerenciaContent } from './FormularioSugerencia';
 import { LiveRegionProvider } from './ui/accessibility';
 import { IconClipboardList, IconInfoCircle, IconLightbulb } from './ui/icons';
+import { PageHeader } from './ui/PageHeader';
 
 const DEFAULT_TAB = 'reportes';
 const TABS_VALIDAS = new Set(['reportes', 'sugerencias']);
@@ -162,13 +162,11 @@ export function ParticipacionContent() {
       >
         <Container size="md">
           {/* Header unico: abarca las dos acciones */}
-          <Stack align="center" mb="xl">
-            <Title order={1}>Participación</Title>
-            <Text c="dimmed" ta="center" maw={560}>
-              Reportá un problema en los canales y caminos, o proponé una mejora para tu zona. Todo
-              lo que envíes llega al equipo del consorcio y a la comisión.
-            </Text>
-          </Stack>
+          <PageHeader
+            title="Participación"
+            subtitle="Reportá un problema en los canales y caminos, o proponé una mejora para tu zona. Todo lo que envíes llega al equipo del consorcio y a la comisión."
+            align="center"
+          />
 
           <Tabs value={activeTab} onChange={handleTabChange}>
             <Tabs.List mb="xl" grow>

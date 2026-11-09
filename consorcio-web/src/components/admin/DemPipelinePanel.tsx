@@ -160,7 +160,7 @@ export default function DemPipelinePanel() {
                   <Icon3dCubeSphere size={20} />
                   <Title order={4}>Visor 3D del Terreno</Title>
                   {demRawLayer && (
-                    <Badge size="sm" variant="light" color="teal">
+                    <Badge size="sm" variant="light" color="agua">
                       DEM disponible
                     </Badge>
                   )}
@@ -217,7 +217,7 @@ export default function DemPipelinePanel() {
               <Group gap="xs" mb="md">
                 <IconGlobe size={20} />
                 <Title order={4}>Cuencas Delineadas</Title>
-                <Badge size="lg" variant="light" color="blue">
+                <Badge size="lg" variant="light" color="institucional">
                   {basins.features.length} cuencas
                 </Badge>
               </Group>

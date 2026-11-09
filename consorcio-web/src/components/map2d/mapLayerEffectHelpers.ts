@@ -272,7 +272,7 @@ export function syncCatastroLayers(
       'source-layer': 'parcelas_catastro',
       minzoom: CATASTRO_LAYER_MIN_ZOOM,
       paint: {
-        'line-color': mapColorTokens.hFFFFFF,
+        'line-color': mapColorTokens.hffffff,
         'line-width': 1.5,
         'line-opacity': 0.85,
       },

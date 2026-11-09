@@ -50,7 +50,7 @@
 }
 
 .featureCard:focus-visible {
-  outline: 2px solid var(--mantine-color-institucional-5);
+  outline: 2px solid var(--cc-color-primary);
   outline-offset: 2px;
   transform: translateY(-2px);
 }

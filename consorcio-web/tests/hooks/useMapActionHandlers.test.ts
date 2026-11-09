@@ -266,7 +266,7 @@ describe('useMapActionHandlers', () => {
         // from the payload entirely (no more "detail" string).
         expect(body.canalLegend[0]).toEqual({
           label: 'Canal Norte SMS',
-          color: '#1D4ED8', // CANAL_STYLE_COLORS.sin_obra
+          color: '#1d4ed8', // CANAL_STYLE_COLORS.sin_obra
           km: 8.2,
         });
         // no `detail` field survives
@@ -274,7 +274,7 @@ describe('useMapActionHandlers', () => {
 
         expect(body.canalLegend[1]).toEqual({
           label: 'Canal Readec',
-          color: '#3B82F6', // CANAL_STYLE_COLORS.readec
+          color: '#3b82f6', // CANAL_STYLE_COLORS.readec
           km: 4.5,
         });
 
@@ -329,7 +329,7 @@ describe('useMapActionHandlers', () => {
         };
         expect(body.canalLegend).toHaveLength(1);
         // Fallback color matches the MapLibre paint default (relevadoSinObra).
-        expect(body.canalLegend[0].color).toBe('#1D4ED8');
+        expect(body.canalLegend[0].color).toBe('#1d4ed8');
         // 1000m → 1.0km as a number, not a string, no "km" suffix.
         expect(body.canalLegend[0].km).toBe(1.0);
         expect(typeof body.canalLegend[0].km).toBe('number');

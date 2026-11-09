@@ -136,7 +136,7 @@ export function AgendaModal({
                       )}
                     </div>
                     <IconButton
-                      color="red"
+                      color="alerta"
                       variant="subtle"
                       aria-label={`Eliminar tema ${index + 1}: ${item.titulo}`}
                       title={`Eliminar ${item.titulo}`}

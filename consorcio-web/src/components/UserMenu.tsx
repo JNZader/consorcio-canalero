@@ -137,7 +137,7 @@ function DesktopUserMenu({
 
           <Menu.Divider />
 
-          <Menu.Item color="red" leftSection={<IconLogout size={14} />} onClick={handleLogout}>
+          <Menu.Item color="alerta" leftSection={<IconLogout size={14} />} onClick={handleLogout}>
             Cerrar Sesión
           </Menu.Item>
         </Menu.Dropdown>
@@ -239,7 +239,7 @@ function MobileUserMenu({
 
         <Button
           variant="light"
-          color="red"
+          color="alerta"
           fullWidth
           leftSection={<IconLogout size={16} />}
           onClick={handleLogoutClick}

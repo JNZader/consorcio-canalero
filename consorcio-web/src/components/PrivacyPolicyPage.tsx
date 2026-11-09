@@ -10,16 +10,19 @@
  */
 
 import { Anchor, Container, List, Paper, Stack, Text, Title } from '@mantine/core';
+import { PageHeader } from './ui/PageHeader';
 
 export default function PrivacyPolicyPage() {
   return (
     <Container size="md" py="xl">
       <Paper p="xl" withBorder shadow="sm">
         <Stack gap="md">
-          <Title order={1}>Política de Privacidad</Title>
-          <Text size="sm" c="dimmed">
-            Última actualización: 13 de octubre de 2026 — Versión 1.1
-          </Text>
+          <PageHeader
+            title="Política de Privacidad"
+            subtitle="Última actualización: 13 de octubre de 2026 — Versión 1.1"
+            subtitleSize="sm"
+            mb={0}
+          />
 
           <Text>
             El <strong>Consorcio Canalero 10 de Mayo</strong> (en adelante, "el Consorcio") informa

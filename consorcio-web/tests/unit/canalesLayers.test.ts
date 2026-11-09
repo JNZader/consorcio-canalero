@@ -24,8 +24,9 @@ import {
 
 describe('canalesLayers · colors', () => {
   it('exposes the 3 relevado family hexes', () => {
-    expect(CANALES_COLORS.relevadoSinObra).toBe('#1D4ED8'); // blue-700
-    expect(CANALES_COLORS.relevadoReadec).toBe('#3B82F6'); // blue-500
+    // Case-normalized via mapColorTokens dedupe (lowercase when twins existed).
+    expect(CANALES_COLORS.relevadoSinObra).toBe('#1d4ed8'); // blue-700
+    expect(CANALES_COLORS.relevadoReadec).toBe('#3b82f6'); // blue-500
     expect(CANALES_COLORS.relevadoAsociada).toBe('#60A5FA'); // blue-400
   });
 
@@ -33,7 +34,7 @@ describe('canalesLayers · colors', () => {
     expect(CANALES_COLORS.propuestoAlta).toBe('#B10026');
     expect(CANALES_COLORS.propuestoMediaAlta).toBe('#E31A1C');
     expect(CANALES_COLORS.propuestoMedia).toBe('#FC4E2A');
-    expect(CANALES_COLORS.propuestoOpcional).toBe('#FD8D3C');
+    expect(CANALES_COLORS.propuestoOpcional).toBe('#fd8d3c');
     expect(CANALES_COLORS.propuestoLargoPlazo).toBe('#FEB24C');
   });
 

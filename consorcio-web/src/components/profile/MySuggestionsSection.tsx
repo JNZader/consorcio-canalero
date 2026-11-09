@@ -153,7 +153,7 @@ export function MySuggestionsSection() {
                         </Text>
                       )}
                       {sug.respuesta && (
-                        <Text size="sm" c="green.7" mt={6} lineClamp={2}>
+                        <Text size="sm" c="exito.7" mt={6} lineClamp={2}>
                           Respuesta: {sug.respuesta}
                         </Text>
                       )}
@@ -234,7 +234,7 @@ function SuggestionDetailModal({ sugerencia, onClose }: SuggestionDetailModalPro
               borderColor: 'var(--mantine-color-green-4)',
             }}
           >
-            <Text size="sm" fw={600} c="green.7" mb={4}>
+            <Text size="sm" fw={600} c="exito.7" mb={4}>
               Respuesta de la comisión
             </Text>
             <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>

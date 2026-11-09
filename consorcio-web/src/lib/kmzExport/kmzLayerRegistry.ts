@@ -209,7 +209,7 @@ export const KMZ_LAYER_REGISTRY: readonly KmzLayerEntry[] = [
     // (mapLayerEffectHelpers.ts::syncCatastroLayers — fill `#8d6e63` @ 0.08,
     // line `#FFFFFF`). Promote to named exports if reused elsewhere.
     color: mapColorTokens.h8d6e63,
-    strokeColor: mapColorTokens.hFFFFFF,
+    strokeColor: mapColorTokens.hffffff,
   },
   {
     key: 'soil',

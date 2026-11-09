@@ -1,4 +1,4 @@
-import { Alert, Anchor, Button, Center, Paper, Stack, Text, TextInput, Title } from '@mantine/core';
+import { Alert, Anchor, Button, Center, Paper, Stack, Text, TextInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useState } from 'react';
 import { resetPassword } from '../../lib/auth';
@@ -6,6 +6,7 @@ import { withBasePath } from '../../lib/basePath';
 import { erroresUi, textoError } from '../../lib/userFacingError';
 import { validateEmail } from '../../lib/validators';
 import { IconAlertCircle, IconArrowLeft, IconCheck, IconMail } from '../ui/icons';
+import { PageHeader } from '../ui/PageHeader';
 
 const FORGOT_PASSWORD_EMAIL_ERROR_ID = 'forgot-password-email-error';
 
@@ -41,9 +42,7 @@ export default function ForgotPasswordForm() {
   return (
     <Center mih="80vh">
       <Paper shadow="md" p="xl" radius="md" w={400}>
-        <Title order={1} size="h2" ta="center" mb="md">
-          Recuperar Contraseña
-        </Title>
+        <PageHeader title="Recuperar Contraseña" align="center" size="h2" mb="md" />
 
         {sent ? (
           <Stack gap="md">

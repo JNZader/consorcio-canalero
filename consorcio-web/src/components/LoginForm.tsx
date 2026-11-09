@@ -11,7 +11,6 @@ import {
   Stack,
   Text,
   TextInput,
-  Title,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useNavigate, useSearch } from '@tanstack/react-router';
@@ -24,6 +23,7 @@ import { showError, showInfo, showSuccess } from '../lib/notifications';
 import { erroresUi } from '../lib/userFacingError';
 import { MIN_PASSWORD_LENGTH, validateEmail, validatePassword } from '../lib/validators';
 import { IconAlertCircle, IconCheck, IconMail, IconWaveSine } from './ui/icons';
+import { PageHeader } from './ui/PageHeader';
 
 const LOGIN_NAME_ERROR_ID = 'login-name-error';
 const LOGIN_EMAIL_ERROR_ID = 'login-email-error';
@@ -189,9 +189,12 @@ export function LoginFormContent() {
           </Text>
         </Box>
 
-        <Title order={1} size="h2" ta="center" mb="md">
-          {mode === 'login' ? 'Iniciar Sesión' : 'Crear Cuenta'}
-        </Title>
+        <PageHeader
+          title={mode === 'login' ? 'Iniciar Sesión' : 'Crear Cuenta'}
+          align="center"
+          size="h2"
+          mb="md"
+        />
 
         {showEmailConfirmation && (
           <Alert
