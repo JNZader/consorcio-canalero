@@ -4,6 +4,7 @@ import '@mantine/dates/styles.css';
 import { IconCalendar } from '../../ui/icons';
 import { ImageExplorerCalendar } from './ImageExplorerCalendar';
 import { ImageExplorerExtremeEvents } from './ImageExplorerExtremeEvents';
+import { ImageExplorerFloodAnalysis } from './ImageExplorerFloodAnalysis';
 import { ImageExplorerInfoPanels } from './ImageExplorerInfoPanels';
 import { EXPLORER_WORKSPACE_MIN_HEIGHT, ImageExplorerMap } from './ImageExplorerMap';
 import { type ImageSensor, isOpticalSensor } from './imageExplorerUtils';
@@ -135,6 +136,10 @@ export default function ImageExplorerPanel() {
               pairs={controller.pairs}
               loading={controller.loading}
               onShowWaterMask={controller.updateWaterMask}
+            />
+            <ImageExplorerFloodAnalysis
+              onSetLeftImage={controller.setLeftImage}
+              onSetRightImage={controller.setRightImage}
             />
           </div>
         </div>
