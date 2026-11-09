@@ -42,7 +42,9 @@ def build_flood_analysis_result(*, explorer, start_date, end_date, method: str) 
         resultado["sar"] = filtered_result(sar_result)
         if "error" in sar_result:
             resultado["sar"]["warning"] = sar_result["error"]
-    if method == "fusion" and (end_date - start_date).days > 5:
+    # Day-to-day flood deltas are often the useful signal; require only a
+    # distinct normal date after the flood (span >= 1 day), not a 5+ day gap.
+    if method == "fusion" and (end_date - start_date).days >= 1:
         try:
             resultado["comparison"] = explorer.get_flood_comparison(
                 flood_date=start_date,

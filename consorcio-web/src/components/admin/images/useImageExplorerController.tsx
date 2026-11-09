@@ -536,6 +536,8 @@ export function useImageExplorerController() {
     handleSelectImage,
     handleSetLeftImage,
     handleSetRightImage,
+    setLeftImage,
+    setRightImage,
     loadHistoricFlood,
     loadShortlistScene,
     updateWaterMask,
