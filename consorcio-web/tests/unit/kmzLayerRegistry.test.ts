@@ -225,11 +225,11 @@ describe('KMZ_LAYER_REGISTRY · color source-of-truth', () => {
     expect(findEntry('roads')?.color).toBe('#FFEB3B');
   });
 
-  it('catastro mirrors the MapLibre catastro fill-color #8d6e63 and stroke #FFFFFF (not exported)', () => {
+  it('catastro mirrors the MapLibre catastro fill-color #8d6e63 and stroke #ffffff (not exported)', () => {
     // See `mapLayerEffectHelpers.ts::syncCatastroLayers` for the paint source.
     const entry = findEntry('catastro');
     expect(entry?.color).toBe('#8d6e63');
-    expect(entry?.strokeColor).toBe('#FFFFFF');
+    expect(entry?.strokeColor).toBe('#ffffff');
   });
 
   it('soil uses SOIL_CAPABILITY_COLORS.IV as the representative middle of the 8-class palette', () => {

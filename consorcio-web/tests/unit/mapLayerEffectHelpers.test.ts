@@ -172,7 +172,7 @@ describe('mapLayerEffectHelpers', () => {
     expect(catastroLineCall).toBeDefined();
     const [catastroLineLayer] = catastroLineCall ?? [];
     expect(catastroLineLayer?.paint).toMatchObject({
-      'line-color': '#FFFFFF',
+      'line-color': '#ffffff',
       'line-width': 1.5,
       'line-opacity': 0.85,
     });

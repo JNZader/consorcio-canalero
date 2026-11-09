@@ -73,7 +73,7 @@ describe('terrainVectorLayerEffects paint constants (layer-visibility audit)', (
     expect(catastroCall).toBeDefined();
     const [catastroLayer] = catastroCall ?? [];
     expect(catastroLayer?.paint).toMatchObject({
-      'line-color': '#FFFFFF',
+      'line-color': '#ffffff',
       'line-width': 1.5,
       'line-opacity': 0.85,
     });
