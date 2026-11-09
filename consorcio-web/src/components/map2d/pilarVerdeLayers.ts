@@ -80,11 +80,11 @@ export const PILAR_VERDE_COLORS = {
    * collided with the BPA green gradient when both layers were on → moved to
    * blue so each layer family is unique.
    */
-  agroAceptadaFill: mapColorTokens.h2563EB,
+  agroAceptadaFill: mapColorTokens.h2563eb,
   /** Agro-aceptada outline — blue-800, darker than the fill for separation. */
   agroAceptadaLine: mapColorTokens.h1E40AF,
   /** Agro-presentada (non-compliant). Solid red-600 @ 0.30 opacity. */
-  agroPresentadaFill: mapColorTokens.hDC2626,
+  agroPresentadaFill: mapColorTokens.hdc2626,
   /** Agro-presentada outline — red-800. */
   agroPresentadaLine: mapColorTokens.h991B1B,
   /**
@@ -108,7 +108,7 @@ export const PILAR_VERDE_COLORS = {
    * at a glance without clicking each polygon.
    */
   agroZonaRioTercero: mapColorTokens.hFCD34D,
-  agroZonaCarcarana: mapColorTokens.hF97316,
+  agroZonaCarcarana: mapColorTokens.hf97316,
   agroZonaTortugas: mapColorTokens.hB45309,
   /** Shared outline for all 3 zonas — amber-700, darker than any of the fills. */
   agroZonasLine: mapColorTokens.hB45309,
@@ -131,17 +131,17 @@ export const PILAR_VERDE_COLORS = {
    * truth for the MapLibre `step` paint expression.
    */
   porcentajeForestacionBaja: mapColorTokens.hEDE9FE,
-  porcentajeForestacionMedia: mapColorTokens.h8B5CF6,
+  porcentajeForestacionMedia: mapColorTokens.h8b5cf6,
   porcentajeForestacionAlta: mapColorTokens.h4C1D95,
   // ── Eje palette (mirrored by InfoPanel in Phase 3) ──
   /** Persona — blue-500. */
-  ejePersona: mapColorTokens.h3B82F6,
+  ejePersona: mapColorTokens.h3b82f6,
   /** Planeta — emerald-500. */
   ejePlaneta: mapColorTokens.h10B981,
   /** Prosperidad — amber-500. */
   ejeProsperidad: mapColorTokens.hF59E0B,
   /** Alianza — violet-500. */
-  ejeAlianza: mapColorTokens.h8B5CF6,
+  ejeAlianza: mapColorTokens.h8b5cf6,
 } as const;
 
 // ---------------------------------------------------------------------------

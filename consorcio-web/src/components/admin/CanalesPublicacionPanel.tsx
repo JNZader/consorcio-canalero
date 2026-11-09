@@ -293,7 +293,7 @@ export default function CanalesPublicacionPanel() {
         <Text size="xs" c="dimmed">
           Solo oculta en esta pantalla. No pública ni despublica.
         </Text>
-        <Badge color="green" variant="light">
+        <Badge color="exito" variant="light">
           {publicados} publicados
         </Badge>
         <Badge color="gray" variant="light">
@@ -302,7 +302,7 @@ export default function CanalesPublicacionPanel() {
         <Badge color="orange" variant="light">
           APRHI SR PA {srPaRows.length}
         </Badge>
-        <Badge color="violet" variant="light">
+        <Badge color="institucional" variant="light">
           Existentes {aprhiItems.length}
         </Badge>
       </Group>
@@ -329,7 +329,7 @@ export default function CanalesPublicacionPanel() {
             <Paper shadow="sm" p="xs" withBorder data-testid="canales-publicacion-leyenda">
               <Stack gap={4}>
                 <Text size="xs">
-                  <Text span c="green" fw={700}>
+                  <Text span c="exito" fw={700}>
                     ─
                   </Text>{' '}
                   publicado
@@ -341,7 +341,7 @@ export default function CanalesPublicacionPanel() {
                   oculto
                 </Text>
                 <Text size="xs">
-                  <Text span c="yellow" fw={700}>
+                  <Text span c="orange" fw={700}>
                     ─
                   </Text>{' '}
                   seleccionado
@@ -359,7 +359,7 @@ export default function CanalesPublicacionPanel() {
                   APRHI eliminada
                 </Text>
                 <Text size="xs">
-                  <Text span c="violet" fw={700}>
+                  <Text span c="institucional" fw={700}>
                     ┄
                   </Text>{' '}
                   existentes (capa vieja)

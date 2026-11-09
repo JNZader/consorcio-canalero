@@ -294,14 +294,14 @@ export function LocationSection({
         </Button>
         {ubicacion && selectedCoordinatesLabel && (
           <Group gap="xs" role="status" aria-live="polite">
-            <Badge id={SELECTED_LOCATION_ID} color="green" variant="light">
+            <Badge id={SELECTED_LOCATION_ID} color="exito" variant="light">
               {selectedCoordinatesLabel}
             </Badge>
             <Button
               type="button"
               size="xs"
               variant="subtle"
-              color="red"
+              color="alerta"
               onClick={onClearLocation}
               aria-label={`Limpiar ubicación seleccionada ${selectedCoordinatesLabel}`}
             >

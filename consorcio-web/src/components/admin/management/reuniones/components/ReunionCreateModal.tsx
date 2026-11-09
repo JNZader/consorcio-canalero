@@ -108,7 +108,7 @@ export function ReunionCreateModal({
                   />
                   <IconButton
                     type="button"
-                    color="red"
+                    color="alerta"
                     variant="subtle"
                     onClick={() => form.removeListItem('orden_del_dia_items', index)}
                     aria-label={`Eliminar punto ${index + 1}`}
@@ -123,7 +123,7 @@ export function ReunionCreateModal({
               <Text
                 id={REUNION_CHECKLIST_ERROR_ID}
                 size="xs"
-                c="red"
+                c="alerta"
                 role="alert"
                 aria-live="assertive"
               >

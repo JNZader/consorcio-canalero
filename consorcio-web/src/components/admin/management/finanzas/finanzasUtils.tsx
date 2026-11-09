@@ -83,7 +83,7 @@ export function renderCategoriaBadge(categoria: string) {
 
 export function renderFuenteBadge(fuente: string) {
   return (
-    <Badge variant="light" color="green">
+    <Badge variant="light" color="exito">
       {fuente.toUpperCase()}
     </Badge>
   );

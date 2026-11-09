@@ -192,7 +192,7 @@ export class ErrorBoundary extends Component<Props, State> {
             {import.meta.env.DEV && this.state.error && (
               <Stack gap="xs">
                 <Title order={5}>Error:</Title>
-                <Code block color="red">
+                <Code block color="alerta">
                   {this.state.error.message}
                 </Code>
 

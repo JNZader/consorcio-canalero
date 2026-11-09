@@ -225,7 +225,7 @@ export function AdminLayoutContent({ children, currentPath = '/admin' }: AdminLa
                     {ADMIN_ACCOUNT_MENU_ITEMS.site.label}
                   </Menu.Item>
                   <Menu.Item
-                    color="red"
+                    color="alerta"
                     onClick={() => {
                       void handleLogout().catch(() => undefined);
                     }}

@@ -1,4 +1,4 @@
-import { Alert, Button, Center, Loader, Paper, Stack, Text, Title } from '@mantine/core';
+import { Alert, Button, Center, Loader, Paper, Stack, Text } from '@mantine/core';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   completeEmailCodeExchange,
@@ -8,6 +8,7 @@ import {
 } from '../../lib/auth';
 import { withBasePath } from '../../lib/basePath';
 import { IconAlertCircle, IconCheck } from '../ui/icons';
+import { PageHeader } from '../ui/PageHeader';
 
 interface VerifyEmailPageProps {
   /** Legacy verification token, accepted during the compatibility window. */
@@ -109,9 +110,7 @@ export default function VerifyEmailPage({ token, code }: VerifyEmailPageProps) {
 
         {state === 'success' && (
           <Stack gap="md">
-            <Title order={2} ta="center">
-              Correo verificado
-            </Title>
+            <PageHeader title="Correo verificado" align="center" size="h2" mb={0} />
             <Alert color="exito" icon={<IconCheck size={16} />}>
               Tu cuenta ya está activa. Podés iniciar sesión.
             </Alert>

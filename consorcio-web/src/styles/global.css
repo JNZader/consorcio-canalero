@@ -226,19 +226,19 @@ body {
 
 /* Focus visible mejorado - Alta visibilidad en cualquier fondo */
 :focus-visible {
-  outline: 3px solid var(--mantine-color-blue-5);
+  outline: 3px solid var(--mantine-color-institucional-5);
   outline-offset: 2px;
   box-shadow:
     0 0 0 2px var(--mantine-color-body, white),
-    0 0 0 5px var(--mantine-color-blue-5);
+    0 0 0 5px var(--mantine-color-institucional-5);
 }
 
 /* Focus para modo oscuro */
 [data-mantine-color-scheme="dark"] :focus-visible {
-  outline-color: var(--mantine-color-blue-4);
+  outline-color: var(--mantine-color-institucional-4);
   box-shadow:
     0 0 0 2px var(--mantine-color-dark-7),
-    0 0 0 5px var(--mantine-color-blue-4);
+    0 0 0 5px var(--mantine-color-institucional-4);
 }
 
 /* Texto atenuado y placeholder. gray-6 (#4b5563): 7.6:1 sobre blanco y 7.2:1
@@ -289,21 +289,21 @@ body {
 }
 
 .maplibregl-map .maplibregl-ctrl-attrib a {
-  color: var(--mantine-color-blue-6);
+  color: var(--mantine-color-institucional-6);
   text-decoration-line: underline;
   text-underline-offset: 0.15em;
 }
 
 .maplibregl-map .maplibregl-ctrl-attrib a:hover,
 .maplibregl-map .maplibregl-ctrl-attrib a:focus {
-  color: var(--mantine-color-blue-8);
+  color: var(--mantine-color-institucional-8);
   text-decoration-line: underline;
 }
 
 /* Indicador de campos requeridos */
 .required-field label::after {
   content: " *";
-  color: var(--mantine-color-red-6);
+  color: var(--cc-color-danger);
 }
 
 /* La barra sigue al color del Alert. Una regla roja sobre todo
@@ -412,7 +412,7 @@ body {
 }
 
 .leaflet-control-zoom a:focus {
-  outline: 3px solid var(--mantine-color-blue-5);
+  outline: 3px solid var(--mantine-color-institucional-5);
   outline-offset: 2px;
 }
 

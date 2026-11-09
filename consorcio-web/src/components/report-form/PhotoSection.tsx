@@ -29,7 +29,7 @@ export function PhotoSection({ fotoPreview, onDrop, onRemove }: Readonly<PhotoSe
         <Box pos="absolute" top={8} right={8}>
           <IconButton
             type="button"
-            color="red"
+            color="alerta"
             variant="filled"
             onClick={onRemove}
             aria-label="Eliminar foto adjunta"

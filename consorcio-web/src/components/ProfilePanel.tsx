@@ -23,6 +23,7 @@ import { MyReportsSection } from './profile/MyReportsSection';
 import { MySuggestionsSection } from './profile/MySuggestionsSection';
 import { IconCheck, IconMail, IconPhone, IconUser } from './ui/icons';
 import { LoadingState } from './ui/LoadingState';
+import { PageHeader } from './ui/PageHeader';
 
 interface ProfileFormValues {
   nombre: string;
@@ -167,7 +168,7 @@ function ProfileContent() {
   return (
     <Container size="sm" py="xl">
       <Stack gap="xl">
-        <Title order={1}>Mi Perfil</Title>
+        <PageHeader title="Mi Perfil" mb={0} />
 
         {/* User Info Card */}
         <Card shadow="sm" padding="lg" radius="md" withBorder>

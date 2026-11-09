@@ -62,7 +62,7 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
           <Group justify="space-between" wrap="wrap" gap="md">
             <Group gap="lg" wrap="wrap">
               {result.flood_info && (
-                <Badge color="blue" variant="light" size="lg">
+                <Badge color="institucional" variant="light" size="lg">
                   {result.flood_info.name}
                 </Badge>
               )}
@@ -147,7 +147,7 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
                     {scene.label}
                   </Text>
                   {selectedSceneId === scene.id && (
-                    <Badge color="green" size="sm">
+                    <Badge color="exito" size="sm">
                       activa
                     </Badge>
                   )}
@@ -177,14 +177,14 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
       )}
 
       {selectedImage && (
-        <Paper p="sm" withBorder radius="md" bg="green.0">
+        <Paper p="sm" withBorder radius="md" bg="exito.0">
           <Group justify="space-between">
             <Group gap="xs">
-              <IconCheck size={18} color="var(--mantine-color-green-7)" />
-              <Text size="sm" fw={500} c="green.7">
+              <IconCheck size={18} color="var(--mantine-color-exito-7)" />
+              <Text size="sm" fw={500} c="exito.7">
                 Imagen activa en otras vistas:
               </Text>
-              <Badge variant="light" color="green">
+              <Badge variant="light" color="exito">
                 {selectedImage.sensor} - {selectedImage.target_date}
               </Badge>
               <Text size="sm" c="dimmed">
@@ -193,7 +193,7 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
             </Group>
             <Button
               variant="subtle"
-              color="red"
+              color="alerta"
               size="xs"
               leftSection={<IconX size={14} />}
               onClick={onClearSelectedImage}
@@ -205,21 +205,21 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
       )}
 
       {comparison && (
-        <Paper p="sm" withBorder radius="md" bg="blue.0">
+        <Paper p="sm" withBorder radius="md" bg="institucional.0">
           <Group justify="space-between">
             <Group gap="md">
-              <IconGitCompare size={18} color="var(--mantine-color-blue-7)" />
-              <Text size="sm" fw={500} c="blue.7">
+              <IconGitCompare size={18} color="var(--mantine-color-institucional-7)" />
+              <Text size="sm" fw={500} c="institucional.7">
                 Comparacion activa:
               </Text>
               <Group gap="xs">
-                <Badge variant="light" color="blue">
+                <Badge variant="light" color="institucional">
                   {comparison.left?.target_date || 'Sin seleccionar'}
                 </Badge>
                 <Text size="sm" c="dimmed">
                   vs
                 </Text>
-                <Badge variant="light" color="green">
+                <Badge variant="light" color="exito">
                   {comparison.right?.target_date || 'Sin seleccionar'}
                 </Badge>
               </Group>
@@ -231,7 +231,7 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
             </Group>
             <Button
               variant="subtle"
-              color="red"
+              color="alerta"
               size="xs"
               leftSection={<IconX size={14} />}
               onClick={onClearComparison}

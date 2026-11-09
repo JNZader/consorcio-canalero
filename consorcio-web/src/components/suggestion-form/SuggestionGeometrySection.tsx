@@ -316,7 +316,7 @@ export function SuggestionGeometrySection({
         <Button
           type="button"
           variant="subtle"
-          color="red"
+          color="alerta"
           size="sm"
           className="touch-target-min"
           leftSection={<IconTrash size={16} aria-hidden="true" />}

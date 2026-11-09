@@ -9,7 +9,6 @@ import {
   Paper,
   Stack,
   Text,
-  Title,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import type { ReactNode } from 'react';
@@ -49,6 +48,7 @@ import { useReportFormSubmission } from './report-form/useReportFormSubmission';
 import { useReportLocation } from './report-form/useReportLocation';
 import { LiveRegionProvider, useLiveRegion, VisuallyHidden } from './ui/accessibility';
 import { IconBuildingBridge, IconDroplet, IconFileDescription, IconRoad } from './ui/icons';
+import { PageHeader } from './ui/PageHeader';
 import { ContactVerificationSection } from './verification';
 
 const TIPO_ICONS: Record<string, ReactNode> = {
@@ -272,12 +272,13 @@ function FormularioContenido() {
         </VisuallyHidden>
       )}
 
-      <Title order={2} mb="md">
-        Nuevo Reporte
-      </Title>
-      <Text c="dimmed" mb="xl">
-        Reportá problemas en la red de canales y caminos rurales
-      </Text>
+      <PageHeader
+        title="Nuevo Reporte"
+        subtitle="Reportá problemas en la red de canales y caminos rurales"
+        order={2}
+        size="h2"
+        mb="xl"
+      />
 
       <Box mb="xl">
         <StepHeader

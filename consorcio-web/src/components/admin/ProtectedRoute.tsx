@@ -45,7 +45,7 @@ function UnauthorizedState({
         aria-describedby="protected-route-unauthorized-message"
       >
         <Stack align="center" gap="lg">
-          <ThemeIcon size={64} radius="xl" color="red" variant="light" aria-hidden="true">
+          <ThemeIcon size={64} radius="xl" color="alerta" variant="light" aria-hidden="true">
             <IconLock size={32} />
           </ThemeIcon>
 

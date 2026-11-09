@@ -20,14 +20,14 @@ export function ProximaReunionSection({
       radius="md"
       mb="xl"
       withBorder
-      style={{ borderColor: 'var(--mantine-color-blue-3)' }}
+      style={{ borderColor: 'var(--mantine-color-institucional-3)' }}
     >
       <Group gap="xs" mb="md">
-        <ThemeIcon color="blue" size="md" variant="light">
+        <ThemeIcon color="institucional" size="md" variant="light">
           <IconCalendar size={16} />
         </ThemeIcon>
         <Title order={4}>Temas para Próxima Reunión</Title>
-        <Badge color="blue" variant="light">
+        <Badge color="institucional" variant="light">
           {proximaReunion.length} temas
         </Badge>
       </Group>
@@ -41,7 +41,7 @@ export function ProximaReunionSection({
             tabIndex={0}
             aria-label={`Ver detalle de ${sug.titulo}`}
             style={{
-              background: 'light-dark(var(--mantine-color-blue-0), var(--mantine-color-dark-6))',
+              background: 'light-dark(var(--mantine-color-institucional-0), var(--mantine-color-dark-6))',
               cursor: 'pointer',
             }}
             onClick={() => onViewDetail(sug)}
@@ -83,7 +83,7 @@ export function ProximaReunionSection({
                 </Text>
               </div>
               {sug.fecha_reunion && (
-                <Badge color="blue" variant="outline" size="sm">
+                <Badge color="institucional" variant="outline" size="sm">
                   {formatDate(sug.fecha_reunion)}
                 </Badge>
               )}

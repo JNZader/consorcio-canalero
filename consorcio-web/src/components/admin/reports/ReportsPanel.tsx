@@ -300,13 +300,13 @@ export default function ReportsPanel() {
       <Group justify="flex-end" mb="md">
         <Badge
           size="lg"
-          color="yellow"
+          color="orange"
           variant="light"
           styles={{ label: { color: 'var(--cc-color-warning)' } }}
         >
           {pendingCount} pendientes
         </Badge>
-        <Badge size="lg" color="blue" variant="light">
+        <Badge size="lg" color="institucional" variant="light">
           {inReviewCount} en revision
         </Badge>
       </Group>

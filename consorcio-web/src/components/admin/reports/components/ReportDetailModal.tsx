@@ -222,11 +222,11 @@ export function ReportDetailModal({
               radius="md"
               withBorder
               style={{
-                background: 'light-dark(var(--mantine-color-green-0), var(--mantine-color-dark-5))',
-                borderColor: 'var(--mantine-color-green-4)',
+                background: 'light-dark(var(--mantine-color-exito-0), var(--mantine-color-dark-5))',
+                borderColor: 'var(--mantine-color-exito-4)',
               }}
             >
-              <Text size="sm" fw={600} c="green.7" mb={4}>
+              <Text size="sm" fw={600} c="exito.7" mb={4}>
                 Respuesta pública actual
               </Text>
               <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
@@ -238,7 +238,7 @@ export function ReportDetailModal({
           <Paper
             p="md"
             style={{
-              background: 'light-dark(var(--mantine-color-blue-0), var(--mantine-color-dark-5))',
+              background: 'light-dark(var(--mantine-color-institucional-0), var(--mantine-color-dark-5))',
             }}
             radius="md"
           >
