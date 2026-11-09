@@ -81,9 +81,9 @@ describe('ImageExplorerFloodAnalysis', () => {
     );
 
     await user.type(screen.getByLabelText(/Fecha de crecida/i), '2024-01-10');
-    await user.type(screen.getByLabelText(/Fecha de referencia/i), '2024-01-20');
+    await user.type(screen.getByLabelText(/Fecha sin agua/i), '2024-01-20');
 
-    await user.click(screen.getByRole('button', { name: /Correr detección/i }));
+    await user.click(screen.getByRole('button', { name: /^Detectar inundación$/i }));
 
     await waitFor(() => {
       expect(onSetLeft).toHaveBeenCalled();
@@ -106,6 +106,20 @@ describe('ImageExplorerFloodAnalysis', () => {
     expect(onSetRight.mock.calls[0][0].visualization).toBe('inundacion');
   });
 
+  it('prefills dates from event shortcuts', () => {
+    render(
+      <ImageExplorerFloodAnalysis
+        onSetLeftImage={vi.fn()}
+        onSetRightImage={vi.fn()}
+        initialFloodDate="2015-03-14"
+        initialNormalDate="2015-03-20"
+      />,
+      { wrapper }
+    );
+    expect(screen.getByLabelText(/Fecha de crecida/i)).toHaveValue('2015-03-14');
+    expect(screen.getByLabelText(/Fecha sin agua/i)).toHaveValue('2015-03-20');
+  });
+
   it('blocks when reference is not after flood date', async () => {
     const user = userEvent.setup();
     render(
@@ -114,10 +128,10 @@ describe('ImageExplorerFloodAnalysis', () => {
     );
 
     await user.type(screen.getByLabelText(/Fecha de crecida/i), '2024-01-10');
-    await user.type(screen.getByLabelText(/Fecha de referencia/i), '2024-01-10');
+    await user.type(screen.getByLabelText(/Fecha sin agua/i), '2024-01-10');
 
     expect(screen.getByRole('alert')).toHaveTextContent(/1 día/i);
-    expect(screen.getByRole('button', { name: /Correr detección/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^Detectar inundación$/i })).toBeDisabled();
     expect(apiFetchMock).not.toHaveBeenCalled();
   });
 });

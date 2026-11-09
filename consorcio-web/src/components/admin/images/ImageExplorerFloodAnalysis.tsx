@@ -1,5 +1,5 @@
 /**
- * Operator card: submit GEE flood analysis, poll, push tiles to /mapa comparison.
+ * Tab Detectar: guided GEE flood analysis → comparison tray / mapa.
  */
 import {
   Alert,
@@ -8,6 +8,7 @@ import {
   NativeSelect,
   Paper,
   Stack,
+  Stepper,
   Text,
   TextInput,
   Title,
@@ -33,23 +34,45 @@ type RunState = 'idle' | 'submitting' | 'polling' | 'completed' | 'failed';
 export interface ImageExplorerFloodAnalysisProps {
   onSetLeftImage: (image: SelectedImage) => void;
   onSetRightImage: (image: SelectedImage) => void;
+  /** Prefill from an extreme-event shortcut. */
+  initialFloodDate?: string | null;
+  initialNormalDate?: string | null;
+  /** After a successful pair, parent can jump focus to the publish tray / map CTA. */
+  onPairReady?: () => void;
 }
 
 function toSelected(result: ImageResultLike | null): SelectedImage | null {
   return createSelectedImageFromResult(result);
 }
 
+function methodLabel(m: FloodAnalysisMethod): string {
+  if (m === 'fusion') return 'Fusión (recomendado)';
+  if (m === 'sar_only') return 'Solo radar';
+  return 'Solo óptico';
+}
+
 export function ImageExplorerFloodAnalysis({
   onSetLeftImage,
   onSetRightImage,
+  initialFloodDate = null,
+  initialNormalDate = null,
+  onPairReady,
 }: ImageExplorerFloodAnalysisProps) {
-  const [floodDate, setFloodDate] = useState('');
-  const [normalDate, setNormalDate] = useState('');
+  const [floodDate, setFloodDate] = useState(initialFloodDate ?? '');
+  const [normalDate, setNormalDate] = useState(initialNormalDate ?? '');
   const [method, setMethod] = useState<FloodAnalysisMethod>('fusion');
   const [state, setState] = useState<RunState>('idle');
   const [statusLine, setStatusLine] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (initialFloodDate) setFloodDate(initialFloodDate);
+  }, [initialFloodDate]);
+
+  useEffect(() => {
+    if (initialNormalDate) setNormalDate(initialNormalDate);
+  }, [initialNormalDate]);
 
   useEffect(() => {
     return () => {
@@ -64,6 +87,8 @@ export function ImageExplorerFloodAnalysis({
     !!normalDate &&
     !validationError &&
     (state === 'idle' || state === 'failed' || state === 'completed');
+
+  const activeStep = !floodDate ? 0 : !normalDate || validationError ? 1 : 2;
 
   async function handleRun() {
     const gate = validateFloodAnalysisDates(floodDate, normalDate, method);
@@ -81,18 +106,22 @@ export function ImageExplorerFloodAnalysis({
     setState('submitting');
 
     try {
-      showInfo('Análisis iniciado', 'Detección de inundación encolada en GEE…');
+      showInfo('Detección iniciada', 'Encolada en GEE…');
       const created = await submitFloodAnalysis(
         { startDate: floodDate, endDate: normalDate, method },
         controller.signal
       );
       setState('polling');
-      setStatusLine(`Estado: ${created.estado} (id ${created.id.slice(0, 8)}…)`);
+      setStatusLine('Analizando…');
 
       const done = await pollFloodAnalysisUntilDone(created.id, {
         signal: controller.signal,
         onTick: (tick) => {
-          setStatusLine(`Estado: ${tick.estado} (id ${created.id.slice(0, 8)}…)`);
+          setStatusLine(
+            tick.estado === 'running' || tick.estado === 'pending'
+              ? 'Analizando…'
+              : `Estado: ${tick.estado}`
+          );
         },
       });
 
@@ -100,7 +129,7 @@ export function ImageExplorerFloodAnalysis({
         setState('failed');
         const msg = done.error || 'El análisis falló en el worker.';
         setError(msg);
-        showError('Análisis fallido', msg);
+        showError('Detección fallida', msg);
         return;
       }
 
@@ -113,7 +142,7 @@ export function ImageExplorerFloodAnalysis({
           const normalTile = await fetchSentinel1FloodTile(normalDate, controller.signal);
           left = toSelected(normalTile);
         } catch {
-          // Keep going with flood side only; operator can fill left from calendar.
+          // Keep going with flood side only; operator can fill Antes from Comparar.
         }
       }
 
@@ -124,7 +153,7 @@ export function ImageExplorerFloodAnalysis({
         setState('failed');
         const detail =
           done.resultado?.comparison_error ||
-          'El job terminó sin tiles utilizables. Probá fusión con referencia al menos 1 día después de la crecida.';
+          'El job terminó sin tiles utilizables. Probá fusión con una fecha sin agua al menos 1 día después de la crecida.';
         setError(detail);
         showError('Sin tiles', detail);
         return;
@@ -133,16 +162,17 @@ export function ImageExplorerFloodAnalysis({
       setState('completed');
       const hint =
         sides.source === 'comparison'
-          ? 'Par comparación listo. Abrí /mapa con el slider.'
-          : 'Tile de crecida listo (y referencia SAR si se pudo). Abrí /mapa.';
+          ? 'Par listo. Usá Abrir en mapa en la bandeja.'
+          : 'Tile de crecida listo (y referencia radar si se pudo). Revisá la bandeja.';
       setStatusLine(hint);
-      showSuccess('Análisis listo', hint);
+      showSuccess('Detección lista', hint);
+      onPairReady?.();
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       setState('failed');
       const msg = err instanceof Error ? err.message : 'Error desconocido';
       setError(msg);
-      showError('Análisis fallido', msg);
+      showError('Detección fallida', msg);
     }
   }
 
@@ -154,15 +184,21 @@ export function ImageExplorerFloodAnalysis({
   }
 
   return (
-    <Paper p="md" withBorder radius="md" mt="md">
+    <Paper p="md" withBorder radius="md" data-testid="image-explorer-detect-panel">
       <Stack gap="sm">
         <div>
-          <Title order={5}>Detección de inundación (GEE)</Title>
+          <Title order={5}>Detectar inundación</Title>
           <Text size="xs" c="dimmed">
-            Crecida = start_date, referencia normal = end_date (posterior). Fusión arma el par
-            antes/después en el slider del mapa. Zona fija del consorcio.
+            Elegí el día de la crecida y uno posterior sin agua. La fusión arma el par Antes /
+            Después para el mapa.
           </Text>
         </div>
+
+        <Stepper active={activeStep} size="sm" allowNextStepsSelect={false}>
+          <Stepper.Step label="Crecida" description="Día con agua" />
+          <Stepper.Step label="Referencia" description="Sin agua" />
+          <Stepper.Step label="Método" description="Correr" />
+        </Stepper>
 
         <Group grow align="flex-end" wrap="wrap">
           <TextInput
@@ -173,14 +209,14 @@ export function ImageExplorerFloodAnalysis({
             size="sm"
           />
           <TextInput
-            label="Fecha de referencia (normal)"
+            label="Fecha sin agua (después)"
             type="date"
             value={normalDate}
             onChange={(e) => setNormalDate(e.currentTarget.value)}
             size="sm"
             description={
               floodDate && normalDate && !fusionComparisonReady(floodDate, normalDate)
-                ? 'La referencia tiene que ser al menos 1 día después de la crecida'
+                ? 'Tiene que ser al menos 1 día después de la crecida'
                 : undefined
             }
           />
@@ -190,12 +226,7 @@ export function ImageExplorerFloodAnalysis({
             value={method}
             data={FLOOD_ANALYSIS_METHODS.map((m) => ({
               value: m,
-              label:
-                m === 'fusion'
-                  ? 'Fusión (par comparación)'
-                  : m === 'sar_only'
-                    ? 'Solo SAR'
-                    : 'Solo óptico',
+              label: methodLabel(m),
             }))}
             onChange={(e) => setMethod(e.currentTarget.value as FloodAnalysisMethod)}
           />
@@ -226,7 +257,7 @@ export function ImageExplorerFloodAnalysis({
             disabled={!canSubmit}
             loading={state === 'submitting' || state === 'polling'}
           >
-            {state === 'polling' ? 'Analizando…' : 'Correr detección'}
+            {state === 'polling' ? 'Analizando…' : 'Detectar inundación'}
           </Button>
           {(state === 'submitting' || state === 'polling') && (
             <Button size="sm" variant="default" onClick={handleCancel}>
