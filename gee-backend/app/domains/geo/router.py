@@ -9,8 +9,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.auth.models import User
-from app.core.exceptions import AppException, NotFoundError
+from app.config import settings
+from app.core.exceptions import AppException, NotFoundError, RateLimitExceededError
 from app.core.logging import get_logger
+from app.core.rate_limit import DistributedRateLimiter
 from app.db.session import get_db
 from app.domains.geo.intelligence.router import router as intel_router
 from app.domains.geo.canales_publicacion.router import router as canales_publicacion_router
@@ -102,6 +104,81 @@ gee_router = APIRouter(
     tags=["GEE"],
     dependencies=[Depends(_require_operator())],
 )
+
+
+# ── Per-operator throttle on POST /api/v2/geo/gee/analysis (#713) ────────────
+# Each accepted run publishes a Celery task whose GEE work mints map tiles
+# against the project's METERED quota, so this bounds spend per account, not
+# per IP: the route is operator-only and several operators share an office
+# NAT. It lives on the POST route only — GET /analysis (list) and
+# GET /analysis/{id} (poll) are cheap reads and must stay unthrottled, which
+# is also why the dependency is NOT on ``gee_router`` itself (same isolation
+# argument as the ficha router, JDB-003).
+_gee_analysis_limiter: DistributedRateLimiter | None = None
+
+
+def get_gee_analysis_rate_limiter() -> DistributedRateLimiter:
+    """Own limiter instance, own Redis key namespace for GEE analysis runs.
+
+    Redis-down policy (same as ``router_ficha.get_ficha_rate_limiter``):
+    ``DistributedRateLimiter`` degrades to a per-process in-memory window and
+    logs a warning. It does NOT fail open and does NOT fail the request.
+
+    Degraded ceiling, concretely: the fallback window is per PROCESS, and
+    ``app/server.py`` runs uvicorn with ``workers=2``, so with Redis down the
+    real limit is 2 x ``gee_analysis_rate_limit_requests`` = 20 runs/h per
+    operator, not 10 — and it grows linearly with workers and replicas.
+    Accepted because the limiter is a cost bound, not a security bound: the
+    route is already operator-authenticated, and the GEE work itself is
+    serialized behind the Celery worker pool.
+
+    Why 10/h: one analysis run mints one GEE map per layer involved, so the
+    metered-call count scales with RUNS, not with request volume. A
+    legitimate operator preparing a report re-runs a comparison a handful of
+    times in an hour; 10 covers that with margin while capping the
+    multiplication the >=1d fusion gate (#713) made cheap.
+    """
+    global _gee_analysis_limiter
+    if _gee_analysis_limiter is None:
+        _gee_analysis_limiter = DistributedRateLimiter(
+            redis_url=settings.redis_url,
+            max_requests=settings.gee_analysis_rate_limit_requests,
+            window_seconds=settings.gee_analysis_rate_limit_window,
+            key_prefix="ratelimit:gee_analysis:",
+        )
+    return _gee_analysis_limiter
+
+
+async def enforce_gee_analysis_rate_limit(
+    user: User = Depends(_require_operator()),
+) -> None:
+    """429 ``RATE_LIMIT_EXCEEDED`` per operator BEFORE the run is accepted.
+
+    Reuses the router's operator dependency (``_require_operator()`` returns
+    the same callable, so FastAPI solves it once per request and hands the
+    authenticated ``User`` here) — the limit key is ``operator:{user.id}``,
+    one bucket per ACCOUNT.
+
+    Route-level ``dependencies=[...]``, not a handler parameter: FastAPI
+    solves the route's dependency list before the endpoint's own parameters,
+    so the 429 fires before the body is parsed and before any DB session,
+    repo or Celery outbox row exists. Honors ``settings.rate_limit_disabled``
+    exactly like the ficha limiter.
+    """
+    if settings.rate_limit_disabled:
+        return
+
+    limiter = get_gee_analysis_rate_limiter()
+    permitido, _restantes, reset = await limiter.check(f"operator:{user.id}")
+    if not permitido:
+        raise RateLimitExceededError(
+            message="Límite de corridas de análisis GEE alcanzado. Reintentá más tarde.",
+            retry_after=max(1, int(reset)),
+            # El límite REAL es el del limiter que acaba de denegar — leer el
+            # setting acá divorciaba el 429 de la ventana que realmente corre
+            # (un limiter con budget parcheado en la instancia reportaba el default).
+            limit=limiter.max_requests,
+        )
 
 
 def _lazy_gee_service():
@@ -244,7 +321,16 @@ gee_router.get("/images/{sensor}")(get_satellite_image)
 gee_router.get("/images/historic-floods/{flood_id}")(get_historic_flood_tiles)
 
 
-@gee_router.post("/analysis", response_model=AnalisisGeoResponse, status_code=201)
+@gee_router.post(
+    "/analysis",
+    response_model=AnalisisGeoResponse,
+    status_code=201,
+    # Order of defense: operator auth (router-level dep above) → per-operator
+    # rate limit (here, before the body is parsed) → payload validation → the
+    # handler's DB write + Celery outbox row. Rejecting after the write would
+    # leave a throttled caller still holding a metered run (#713).
+    dependencies=[Depends(enforce_gee_analysis_rate_limit)],
+)
 def submit_gee_analysis(
     payload: AnalisisGeoCreate,
     db: Session = Depends(get_db),

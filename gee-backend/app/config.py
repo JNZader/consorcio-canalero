@@ -84,6 +84,21 @@ class Settings(BaseSettings):
     gee_key_file_path: Optional[str] = None
     gee_service_account_key: Optional[str] = None
     gee_project_id: str = "cc10demayo"
+    # Per-OPERATOR throttle on POST /api/v2/geo/gee/analysis (#713). Every
+    # accepted run publishes a Celery task whose GEE work mints map tiles
+    # (``earthengine.googleapis.com/v1/.../maps``) against the PROJECT's metered
+    # quota, so the knob that bounds spend is how many runs one authenticated
+    # account may start — not the request rate of an IP (operators share an
+    # office NAT). 10 per ROLLING hour (sliding window, not a fixed daily
+    # bucket): enough for a legitimate operator iterating on a report, while
+    # the >=1d fusion gate the UI now animates can no longer be multiplied into
+    # an unbounded metered-call stream by one account.
+    # PER WORKER PROCESS when Redis is down: the limiter degrades to an
+    # in-memory window (it does not fail open) and ``app/server.py`` runs
+    # uvicorn with workers=2 → the real degraded ceiling is 2 x 10 = 20 runs/h
+    # per operator. Same accepted trade-off as ``ficha_rate_limit_requests``.
+    gee_analysis_rate_limit_requests: int = 10
+    gee_analysis_rate_limit_window: int = 3600
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
