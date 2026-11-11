@@ -430,6 +430,55 @@ describe('ReportsPanel', () => {
     });
   });
 
+  it('falls back to the default sort when the URL carries an unknown sort', async () => {
+    // Issue #698: el backend rechaza con 400 cualquier `sort` fuera de
+    // su whitelist; una URL compartida con un valor stale dejaba la
+    // bandeja en error permanente y "Reintentar" re-enviaba lo mismo.
+    window.history.replaceState({}, '', '/?sort=columna_inexistente');
+
+    renderPanel();
+
+    expect(await screen.findByText('Canal desbordado en zona norte')).toBeInTheDocument();
+    expect(reportsApi.getAll).toHaveBeenCalledWith(
+      1,
+      10,
+      undefined,
+      undefined,
+      undefined,
+      'created_at',
+      'desc'
+    );
+    // Sin estado de error: el sort inválido jamás llega a la API.
+    expect(screen.queryByText(/no pudimos cargar las denuncias/i)).not.toBeInTheDocument();
+
+    // La URL se auto-repara en el primer sync: el default se omite de la
+    // query string (convención sort=created_at).
+    await waitFor(() => {
+      expect(window.location.search).not.toContain('sort=');
+    });
+  });
+
+  it('still applies a whitelisted sort parsed from the URL', async () => {
+    // Guarda del caso feliz: `tipo` es la key propia de denuncias (las
+    // sugerencias ordenan por `categoria`) y debe seguir llegando a la
+    // API tal cual viene en la URL.
+    window.history.replaceState({}, '', '/?sort=tipo&order=asc');
+
+    renderPanel();
+
+    expect(await screen.findByText('Canal desbordado en zona norte')).toBeInTheDocument();
+    expect(reportsApi.getAll).toHaveBeenCalledWith(
+      1,
+      10,
+      undefined,
+      undefined,
+      undefined,
+      'tipo',
+      'asc'
+    );
+    expect(window.location.search).toContain('sort=tipo');
+  });
+
   it('shows the error, closes the dialog and keeps the selection when the bulk update rejects', async () => {
     const user = userEvent.setup();
     // Antes del fix, `runBulk` no tenía catch: este rechazo quedaba
