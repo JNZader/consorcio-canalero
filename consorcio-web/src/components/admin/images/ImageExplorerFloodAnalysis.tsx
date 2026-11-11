@@ -141,7 +141,9 @@ export function ImageExplorerFloodAnalysis({
     let left = toSelected(sides.left);
     const right = toSelected(sides.right);
 
-    if (!left && sides.source === 'sar' && referenceNormalDate) {
+    // Sin lado normal, el fallback S1 aplica tanto al job sar puro como al
+    // fallo parcial flood_only (crecida sin normal_rgb) (#710).
+    if (!left && (sides.source === 'sar' || sides.source === 'flood_only') && referenceNormalDate) {
       try {
         const normalTile = await fetchSentinel1FloodTile(referenceNormalDate, controller.signal);
         left = toSelected(normalTile);
@@ -169,13 +171,33 @@ export function ImageExplorerFloodAnalysis({
     }
 
     setState('completed');
-    const hint =
-      sides.source === 'comparison'
-        ? 'Par listo. Usá Abrir en mapa en la bandeja.'
-        : 'Tile de crecida listo (y referencia radar si se pudo). Revisá la bandeja.';
-    setStatusLine(hint);
-    showSuccess('Detección lista', hint);
-    onPairReady?.();
+
+    // sar/optical nunca prometieron un par: el tile de crecida es el entregable.
+    if (sides.source === 'sar' || sides.source === 'optical') {
+      const hint = 'Tile de crecida listo (y referencia radar si se pudo). Revisá la bandeja.';
+      setStatusLine(hint);
+      showSuccess('Detección lista', hint);
+      onPairReady?.();
+      return;
+    }
+
+    if (left && right) {
+      const hint = 'Par listo. Usá Abrir en mapa en la bandeja.';
+      setStatusLine(hint);
+      showSuccess('Detección lista', hint);
+      onPairReady?.();
+      return;
+    }
+
+    // Fallo parcial explícito (#710): el par quedó incompleto y NO se presenta
+    // como éxito. Estado 'completed' (el job terminó y hay al menos un tile
+    // aplicable, y habilita reintentar sin resetear el form) + statusLine y
+    // toast informativo que dicen qué lado falta. El lado ausente no se pisa.
+    const partialHint = right
+      ? 'Comparación incompleta: tile de crecida sin referencia. Cargá el Antes desde Comparar o reintentá.'
+      : 'Comparación incompleta: no se detectó crecida; quedó sólo la referencia sin agua.';
+    setStatusLine(partialHint);
+    showInfo('Comparación incompleta', partialHint);
   }
 
   function handleRunFailure(err: unknown, controller: AbortController) {
@@ -255,8 +277,9 @@ export function ImageExplorerFloodAnalysis({
         <div>
           <Title order={5}>Detectar inundación</Title>
           <Text size="xs" c="dimmed">
-            Elegí el día de la crecida y uno posterior sin agua. La fusión arma el par Antes /
-            Después para el mapa.
+            Elegí el día de la crecida y la fecha sin agua. Solo la fusión necesita la referencia
+            al menos 1 día después (arma el par Antes / Después); radar y óptico aceptan el mismo
+            día.
           </Text>
         </div>
 
@@ -281,7 +304,10 @@ export function ImageExplorerFloodAnalysis({
             onChange={(e) => setNormalDate(e.currentTarget.value)}
             size="sm"
             description={
-              floodDate && normalDate && !fusionComparisonReady(floodDate, normalDate)
+              floodDate &&
+              normalDate &&
+              method === 'fusion' &&
+              !fusionComparisonReady(floodDate, normalDate)
                 ? 'Tiene que ser al menos 1 día después de la crecida'
                 : undefined
             }
