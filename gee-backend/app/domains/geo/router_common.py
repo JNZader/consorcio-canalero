@@ -514,10 +514,12 @@ def _import_zonas_operativas_payload(db: Session, payload: dict) -> dict:
     if not features:
         raise HTTPException(status_code=400, detail="El archivo no contiene subcuencas")
 
-    delete_result = db.execute(delete(ZonaOperativa))
-    replaced_count = int(getattr(delete_result, "rowcount", 0) or 0)
-
-    imported_count = 0
+    # Validate and build every row BEFORE deleting the existing zonas: an
+    # invalid feature must fail with a 400 while the current table remains
+    # untouched, even if the caller never rolls back the transaction
+    # (issue #699: the delete used to run first, so a mid-loop validation
+    # error left the zonas already deleted in the session).
+    rows: list[ZonaOperativa] = []
     cuencas: Counter[str] = Counter()
     for index, feature in enumerate(features, start=1):
         geometry = feature.get("geometry")
@@ -537,7 +539,7 @@ def _import_zonas_operativas_payload(db: Session, payload: dict) -> dict:
         superficie_ha = float(props.get("superficie_ha") or 0.0)
         geom_wkt = _normalize_polygon_wkt(geometry)
 
-        db.add(
+        rows.append(
             ZonaOperativa(
                 id=uuid.UUID(str(props["id"])) if props.get("id") else uuid.uuid4(),
                 nombre=nombre,
@@ -546,11 +548,16 @@ def _import_zonas_operativas_payload(db: Session, payload: dict) -> dict:
                 superficie_ha=superficie_ha,
             )
         )
-        imported_count += 1
         cuencas[cuenca] += 1
 
+    delete_result = db.execute(delete(ZonaOperativa))
+    replaced_count = int(getattr(delete_result, "rowcount", 0) or 0)
+
+    for row in rows:
+        db.add(row)
+
     return {
-        "imported_count": imported_count,
+        "imported_count": len(rows),
         "replaced_count": replaced_count,
         "cuencas": dict(cuencas),
     }
