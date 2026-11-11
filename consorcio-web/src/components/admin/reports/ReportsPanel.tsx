@@ -196,6 +196,15 @@ export default function ReportsPanel() {
       setSelectedIds([]);
       setBulkOpen(false);
       await loadReports();
+    } catch (error) {
+      // Sin este catch el rechazo de `bulkUpdate` quedaba unhandled: sin
+      // toast, sin announce y con el diálogo colgado en loading.
+      logger.error('Error running bulk update:', error);
+      showError(erroresUi.actualizarDenuncia.titulo, erroresUi.actualizarDenuncia.detalle);
+      announceRef.current(textoError(erroresUi.actualizarDenuncia));
+      // Se cierra el diálogo, pero la selección queda intacta para que
+      // el operador pueda reintentar sin volver a tildar filas.
+      setBulkOpen(false);
     } finally {
       setBulkRunning(false);
     }

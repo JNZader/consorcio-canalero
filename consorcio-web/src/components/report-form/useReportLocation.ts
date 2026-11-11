@@ -23,9 +23,19 @@ export function useReportLocation({ announce, form }: Readonly<UseReportLocation
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('ubicacion') !== 'elegida') return;
-    const lat = Number(params.get('lat'));
-    const lng = Number(params.get('lng'));
+    // `params.get` devuelve null si la key no está y `Number(null) === 0`,
+    // que SÍ pasa `Number.isFinite` — sin este guard una URL con
+    // `ubicacion=elegida` pero sin lat/lng prefilleaba Null Island
+    // {lat: 0, lng: 0}. El string vacío tampoco es una coordenada.
+    const latRaw = params.get('lat');
+    const lngRaw = params.get('lng');
+    if (!latRaw || !lngRaw) return;
+    const lat = Number(latRaw);
+    const lng = Number(lngRaw);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    // Coordenada fuera de rango = URL corrupta; mejor no prefilar nada
+    // (lat=999 no existe en la Tierra).
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return;
     setUbicacion({ lat, lng });
     setMostrarInputManual(true);
   }, []);

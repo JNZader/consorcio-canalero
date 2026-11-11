@@ -374,6 +374,9 @@ function AssigneeField({
       value={value}
       clearable
       onChange={(next) => {
+        // Arranca un intento nuevo: el error del intento anterior no
+        // tiene por qué seguir en pantalla.
+        setError(null);
         const previous = value;
         setValue(next);
         void apiFetch(`/denuncias/${denunciaId}`, {

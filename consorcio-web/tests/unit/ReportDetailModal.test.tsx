@@ -124,4 +124,84 @@ describe('ReportDetailModal (ADM-05)', () => {
       expect.objectContaining({ method: 'PATCH' })
     );
   });
+
+  it('reverts the select to the previous persisted value when the PATCH fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce([
+        { id: 'op-7', nombre: 'Romina Torres', email: 'romina@consorcio.gob.ar' },
+        { id: 'op-9', nombre: 'Marcos Diaz', email: 'marcos@consorcio.gob.ar' },
+      ] as never)
+      .mockRejectedValueOnce(new Error('fallo de red') as never);
+
+    renderModal({ ...sampleReport, asignado_a: 'op-7' });
+
+    const select = await screen.findByRole('combobox', { name: /Asignar operador/i });
+    await user.click(select);
+    // En CI el fetch de operadores resuelve más lento que el timeout
+    // default (1s) del findByRole bajo coverage — esperar explícitamente.
+    await user.click(
+      await screen.findByRole('option', { name: /Marcos Diaz/i }, { timeout: 5000 })
+    );
+
+    // El PATCH rechazó: el select NO puede seguir mostrando una asignación
+    // que nunca llegó al backend — vuelve al asignado persistido (op-7).
+    await waitFor(() => {
+      expect(screen.getByText('No se pudo guardar la asignación')).toBeInTheDocument();
+    });
+    expect(select).toHaveValue('Romina Torres (romina@consorcio.gob.ar)');
+  });
+
+  it('clears the stale error when a retry persists', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce([
+        { id: 'op-9', nombre: 'Marcos Diaz', email: 'marcos@consorcio.gob.ar' },
+      ] as never)
+      .mockRejectedValueOnce(new Error('fallo de red') as never)
+      .mockResolvedValueOnce({} as never);
+
+    const onAssigneeChange = vi.fn();
+    render(
+      <MantineProvider env="test">
+        <ReportDetailModal
+          opened
+          onClose={vi.fn()}
+          selectedReport={{ ...sampleReport, asignado_a: null } as never}
+          history={[]}
+          loadingHistory={false}
+          newStatus="pendiente"
+          setNewStatus={vi.fn()}
+          publicComment=""
+          setPublicComment={vi.fn()}
+          adminNotes=""
+          setAdminNotes={vi.fn()}
+          onUpdate={vi.fn()}
+          updating={false}
+          onAssigneeChange={onAssigneeChange}
+        />
+      </MantineProvider>
+    );
+
+    const select = await screen.findByRole('combobox', { name: /Asignar operador/i });
+    // Primer intento: falla y deja el error en pantalla.
+    await user.click(select);
+    await user.click(
+      await screen.findByRole('option', { name: /Marcos Diaz/i }, { timeout: 5000 })
+    );
+    await waitFor(() => {
+      expect(screen.getByText('No se pudo guardar la asignación')).toBeInTheDocument();
+    });
+
+    // Reintento con la misma elección: arranca limpiando el error y, al
+    // persistir, el error ya no está y el padre queda notificado.
+    await user.click(select);
+    await user.click(
+      await screen.findByRole('option', { name: /Marcos Diaz/i }, { timeout: 5000 })
+    );
+    await waitFor(() => {
+      expect(onAssigneeChange).toHaveBeenCalledWith('rep-101', 'op-9');
+    });
+    expect(screen.queryByText('No se pudo guardar la asignación')).not.toBeInTheDocument();
+  });
 });
