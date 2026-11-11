@@ -29,9 +29,7 @@ def _seed_zona(db: Session, nombre: str, cuenca: str = "preexistente") -> ZonaOp
         nombre=nombre,
         cuenca=cuenca,
         superficie_ha=100.0,
-        geometria=WKTElement(
-            "POLYGON((-62 -32, -62 -33, -61 -33, -61 -32, -62 -32))", srid=4326
-        ),
+        geometria=WKTElement("POLYGON((-62 -32, -62 -33, -61 -33, -61 -32, -62 -32))", srid=4326),
     )
     db.add(zona)
     db.flush()
