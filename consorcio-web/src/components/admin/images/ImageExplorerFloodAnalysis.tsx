@@ -21,7 +21,6 @@ import {
   type FloodAnalysisMethod,
   fetchSentinel1FloodTile,
   floodAnalysisErrorCopy,
-  fusionComparisonReady,
   isAuthError,
   pickFloodComparisonSides,
   pollFloodAnalysisUntilDone,
@@ -337,14 +336,9 @@ export function ImageExplorerFloodAnalysis({
             value={normalDate}
             onChange={(e) => setNormalDate(e.currentTarget.value)}
             size="sm"
-            description={
-              floodDate &&
-              normalDate &&
-              method === 'fusion' &&
-              !fusionComparisonReady(floodDate, normalDate)
-                ? 'Tiene que ser al menos 1 día después de la crecida'
-                : undefined
-            }
+            // Hint neutral de formato (#714): la regla de span >=1 día se muestra
+            // SOLO en la Alert amarilla (FUSION_MIN_SPAN_ERROR via validador).
+            description="Formato AAAA-MM-DD"
           />
           <NativeSelect
             label="Método"

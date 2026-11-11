@@ -22,3 +22,9 @@ Objective: operator can submit `POST /api/v2/geo/gee/analysis` (tipo flood), pol
 - **L1** (2026-11-09): User asked to productize SAR flood E2E after audit PARTIAL (API live, zero FE callers to `/gee/analysis`). Spike: form → poll → bind slider. No Lidar.
 - **L2** (2026-11-09): Implemented. Vitest 10/10. Browser E2E GEE job deferred to operator (login + GEE quota).
 - **L3** (2026-11-09): User: fusion span >5d too strict for marked day-to-day deltas → backend+FE gate lowered to >=1 day.
+
+## Seguimiento (2026-11-11)
+
+- El gate `>= 1` día quedó como decisión de producto documentada en L3 (el span >5d descartaba deltas día a día reales); la regla vive en `validateFloodAnalysisDates` con copy única (`FUSION_MIN_SPAN_ERROR`).
+- La validez del span óptico de 1 día para detectar crecida quedó como seguimiento abierto (contexto GEE, ref issue #713).
+- Los fixes derivados de esta UI viven en #700-#719; cerrados en esta ola: #709, #710, #711 y #712 (re-attach al job, par parcial, higiene y superficie de errores).

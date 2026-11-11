@@ -12,7 +12,8 @@ import { apiFetch, GEE_TIMEOUT } from './core';
 export const FLOOD_ANALYSIS_METHODS = ['fusion', 'sar_only', 'optical_only'] as const;
 export type FloodAnalysisMethod = (typeof FLOOD_ANALYSIS_METHODS)[number];
 
-export type AnalisisGeoEstado = 'pending' | 'running' | 'completed' | 'failed' | string;
+// `(string & {})`: `| string` colapsaría la unión entera (sin autocomplete/exhaustividad); así igual entran estados nuevos del backend.
+export type AnalisisGeoEstado = 'pending' | 'running' | 'completed' | 'failed' | (string & {});
 
 export interface AnalisisGeoResponse {
   id: string;
@@ -52,6 +53,14 @@ export interface FloodAnalysisSubmitInput {
 /** Minimum day span for backend fusion comparison (end - start >= 1). */
 export const FUSION_COMPARISON_MIN_SPAN_DAYS = 1;
 
+/**
+ * Copy única de la regla de span mínimo (#714): el validador la devuelve y la
+ * Alert amarilla de la card Detectar es su única superficie visible — el hint
+ * del input es sólo de formato, nunca un segundo mensajito de la misma regla.
+ */
+export const FUSION_MIN_SPAN_ERROR =
+  'Para fusión, la fecha sin agua tiene que ser al menos 1 día después de la crecida.';
+
 export function daySpanInclusiveStartExclusiveEnd(
   startDate: string,
   endDate: string
@@ -81,7 +90,7 @@ export function validateFloodAnalysisDates(
   // gate only guards the fusion comparison branch. sar_only / optical_only run
   // with any span, including same-day, so the min-span error is fusion-only.
   if (method === 'fusion' && span < FUSION_COMPARISON_MIN_SPAN_DAYS) {
-    return 'Para fusión, la fecha sin agua tiene que ser al menos 1 día después de la crecida.';
+    return FUSION_MIN_SPAN_ERROR;
   }
   // Sanity floor for every method: a reference date BEFORE the flood makes no
   // sense (the input label says "después") and sends the backend an inverted
