@@ -163,6 +163,127 @@ class TestBulkEndpoint:
         assert conflict.status_code == 409
 
 
+class TestBulkAtomicity:
+    """Issue #696 (part 1): a mid-batch non-HTTP failure must leave NOTHING
+    applied and write no receipt — all-or-nothing — while the error still
+    surfaces as a 500 exactly as before. Before the fix each item committed
+    inside ``update()``, so a SQLAlchemyError (outbox savepoint, dropped
+    connection, DataError) escaping the loop kept earlier items applied
+    with no receipt, and a retry with the same key re-ran everything."""
+
+    def test_non_http_error_mid_batch_applies_nothing(
+        self, app_client, seeded, db_session_factory, monkeypatch
+    ):
+        from sqlalchemy import select
+        from sqlalchemy.exc import SQLAlchemyError
+
+        from app.domains.denuncias import notify as notify_module
+        from app.domains.denuncias.models import DenunciaBulkReceipt
+
+        app, _client = app_client
+        operator_id, ids = seeded
+        _as_operator(app, operator_id)
+
+        # The service imports maybe_enqueue_status_email at call time, so
+        # patching the module attribute is the seam: raise a generic
+        # SQLAlchemyError on the SECOND item's update (first item already
+        # flushed, batch half-way through).
+        real_enqueue = notify_module.maybe_enqueue_status_email
+        calls = {"n": 0}
+
+        def flaky_enqueue(db, denuncia, *, became_attended):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise SQLAlchemyError("boom mid-batch")
+            return real_enqueue(db, denuncia, became_attended=became_attended)
+
+        monkeypatch.setattr(notify_module, "maybe_enqueue_status_email", flaky_enqueue)
+
+        key = f"key-{uuid.uuid4().hex[:12]}"
+        quiet_client = TestClient(app, raise_server_exceptions=False)
+        quiet_client.headers.update({"Host": "localhost"})
+        response = quiet_client.post(
+            "/api/v2/denuncias/bulk",
+            json={
+                "ids": [str(i) for i in ids],
+                "estado": "en_revision",
+                "idempotency_key": key,
+            },
+        )
+        # The error propagates as today: unhandled → 500.
+        assert response.status_code == 500
+        assert calls["n"] == 2
+
+        # All-or-nothing: every denuncia is still pendiente (item 1's flush
+        # was rolled back with the batch savepoint) and no receipt exists,
+        # so a retry with the same key starts from a clean slate.
+        session = db_session_factory()
+        try:
+            estados = (
+                session.execute(select(Denuncia.estado).where(Denuncia.id.in_(ids))).scalars().all()
+            )
+            assert len(estados) == 3
+            assert all(e == EstadoDenuncia.PENDIENTE for e in estados)
+            receipts = (
+                session.execute(
+                    select(DenunciaBulkReceipt.idempotency_key).where(
+                        DenunciaBulkReceipt.idempotency_key == key
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert receipts == []
+        finally:
+            session.close()
+
+    def test_retry_same_key_after_mid_batch_failure_applies_full_batch(
+        self, app_client, seeded, monkeypatch
+    ):
+        from sqlalchemy.exc import SQLAlchemyError
+
+        from app.domains.denuncias import notify as notify_module
+
+        app, client = app_client
+        operator_id, ids = seeded
+        _as_operator(app, operator_id)
+
+        real_enqueue = notify_module.maybe_enqueue_status_email
+        calls = {"n": 0}
+
+        # Fails once, on the second item of the FIRST attempt (item 1
+        # already flushed — the half-applied-batch scenario). The retry's
+        # calls land on 3-5 and pass through.
+        def flaky_once(db, denuncia, *, became_attended):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise SQLAlchemyError("boom mid-batch")
+            return real_enqueue(db, denuncia, became_attended=became_attended)
+
+        monkeypatch.setattr(notify_module, "maybe_enqueue_status_email", flaky_once)
+
+        key = f"key-{uuid.uuid4().hex[:12]}"
+        payload = {
+            "ids": [str(i) for i in ids],
+            "estado": "en_revision",
+            "idempotency_key": key,
+        }
+
+        quiet_client = TestClient(app, raise_server_exceptions=False)
+        quiet_client.headers.update({"Host": "localhost"})
+        failed = quiet_client.post("/api/v2/denuncias/bulk", json=payload)
+        assert failed.status_code == 500
+
+        # Retry with the SAME key: nothing was applied and no receipt was
+        # written by the failed attempt, so the batch runs clean end-to-end
+        # and the receipt finally exists.
+        retried = client.post("/api/v2/denuncias/bulk", json=payload)
+        assert retried.status_code == 200
+        rows = retried.json()["resultados"]
+        assert len(rows) == 3
+        assert all(row["ok"] for row in rows)
+
+
 class TestSortParameter:
     def test_sort_by_estado_returns_200(self, app_client, seeded):
         app, client = app_client

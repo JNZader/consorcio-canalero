@@ -156,7 +156,27 @@ class DenunciaService:
     ) -> Denuncia:
         """
         Update estado / respuesta, validating state transitions
-        and recording changes in historial.
+        and recording changes in historial. Commits here-and-now
+        (single-item PATCH path).
+        """
+        updated = self._apply_update(db, denuncia_id, data, operator_id=operator_id)
+        db.commit()
+        db.refresh(updated)
+        return updated
+
+    def _apply_update(
+        self,
+        db: Session,
+        denuncia_id: uuid.UUID,
+        data: DenunciaUpdate,
+        operator_id: uuid.UUID,
+    ) -> Denuncia:
+        """
+        Flush-only core of ``update`` — the caller owns the commit.
+
+        ``bulk_update`` reuses this so a whole batch (plus its receipt) can
+        commit once at the end; anything raised here leaves the session's
+        transaction exactly as the caller's savepoint policy decides.
         """
         denuncia = self.get_by_id(db, denuncia_id)
         previous_estado = denuncia.estado
@@ -195,8 +215,6 @@ class DenunciaService:
         from app.domains.denuncias.notify import maybe_enqueue_status_email
 
         maybe_enqueue_status_email(db, updated, became_attended=attended)
-        db.commit()
-        db.refresh(updated)
         return updated
 
     def _validate_assignee(self, db: Session, data: DenunciaUpdate) -> None:
@@ -220,6 +238,23 @@ class DenunciaService:
         idempotency_key: str,
         operator_id: uuid.UUID,
     ) -> list[dict]:
+        """
+        Apply one estado change to many denuncias — all-or-nothing.
+
+        Semantics (issue #696, parte 1): the whole batch flushes inside a
+        savepoint and commits ONCE at the end, together with the
+        ``DenunciaBulkReceipt`` row. Items and receipt share a single
+        transaction, so a mid-batch non-HTTP failure (SQLAlchemyError from
+        the outbox savepoint, a dropped connection, DataError) rolls the
+        batch savepoint back and propagates: NOTHING stays applied, no
+        receipt is written, and the route answers 500. Retrying with the
+        same idempotency key starts from a clean slate.
+
+        Expected per-item failures (HTTPException: 404 unknown id, 400
+        invalid transition) do NOT abort the batch — each item runs in its
+        own savepoint, only that item is undone, and the receipt records
+        the per-item error.
+        """
         from sqlalchemy import select
 
         from app.domains.denuncias.models import DenunciaBulkReceipt
@@ -241,24 +276,35 @@ class DenunciaService:
             return list(existing.resultado)
 
         resultados: list[dict] = []
-        for denuncia_id in ids:
-            try:
-                current = self.get_by_id(db, denuncia_id)
-                if current.estado == estado:
-                    resultados.append({"id": str(denuncia_id), "ok": True, "error": None})
-                    continue
-                self.update(
-                    db,
-                    denuncia_id,
-                    DenunciaUpdate(estado=estado, comentario=comentario),
-                    operator_id=operator_id,
-                )
-                resultados.append({"id": str(denuncia_id), "ok": True, "error": None})
-            except HTTPException as exc:
-                db.rollback()
-                detail = exc.detail if isinstance(exc.detail, str) else "No se pudo actualizar"
-                resultados.append({"id": str(denuncia_id), "ok": False, "error": detail})
+        # Batch savepoint: on ANY non-HTTP escape the context manager rolls
+        # back to here, discarding every flushed item — no half-applied
+        # batch, no receipt. (The old loop committed per item inside
+        # ``update()``, so a mid-batch SQLAlchemyError left earlier items
+        # applied with no receipt at all.)
+        with db.begin_nested():
+            for denuncia_id in ids:
+                # Per-item savepoint: an expected HTTPException (404/400)
+                # undoes only this item's partial flushes and the batch
+                # keeps going. Replaces the old session-wide ``db.rollback()``,
+                # which here would also wipe the already-flushed items.
+                try:
+                    with db.begin_nested():
+                        current = self.get_by_id(db, denuncia_id)
+                        if current.estado == estado:
+                            resultados.append({"id": str(denuncia_id), "ok": True, "error": None})
+                            continue
+                        self._apply_update(
+                            db,
+                            denuncia_id,
+                            DenunciaUpdate(estado=estado, comentario=comentario),
+                            operator_id=operator_id,
+                        )
+                        resultados.append({"id": str(denuncia_id), "ok": True, "error": None})
+                except HTTPException as exc:
+                    detail = exc.detail if isinstance(exc.detail, str) else "No se pudo actualizar"
+                    resultados.append({"id": str(denuncia_id), "ok": False, "error": detail})
 
+        # Single commit: the flushed batch and the receipt land atomically.
         receipt = DenunciaBulkReceipt(
             id=uuid.uuid4(),
             idempotency_key=idempotency_key,
