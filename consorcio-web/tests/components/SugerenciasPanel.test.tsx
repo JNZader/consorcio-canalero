@@ -339,4 +339,49 @@ describe('SugerenciasPanel', () => {
     });
     expect(window.location.search).toContain('sort=estado');
   });
+
+  it('falls back to the default sort when the URL carries an unknown sort', async () => {
+    // Issue #698: el backend rechaza con 400 cualquier `sort` fuera de
+    // su whitelist (incluido `tipo`, válido solo para denuncias); una
+    // URL compartida con un valor stale dejaba la bandeja en error.
+    window.history.replaceState({}, '', '/?sort=columna_inexistente');
+
+    renderPanel();
+
+    expect(await screen.findByText('Limpiar desagues secundarios')).toBeInTheDocument();
+    expect(sugerenciasApi.getAll).toHaveBeenCalledWith({
+      page: 1,
+      limit: 10,
+      estado: undefined,
+      tipo: undefined,
+      sort: 'created_at',
+      order: 'desc',
+    });
+    // Sin estado de error: el sort inválido jamás llega a la API.
+    expect(screen.queryByText(/no pudimos cargar las sugerencias/i)).not.toBeInTheDocument();
+
+    // La URL se auto-repara en el primer sync (convención sort=created_at).
+    await waitFor(() => {
+      expect(window.location.search).not.toContain('sort=');
+    });
+  });
+
+  it('still applies a whitelisted sort parsed from the URL', async () => {
+    // Guarda del caso feliz: `categoria` es la key propia de sugerencias
+    // (las denuncias ordenan por `tipo`) y debe seguir llegando a la API.
+    window.history.replaceState({}, '', '/?sort=categoria&order=asc');
+
+    renderPanel();
+
+    expect(await screen.findByText('Limpiar desagues secundarios')).toBeInTheDocument();
+    expect(sugerenciasApi.getAll).toHaveBeenCalledWith({
+      page: 1,
+      limit: 10,
+      estado: undefined,
+      tipo: undefined,
+      sort: 'categoria',
+      order: 'asc',
+    });
+    expect(window.location.search).toContain('sort=categoria');
+  });
 });

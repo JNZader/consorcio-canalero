@@ -9,6 +9,7 @@ import { mapColorTokens } from '../../../lib/mapColorTokens';
 import { showError, showInfo, showSuccess } from '../../../lib/notifications';
 import { useLiveRegion } from '../../ui/accessibility';
 import { IconBuilding, IconCalendar, IconCheck, IconClock, IconUsers } from '../../ui/icons';
+import { SUGERENCIAS_SORT_KEYS, resolveBandejaSort } from '../bandejaSort';
 import { ProximaReunionSection } from './components/ProximaReunionSection';
 import { StatsCard } from './components/StatsCard';
 import { SugerenciasFilters } from './components/SugerenciasFilters';
@@ -35,7 +36,10 @@ function readSugerenciaQuery() {
     estado: params.get('estado'),
     tipo: params.get('tipo'),
     page: Number.isFinite(page) && page > 0 ? page : 1,
-    sort: params.get('sort') || 'created_at',
+    // Sort fuera de la whitelist de la bandeja → default del panel: el
+    // backend responde 400 para cualquier `sort` que no conoce, y una
+    // URL compartida con un valor stale dejaba la bandeja en error.
+    sort: resolveBandejaSort(params.get('sort'), SUGERENCIAS_SORT_KEYS),
     // Cualquier valor no reconocido cae en el default del backend.
     order: params.get('order') === 'asc' ? ('asc' as const) : ('desc' as const),
   };
