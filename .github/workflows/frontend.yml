@@ -396,25 +396,27 @@ jobs:
     name: Accessibility matrix (Playwright)
     if: ${{ (github.base_ref == 'main' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
-    # 20 -> 40. En el run 41487009227 (ubuntu-26.04) `playwright install
-    # --with-deps` de chromium, firefox y webkit tardó 17 min. La matriz
-    # terminó en 3.1 min con 92 passed y el techo de 20 min canceló el step
-    # en ese instante, así que Frontend CI vio `cancelled` y no un fallo de
-    # axe. El margen cubre una instalación en frío más la matriz.
-    timeout-minutes: 40
+    # Mismo container que el job visual: los tres browsers vienen horneados
+    # en la imagen y NO hay descarga del CDN de Playwright. El 2026-11-11 el
+    # `playwright install --with-deps` se colgó dos corridas seguidas hasta
+    # el techo de 40 min (runs 43037849357/43040910204) con Frontend CI
+    # viendo `cancelled` — el CDN no es una dependencia confiable en el
+    # camino crítico. El tag debe seguir la versión de @playwright/test del
+    # package-lock, igual que en el job visual.
+    container:
+      image: mcr.microsoft.com/playwright:v1.65.0-noble
+      options: --ipc=host
+    timeout-minutes: 20
     needs: [changes, typecheck, smoke]
+    env:
+      CI: '1'
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '26.13.0'
-          cache: 'npm'
-          cache-dependency-path: consorcio-web/package-lock.json
-      - run: npm ci --no-audit --no-fund
-      - name: Install locked Playwright browsers
-        run: npx playwright install --with-deps chromium firefox webkit
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
       - name: Run accessibility matrix
-        run: CI=1 npm run test:a11y
+        run: npm run test:a11y
       - name: Upload accessibility report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
