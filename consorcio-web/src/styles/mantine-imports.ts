@@ -67,6 +67,7 @@ import '@mantine/core/styles/SimpleGrid.css';
 import '@mantine/core/styles/Skeleton.css';
 import '@mantine/core/styles/Slider.css';
 import '@mantine/core/styles/Stack.css';
+import '@mantine/core/styles/Stepper.css';
 import '@mantine/core/styles/Switch.css';
 import '@mantine/core/styles/Table.css';
 import '@mantine/core/styles/Tabs.css';

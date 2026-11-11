@@ -14,6 +14,7 @@ import {
   defaultVariantColorsResolver,
   type VariantColorsResolver,
 } from '@mantine/core';
+import type { CSSProperties } from 'react';
 import { aboveBreakpoint, belowBreakpoint, breakpoints } from './breakpoints';
 import { Z_INDEX, Z_INDEX_VAR } from './zIndex';
 
@@ -88,7 +89,6 @@ export const mapColorTokens = {
   h1ABC9C: '#1ABC9C',
   h1b5e20: '#1b5e20',
   h1c7ed6: '#1c7ed6',
-  h1D4ED8: '#1D4ED8',
   h1d4ed8: '#1d4ed8',
   h1d91c0: '#1d91c0',
   h1E3A8A: '#1E3A8A',
@@ -98,10 +98,8 @@ export const mapColorTokens = {
   h2166ac: '#2166ac',
   h2171b5: '#2171b5',
   h2196F3: '#2196F3',
-  h22C55E: '#22C55E',
   h22c55e: '#22c55e',
   h2563eb: '#2563eb',
-  h2563EB: '#2563EB',
   h27AE60: '#27AE60',
   h2b83ba: '#2b83ba',
   h2b8cbe: '#2b8cbe',
@@ -114,7 +112,6 @@ export const mapColorTokens = {
   h3498DB: '#3498DB',
   h34A853: '#34A853',
   h3b82f6: '#3b82f6',
-  h3B82F6: '#3B82F6',
   h41b6c4: '#41b6c4',
   h4285F4: '#4285F4',
   h42A5F5: '#42A5F5',
@@ -138,7 +135,6 @@ export const mapColorTokens = {
   h87CEEB: '#87CEEB',
   h888888: '#888888',
   h8b5cf6: '#8b5cf6',
-  h8B5CF6: '#8B5CF6',
   h8d6e63: '#8d6e63',
   h94a3b8: '#94a3b8',
   h991B1B: '#991B1B',
@@ -177,7 +173,6 @@ export const mapColorTokens = {
   hd95f0e: '#d95f0e',
   hd9f0a3: '#d9f0a3',
   hdc2626: '#dc2626',
-  hDC2626: '#DC2626',
   hDCFCE7: '#DCFCE7',
   hddd6fe: '#ddd6fe',
   he03131: '#e03131',
@@ -204,7 +199,6 @@ export const mapColorTokens = {
   hf7f7f7: '#f7f7f7',
   hf7fbff: '#f7fbff',
   hf97316: '#f97316',
-  hF97316: '#F97316',
   hf9a825: '#f9a825',
   hfacc15: '#facc15',
   hfb8c00: '#fb8c00',
@@ -214,7 +208,6 @@ export const mapColorTokens = {
   hFCD34D: '#FCD34D',
   hfd7e14: '#fd7e14',
   hfd8d3c: '#fd8d3c',
-  hFD8D3C: '#FD8D3C',
   hfdae61: '#fdae61',
   hfdbe85: '#fdbe85',
   hfddbc7: '#fddbc7',
@@ -237,7 +230,6 @@ export const mapColorTokens = {
   hffffcc: '#ffffcc',
   hffffd4: '#ffffd4',
   hffffff: '#ffffff',
-  hFFFFFF: '#FFFFFF',
   hffffff55: '#ffffff55',
 } as const;
 
@@ -254,10 +246,13 @@ export function mapColorVar(token: MapColorToken): `var(--cc-map-${string})` {
 }
 
 /**
- * Cromo del mapa que sigue a Río limpio y al oscuro.
- * Las rampas científicas no: `--cc-map-<hex>` vale igual en los dos esquemas.
+ * Cromo flotante sobre el mapa (pills, rótulos, paneles).
+ * Superficie = scrim APRHI on-imagery (`--cc-overlay-scrim`); no sigue el
+ * esquema claro/oscuro de la app. Las rampas científicas (`--cc-map-<hex>`)
+ * siguen intactas.
  */
 export const mapChromeVars = {
+  chromeSurface: 'var(--cc-map-chrome-surface)',
   labelSurface: 'var(--cc-map-label-surface)',
   labelText: 'var(--cc-map-label-text)',
   labelBorder: 'var(--cc-map-label-border)',
@@ -265,6 +260,20 @@ export const mapChromeVars = {
   profileSurface: 'var(--cc-map-profile-surface)',
   profileText: 'var(--cc-map-profile-text)',
 } as const;
+
+/** Fondo glass on-imagery para style props (misma fuente que el CSS del mapa). */
+export const MAP_CHROME_SURFACE = mapChromeVars.chromeSurface;
+export const MAP_CHROME_BLUR = 'blur(var(--cc-on-imagery-blur))';
+
+/** Style bag for floating map chrome (panels, legends, hazard sheet). */
+export const mapOnImageryStyle = {
+  background: MAP_CHROME_SURFACE,
+  backdropFilter: MAP_CHROME_BLUR,
+  color: 'var(--cc-on-imagery-fg)',
+  // Mantine Text `c="dimmed"` / default text resolve through these.
+  '--mantine-color-text': 'var(--cc-on-imagery-fg)',
+  '--mantine-color-dimmed': 'var(--cc-on-imagery-fg-muted)',
+} as CSSProperties;
 
 const SCALE = ['xs', 'sm', 'md', 'lg', 'xl'] as const;
 const HEADINGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] as const;
@@ -610,6 +619,8 @@ export const cssVariablesResolver: CSSVariablesResolver = (theme) => {
   const variables: Record<`--${string}`, string> = {
     '--cc-color-primary': 'var(--mantine-color-institucional-5)',
     '--cc-color-wordmark': 'var(--mantine-color-institucional-7)',
+    '--cc-color-brand-deep': 'var(--mantine-color-institucional-9)',
+    '--cc-color-brand-edge': 'var(--mantine-color-institucional-7)',
     '--cc-color-surface': 'var(--mantine-color-body)',
     '--cc-color-text': 'var(--mantine-color-text)',
     '--cc-color-text-muted': 'var(--mantine-color-dimmed)',
@@ -619,6 +630,14 @@ export const cssVariablesResolver: CSSVariablesResolver = (theme) => {
     '--cc-touch-min': String(theme.other.touchMin ?? TOUCH_MIN),
     '--cc-breakpoint-sm-max': belowBreakpoint('sm'),
     '--cc-breakpoint-md-above': aboveBreakpoint('md'),
+    // APRHI portal on-imagery glass (aprhi.gob.ar CTA overlays). Same in
+    // light and dark: the basemap is often satellite, not the app shell.
+    '--cc-overlay-scrim': '#0D0D0D94',
+    '--cc-on-imagery-fg': '#ffffff',
+    '--cc-on-imagery-fg-muted': 'rgba(255, 255, 255, 0.78)',
+    '--cc-on-imagery-blur': '6px',
+    '--cc-on-imagery-radius': '8px',
+    '--cc-map-chrome-surface': 'var(--cc-overlay-scrim)',
   };
 
   for (const size of SCALE) {
@@ -660,8 +679,8 @@ export const cssVariablesResolver: CSSVariablesResolver = (theme) => {
       '--cc-color-status-review': 'var(--mantine-color-institucional-7)',
       '--mantine-color-dimmed': String(theme.other.dimmedColorLight ?? '#4b5563'),
       '--mantine-color-placeholder': String(theme.other.dimmedColorLight ?? '#4b5563'),
-      '--cc-map-label-surface': 'rgba(255, 255, 255, 0.96)',
-      '--cc-map-label-text': mapColorTokens.h333,
+      '--cc-map-label-surface': 'var(--cc-overlay-scrim)',
+      '--cc-map-label-text': 'var(--cc-on-imagery-fg)',
       '--cc-map-label-border': mapColorTokens.hfd7e14,
       '--cc-map-profile-border': 'var(--mantine-color-blue-3)',
       '--cc-map-profile-surface': 'var(--mantine-color-blue-0)',
@@ -678,8 +697,8 @@ export const cssVariablesResolver: CSSVariablesResolver = (theme) => {
       '--mantine-color-placeholder': String(theme.other.dimmedColorDark ?? '#a3a3a3'),
       // gray-6 del tema es un gris oscuro pensado para texto sobre claro.
       '--mantine-color-gray-6': String(theme.other.dimmedColorDark ?? '#a3a3a3'),
-      '--cc-map-label-surface': 'color-mix(in srgb, var(--mantine-color-dark-7) 94%, transparent)',
-      '--cc-map-label-text': 'var(--cc-color-text)',
+      '--cc-map-label-surface': 'var(--cc-overlay-scrim)',
+      '--cc-map-label-text': 'var(--cc-on-imagery-fg)',
       '--cc-map-label-border': mapColorTokens.hfd7e14,
       '--cc-map-profile-border': 'var(--mantine-color-blue-4)',
       '--cc-map-profile-surface': 'var(--mantine-color-dark-5)',

@@ -24,7 +24,7 @@ import {
   SOIL_CAPABILITY_LABELS,
   SOIL_CAPABILITY_ORDER,
 } from '../../hooks/useSoilMap';
-import { mapColorTokens } from '../../lib/mapColorTokens';
+import { mapColorTokens, mapOnImageryStyle } from '../../lib/mapColorTokens';
 import { ALL_ETAPAS, type Etapa } from '../../types/canales';
 import { CANALES_COLORS } from '../map2d/canalesLayers';
 import { PILAR_VERDE_COLORS } from '../map2d/pilarVerdeLayers';
@@ -303,11 +303,9 @@ export function TerrainLegendsPanel({
       data-testid="terrain-3d-legends-panel"
       style={
         embedded
-          ? {
-              background: 'light-dark(rgba(255,255,255,0.96), rgba(36,36,36,0.96))',
-              backdropFilter: 'blur(6px)',
-            }
+          ? undefined
           : {
+              ...mapOnImageryStyle,
               position: 'absolute',
               top: 56,
               right: 308, // toggles panel is 280 wide at right:12 → sit 16px left of it
@@ -315,8 +313,6 @@ export function TerrainLegendsPanel({
               width: 260,
               maxHeight: 'calc(100vh - 96px)',
               overflowY: 'auto',
-              background: 'light-dark(rgba(255,255,255,0.96), rgba(36,36,36,0.96))',
-              backdropFilter: 'blur(6px)',
             }
       }
     >

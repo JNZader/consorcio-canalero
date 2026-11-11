@@ -45,9 +45,9 @@ export type CanalesLayerId = (typeof CANALES_Z_ORDER)[number];
 export const CANALES_COLORS = {
   // Relevados — solid blue family keyed by `source_style`.
   /** blue-700 — relevados without intervención programada. */
-  relevadoSinObra: mapColorTokens.h1D4ED8,
+  relevadoSinObra: mapColorTokens.h1d4ed8,
   /** blue-500 — relevados con readecuación. */
-  relevadoReadec: mapColorTokens.h3B82F6,
+  relevadoReadec: mapColorTokens.h3b82f6,
   /** blue-400 — canales asociados (red receptora / interconexión). */
   relevadoAsociada: mapColorTokens.h60A5FA,
   // Propuestos — ColorBrewer YlOrRd (CART-01, safer for deutan).
@@ -58,7 +58,7 @@ export const CANALES_COLORS = {
   /** YlOrRd 5 — Etapa 3 (Media). */
   propuestoMedia: mapColorTokens.hFC4E2A,
   /** YlOrRd 3 — Etapa 4 (Opcional). */
-  propuestoOpcional: mapColorTokens.hFD8D3C,
+  propuestoOpcional: mapColorTokens.hfd8d3c,
   /** YlOrRd 2 — Etapa 5 (Largo plazo). */
   propuestoLargoPlazo: mapColorTokens.hFEB24C,
   // Outlines — darker than their fills so the 2 line families read as a

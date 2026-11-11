@@ -5,6 +5,7 @@ import { useSelectedImage } from '../../../hooks/useSelectedImage';
 import { apiFetch, GEE_TIMEOUT } from '../../../lib/api';
 import { mediaMinWidth } from '../../../lib/breakpoints';
 import { logger } from '../../../lib/logger';
+import { showError, showSuccess } from '../../../lib/notifications';
 import type {
   HistoricFloodEvent,
   ImageryPair,
@@ -109,6 +110,28 @@ function isImageScene(value: unknown): value is ImageSceneLike {
 }
 
 const API_BASE = '/geo/gee/images';
+
+async function fetchShortlistResult(
+  row: ImageryShortlistRow,
+  maxCloud: string,
+  signal: AbortSignal
+): Promise<ImageResultLike | null> {
+  if (!isImageSensor(row.sensor)) return null;
+  const nextSensor = row.sensor;
+  const nextVis = explorerSceneVisualization(nextSensor, row.visualization);
+  const isL7 = nextSensor === 'landsat7';
+  const params = new URLSearchParams({
+    target_date: row.scene_date,
+    days_buffer: isL7 ? '20' : '1',
+    visualization: nextVis,
+    mode: isL7 ? 'composite' : 'scene',
+  });
+  if (isOpticalSensor(nextSensor)) params.append('max_cloud', maxCloud);
+  return apiFetch<ImageResultLike>(`${API_BASE}/${nextSensor}?${params}`, {
+    signal,
+    timeout: GEE_TIMEOUT,
+  });
+}
 
 export function useImageExplorerController() {
   // Escritorio desde `sm` (48em). El literal `max-width: 768px` no estaba en
@@ -262,18 +285,8 @@ export function useImageExplorerController() {
       setLoading(true);
       setError(null);
       try {
-        const params = new URLSearchParams({
-          target_date: row.scene_date,
-          days_buffer: isL7 ? '20' : '1',
-          visualization: nextVis,
-          mode: isL7 ? 'composite' : 'scene',
-        });
-        if (isOpticalSensor(nextSensor)) params.append('max_cloud', maxCloud);
-        const data = await apiFetch<ImageResultLike>(`${API_BASE}/${nextSensor}?${params}`, {
-          signal: controller.signal,
-          timeout: GEE_TIMEOUT,
-        });
-        if (controller.signal.aborted) return;
+        const data = await fetchShortlistResult(row, maxCloud, controller.signal);
+        if (controller.signal.aborted || !data) return;
         setResult(data);
         setSelectedSceneId(null);
         updateTileLayer(data.tile_url);
@@ -290,6 +303,64 @@ export function useImageExplorerController() {
       }
     },
     [maxCloud, updateTileLayer]
+  );
+
+  /** Load event pre/post shortlist rows into the comparison tray (Antes/Después). */
+  const publishPairFromShortlist = useCallback(
+    async (pair: ImageryPair) => {
+      if (!pair.pre || !pair.post) return;
+      activeHistoricFloodRef.current = null;
+      imageRequestRef.current?.abort();
+      const controller = new AbortController();
+      imageRequestRef.current = controller;
+      setLoading(true);
+      setError(null);
+      try {
+        const [preData, postData] = await Promise.all([
+          fetchShortlistResult(pair.pre, maxCloud, controller.signal),
+          fetchShortlistResult(pair.post, maxCloud, controller.signal),
+        ]);
+        if (controller.signal.aborted) return;
+        const left = createSelectedImageFromResult(preData);
+        const right = createSelectedImageFromResult(postData);
+        if (!left || !right) {
+          const msg = 'No se pudo armar el par Antes/Después desde el evento.';
+          setError(msg);
+          showError('Par incompleto', msg);
+          return;
+        }
+        setLeftImage(left);
+        setRightImage(right);
+        // Preview the Después scene so the operator sees what was published.
+        if (isImageSensor(pair.post.sensor)) {
+          const nextVis = explorerSceneVisualization(pair.post.sensor, pair.post.visualization);
+          suppressDayFetchRef.current = pair.post.scene_date;
+          setSelectedDay(pair.post.scene_date);
+          setSensor(pair.post.sensor);
+          setVisualization(nextVis);
+          setCompositionMode(pair.post.sensor === 'landsat7' ? 'composite' : 'scene');
+        }
+        if (postData) {
+          setResult(postData);
+          setSelectedSceneId(null);
+          updateTileLayer(postData.tile_url);
+        }
+        const [year, month] = pair.post.scene_date.split('-').map(Number);
+        if (year && month) {
+          setCalendarYear(year);
+          setCalendarMonth(month - 1);
+        }
+        showSuccess('Par listo', 'Antes/Después cargados. Usá Abrir en mapa en la bandeja.');
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        const msg = err instanceof Error ? err.message : 'Error desconocido';
+        setError(msg);
+        showError('Par incompleto', msg);
+      } finally {
+        if (imageRequestRef.current === controller) setLoading(false);
+      }
+    },
+    [maxCloud, setLeftImage, setRightImage, updateTileLayer]
   );
 
   const handleSelectImage = useCallback(() => {
@@ -536,8 +607,11 @@ export function useImageExplorerController() {
     handleSelectImage,
     handleSetLeftImage,
     handleSetRightImage,
+    setLeftImage,
+    setRightImage,
     loadHistoricFlood,
     loadShortlistScene,
+    publishPairFromShortlist,
     updateWaterMask,
   };
 }

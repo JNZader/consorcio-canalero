@@ -245,6 +245,18 @@ export default function ReportsPanel() {
     openDetail();
   };
 
+  /** AssigneeField auto-PATCHes; keep list + selectedReport in sync for reopen. */
+  const handleAssigneeChange = useCallback((denunciaId: string, asignadoA: string | null) => {
+    // Report.asignado_a is optional string; clearable Select yields null → undefined.
+    const next = asignadoA ?? undefined;
+    setReports((current) =>
+      current.map((row) => (row.id === denunciaId ? { ...row, asignado_a: next } : row))
+    );
+    setSelectedReport((current) =>
+      current && current.id === denunciaId ? { ...current, asignado_a: next } : current
+    );
+  }, []);
+
   /**
    * Update a denuncia's estado / respuesta via `PATCH /denuncias/{id}`.
    * The previous version POSTed to `/management/seguimiento` (404) with a
@@ -297,13 +309,13 @@ export default function ReportsPanel() {
       <Group justify="flex-end" mb="md">
         <Badge
           size="lg"
-          color="yellow"
+          color="orange"
           variant="light"
           styles={{ label: { color: 'var(--cc-color-warning)' } }}
         >
           {pendingCount} pendientes
         </Badge>
-        <Badge size="lg" color="blue" variant="light">
+        <Badge size="lg" color="institucional" variant="light">
           {inReviewCount} en revision
         </Badge>
       </Group>
@@ -376,14 +388,7 @@ export default function ReportsPanel() {
         setAdminNotes={setAdminNotes}
         onUpdate={handleUpdateStatus}
         updating={updating}
-        // El AssigneeField se re-seedea desde `selectedReport.asignado_a`
-        // al reabrir el modal; sin esta propagación una asignación guardada
-        // "desaparecía" porque el estado local del panel quedaba viejo.
-        onAsignadoChange={(asignado) =>
-          setSelectedReport((current) =>
-            current ? { ...current, asignado_a: asignado ?? undefined } : current
-          )
-        }
+        onAssigneeChange={handleAssigneeChange}
       />
     </Container>
   );

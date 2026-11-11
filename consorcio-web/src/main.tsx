@@ -14,6 +14,7 @@ import { HelmetProvider } from 'react-helmet-async';
 
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 import { UpdateBanner } from './components/UpdateBanner';
+import { bootBrandFromStorage } from './lib/applyBrand';
 import { sharedColorSchemeManager } from './lib/mantine';
 import { installPwaPromptListener } from './lib/pwaInstall';
 import { queryClient } from './lib/query';
@@ -22,6 +23,9 @@ import { Z_INDEX } from './lib/zIndex';
 import { routeTree } from './routeTree.gen';
 import { useAuthStore } from './stores/authStore';
 import { useConfigStore } from './stores/configStore';
+
+// Restore Theme Lab brand before first paint (localStorage preview only).
+bootBrandFromStorage();
 
 // Observability leaves the entry graph. Errors thrown before the idle
 // callback are not captured; that is the tradeoff for a lighter first paint.

@@ -243,7 +243,7 @@ function ensureTerrainVectorLayers(map: maplibregl.Map, collections: TerrainVect
         id: `${TERRAIN_SOURCE_IDS.catastro}-line`,
         type: 'line',
         source: TERRAIN_SOURCE_IDS.catastro,
-        paint: { 'line-color': mapColorTokens.hFFFFFF, 'line-width': 1.5, 'line-opacity': 0.85 },
+        paint: { 'line-color': mapColorTokens.hffffff, 'line-width': 1.5, 'line-opacity': 0.85 },
       });
     }
   } else {
@@ -262,7 +262,7 @@ function ensureTerrainVectorLayers(map: maplibregl.Map, collections: TerrainVect
         source: TERRAIN_SOURCE_IDS.catastro,
         'source-layer': 'parcelas_catastro',
         minzoom: CATASTRO_LAYER_MIN_ZOOM,
-        paint: { 'line-color': mapColorTokens.hFFFFFF, 'line-width': 1.5, 'line-opacity': 0.85 },
+        paint: { 'line-color': mapColorTokens.hffffff, 'line-width': 1.5, 'line-opacity': 0.85 },
       });
     }
   }

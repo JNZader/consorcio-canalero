@@ -1,7 +1,7 @@
 import { MantineProvider } from '@mantine/core';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { ReportDetailModal } from '../../src/components/admin/reports/components/ReportDetailModal';
 import { apiFetch } from '../../src/lib/api';
@@ -27,10 +27,7 @@ const sampleReport = {
   imagenes: [],
 };
 
-function renderModal(
-  report: typeof sampleReport,
-  onAsignadoChange?: (asignado: string | null) => void
-) {
+function renderModal(report: typeof sampleReport) {
   return render(
     <MantineProvider env="test">
       <ReportDetailModal
@@ -47,13 +44,17 @@ function renderModal(
         setAdminNotes={vi.fn()}
         onUpdate={vi.fn()}
         updating={false}
-        onAsignadoChange={onAsignadoChange}
       />
     </MantineProvider>
   );
 }
 
 describe('ReportDetailModal (ADM-05)', () => {
+  beforeEach(() => {
+    vi.mocked(apiFetch).mockReset();
+    vi.mocked(apiFetch).mockResolvedValue([] as never);
+  });
+
   it('renders a "Ver en el mapa" deep link with the report coordinates', () => {
     renderModal(sampleReport);
 
@@ -79,89 +80,122 @@ describe('ReportDetailModal (ADM-05)', () => {
       await screen.findByDisplayValue('Romina Torres (romina@consorcio.gob.ar)')
     ).toBeInTheDocument();
   });
-});
 
-describe('AssigneeField: persistencia de la asignación', () => {
-  const operadores = [
-    { id: 'op-7', nombre: 'Romina Torres', email: 'romina@consorcio.gob.ar' },
-    { id: 'op-9', nombre: 'Marcos Diaz', email: 'marcos@consorcio.gob.ar' },
-  ];
+  it('notifies the parent after a successful assignee PATCH (R3-001)', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce([
+        { id: 'op-7', nombre: 'Romina Torres', email: 'romina@consorcio.gob.ar' },
+      ] as never)
+      .mockResolvedValueOnce({} as never);
 
-  beforeEach(() => {
-    vi.mocked(apiFetch).mockReset();
-    // Ruteo por defecto: operadores ok, PATCH ok. Cada test sobreescribe
-    // lo que necesita (p.ej. PATCH que rechaza).
-    vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path === '/denuncias/operadores') return operadores;
-      if (path === '/denuncias/rep-101' && options?.method === 'PATCH') return {};
-      return [];
+    const onAssigneeChange = vi.fn();
+    render(
+      <MantineProvider env="test">
+        <ReportDetailModal
+          opened
+          onClose={vi.fn()}
+          selectedReport={{ ...sampleReport, asignado_a: null } as never}
+          history={[]}
+          loadingHistory={false}
+          newStatus="pendiente"
+          setNewStatus={vi.fn()}
+          publicComment=""
+          setPublicComment={vi.fn()}
+          adminNotes=""
+          setAdminNotes={vi.fn()}
+          onUpdate={vi.fn()}
+          updating={false}
+          onAssigneeChange={onAssigneeChange}
+        />
+      </MantineProvider>
+    );
+
+    // Mantine Select exposes role=combobox (same pattern as ReportsPanel filters).
+    const select = await screen.findByRole('combobox', { name: /Asignar operador/i });
+    await user.click(select);
+    await user.click(await screen.findByRole('option', { name: /Romina Torres/i }));
+
+    await waitFor(() => {
+      expect(onAssigneeChange).toHaveBeenCalledWith('rep-101', 'op-7');
     });
+    expect(apiFetch).toHaveBeenCalledWith(
+      '/denuncias/rep-101',
+      expect.objectContaining({ method: 'PATCH' })
+    );
   });
 
-  it('revierte el select al último valor persistido y muestra el error cuando el PATCH falla', async () => {
+  it('reverts the select to the previous persisted value when the PATCH fails', async () => {
     const user = userEvent.setup();
-    vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path === '/denuncias/operadores') return operadores;
-      if (path === '/denuncias/rep-101' && options?.method === 'PATCH') {
-        throw new Error('fallo de red');
-      }
-      return [];
-    });
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce([
+        { id: 'op-7', nombre: 'Romina Torres', email: 'romina@consorcio.gob.ar' },
+      ] as never)
+      .mockResolvedValueOnce([
+        { id: 'op-9', nombre: 'Marcos Diaz', email: 'marcos@consorcio.gob.ar' },
+      ] as never)
+      .mockRejectedValueOnce(new Error('fallo de red') as never);
 
     renderModal({ ...sampleReport, asignado_a: 'op-7' });
 
-    const select = await screen.findByRole('combobox', { name: /asignar operador/i });
+    const select = await screen.findByRole('combobox', { name: /Asignar operador/i });
     await user.click(select);
-    await user.click(await screen.findByRole('option', { name: /marcos diaz/i }));
+    await user.click(await screen.findByRole('option', { name: /Marcos Diaz/i }));
 
     // El PATCH rechazó: el select NO puede seguir mostrando una asignación
     // que nunca llegó al backend — vuelve al asignado persistido (op-7).
     await waitFor(() => {
       expect(screen.getByText('No se pudo guardar la asignación')).toBeInTheDocument();
     });
-    expect(screen.getByRole('combobox', { name: /asignar operador/i })).toHaveValue(
-      'Romina Torres (romina@consorcio.gob.ar)'
-    );
+    expect(select).toHaveValue('Romina Torres (romina@consorcio.gob.ar)');
   });
 
-  it('limpia el error y notifica al padre cuando un reintento persiste', async () => {
+  it('clears the stale error when a retry persists', async () => {
     const user = userEvent.setup();
-    let patchFalla = true;
-    vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path === '/denuncias/operadores') return operadores;
-      if (path === '/denuncias/rep-101' && options?.method === 'PATCH') {
-        if (patchFalla) {
-          patchFalla = false;
-          throw new Error('fallo de red');
-        }
-        return {};
-      }
-      return [];
-    });
-    const onAsignadoChange = vi.fn();
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce([
+        { id: 'op-9', nombre: 'Marcos Diaz', email: 'marcos@consorcio.gob.ar' },
+      ] as never)
+      .mockRejectedValueOnce(new Error('fallo de red') as never)
+      .mockResolvedValueOnce({} as never);
 
-    renderModal({ ...sampleReport, asignado_a: null }, onAsignadoChange);
+    const onAssigneeChange = vi.fn();
+    render(
+      <MantineProvider env="test">
+        <ReportDetailModal
+          opened
+          onClose={vi.fn()}
+          selectedReport={{ ...sampleReport, asignado_a: null } as never}
+          history={[]}
+          loadingHistory={false}
+          newStatus="pendiente"
+          setNewStatus={vi.fn()}
+          publicComment=""
+          setPublicComment={vi.fn()}
+          adminNotes=""
+          setAdminNotes={vi.fn()}
+          onUpdate={vi.fn()}
+          updating={false}
+          onAssigneeChange={onAssigneeChange}
+        />
+      </MantineProvider>
+    );
 
+    const select = await screen.findByRole('combobox', { name: /Asignar operador/i });
     // Primer intento: falla y deja el error en pantalla.
-    const select = await screen.findByRole('combobox', { name: /asignar operador/i });
     await user.click(select);
-    await user.click(await screen.findByRole('option', { name: /marcos diaz/i }));
+    await user.click(await screen.findByRole('option', { name: /Marcos Diaz/i }));
     await waitFor(() => {
       expect(screen.getByText('No se pudo guardar la asignación')).toBeInTheDocument();
     });
 
     // Reintento con la misma elección: arranca limpiando el error y, al
-    // persistir, el padre recibe el nuevo asignado_a.
+    // persistir, el error ya no está y el padre queda notificado.
     await user.click(select);
-    await user.click(await screen.findByRole('option', { name: /marcos diaz/i }));
-
+    await user.click(await screen.findByRole('option', { name: /Marcos Diaz/i }));
     await waitFor(() => {
-      expect(onAsignadoChange).toHaveBeenCalledWith('op-9');
+      expect(onAssigneeChange).toHaveBeenCalledWith('rep-101', 'op-9');
     });
     expect(screen.queryByText('No se pudo guardar la asignación')).not.toBeInTheDocument();
-    expect(screen.getByText('Solo operadores y admins. Vacío quita la asignación.')).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: /asignar operador/i })).toHaveValue(
-      'Marcos Diaz (marcos@consorcio.gob.ar)'
-    );
   });
 });

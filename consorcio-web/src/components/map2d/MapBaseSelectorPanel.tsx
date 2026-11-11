@@ -1,5 +1,6 @@
 import { Group, Paper, SegmentedControl, Stack, Text } from '@mantine/core';
 import { memo, type ReactNode } from 'react';
+import { mapOnImageryStyle } from '../../lib/mapColorTokens';
 
 interface MapBaseSelectorPanelProps {
   readonly baseLayer: 'osm' | 'satellite';
@@ -51,10 +52,7 @@ export const MapBaseSelectorPanel = memo(function MapBaseSelectorPanel({
       p="xs"
       radius="md"
       data-testid="map-base-selector-panel"
-      style={{
-        background: 'light-dark(rgba(255,255,255,0.94), rgba(36,36,36,0.94))',
-        backdropFilter: 'blur(6px)',
-      }}
+      style={mapOnImageryStyle}
     >
       <Group gap="md" wrap="wrap" align="flex-start">
         {body}

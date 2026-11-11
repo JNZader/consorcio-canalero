@@ -16,6 +16,7 @@ import {
   useState,
 } from 'react';
 import { mediaMaxWidth } from '../../lib/breakpoints';
+import { mapOnImageryStyle } from '../../lib/mapColorTokens';
 import { IconButton } from '../ui/IconButton';
 import { MAP_Z } from './mapZIndex';
 import type { ProfileChartRow } from './profileChartRows';
@@ -129,8 +130,8 @@ export function ElevationProfileDock({
         maxHeight: narrow ? '70vh' : PROFILE_DOCK_MAX_PX,
         display: 'flex',
         flexDirection: 'column',
-        background: 'light-dark(rgba(255,255,255,0.97), rgba(28,28,28,0.97))',
-        borderTop: '1px solid var(--mantine-color-gray-4)',
+        ...mapOnImageryStyle,
+        borderTop: '1px solid rgba(255, 255, 255, 0.18)',
         borderRadius: narrow ? '12px 12px 0 0' : 0,
         boxShadow: '0 -2px 10px rgba(0,0,0,0.12)',
       }}

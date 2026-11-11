@@ -100,7 +100,7 @@ export function MapaContent() {
                   Explorá las cuencas, caminos e infraestructura del consorcio
                 </Text>
                 {multiHazardEnabled && (
-                  <Badge size="sm" color="blue" variant="light">
+                  <Badge size="sm" color="institucional" variant="light">
                     Visor de riesgos disponible
                   </Badge>
                 )}
@@ -110,7 +110,7 @@ export function MapaContent() {
                     <Text size="xs" fw={500}>
                       Imagen satelital activa
                     </Text>
-                    <Badge size="sm" color="blue" variant="light">
+                    <Badge size="sm" color="institucional" variant="light">
                       {selectedImage.sensor}
                     </Badge>
                     <Text size="xs" c="dimmed">

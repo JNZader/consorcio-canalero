@@ -369,7 +369,12 @@ export default function AdminDashboard() {
                 aria-label="Seleccionar GeoJSON de subcuencas a importar"
                 clearable
               />
-              <Button onClick={confirmBasinsModal.open} loading={importingBasins} disabled={!basinsFile}>
+              <Button
+                variant="outline"
+                onClick={confirmBasinsModal.open}
+                loading={importingBasins}
+                disabled={!basinsFile}
+              >
                 Importar subcuencas
               </Button>
             </Stack>
@@ -392,6 +397,7 @@ export default function AdminDashboard() {
                 clearable
               />
               <Button
+                variant="outline"
                 onClick={confirmZonesModal.open}
                 loading={importingApprovedZones}
                 disabled={!approvedZonesFile}
@@ -415,7 +421,7 @@ export default function AdminDashboard() {
 
           <Group align="flex-end">
             <Button
-              variant="filled"
+              variant="outline"
               leftSection={<IconDownload size={18} />}
               onClick={handleExportBundle}
               loading={exportingBundle}
@@ -433,7 +439,12 @@ export default function AdminDashboard() {
               style={{ flex: 1, minWidth: 260 }}
             />
 
-            <Button onClick={handleImportBundle} loading={importingBundle} disabled={!bundleFile}>
+            <Button
+              variant="light"
+              onClick={handleImportBundle}
+              loading={importingBundle}
+              disabled={!bundleFile}
+            >
               Importar bundle geo
             </Button>
           </Group>

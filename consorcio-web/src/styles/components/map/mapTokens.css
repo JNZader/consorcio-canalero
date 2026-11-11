@@ -16,5 +16,29 @@
   --z-map-drawer: 1200;
   --z-map-burger: 1250;
   --z-map-gesture: 1300;
+
+  /*
+   * Fallback on-imagery glass (APRHI portal `#0D0D0D94`). The live values are
+   * owned by `cssVariablesResolver` in theme.ts; these exist so map CSS still
+   * resolves if a sheet loads before Mantine injects variables.
+   */
+  --cc-overlay-scrim: #0d0d0d94;
+  --cc-on-imagery-fg: #ffffff;
+  --cc-on-imagery-fg-muted: rgba(255, 255, 255, 0.78);
+  --cc-on-imagery-blur: 6px;
+  --cc-on-imagery-radius: 8px;
+  --cc-map-chrome-surface: var(--cc-overlay-scrim);
+}
+
+/**
+ * Scrim + texto claro para cualquier chrome que flota SOBRE el basemap
+ * (satélite o vector). No usar en el shell de la app fuera del mapa.
+ */
+.cc-on-imagery {
+  background: var(--cc-map-chrome-surface);
+  backdrop-filter: blur(var(--cc-on-imagery-blur));
+  color: var(--cc-on-imagery-fg);
+  --mantine-color-text: var(--cc-on-imagery-fg);
+  --mantine-color-dimmed: var(--cc-on-imagery-fg-muted);
 }
 

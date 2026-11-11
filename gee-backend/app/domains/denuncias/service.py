@@ -270,11 +270,12 @@ class DenunciaService:
         try:
             db.commit()
         except IntegrityError:
-            # Dos requests concurrentes con la misma clave: la unique
-            # uq_denuncia_bulk_operator_key deja una sola fila. Los estados
-            # ya aplicados son el mismo destino (idempotentes) y el aviso
-            # por correo deduplica por celery_task_id, así que la respuesta
-            # correcta es el recibo que ganó, no un 500.
+            # Concurrent requests with the same operator+key: the unique
+            # uq_denuncia_bulk_operator_key keeps one receipt. Mirror the
+            # sequential replay path — same payload returns the winner's
+            # resultado; a different payload is 409. Do NOT assume both
+            # racers share the same destination (VALID_TRANSITIONS allows
+            # e.g. pendiente→en_revision and pendiente→descartado).
             db.rollback()
             winner = db.execute(
                 select(DenunciaBulkReceipt).where(
@@ -283,6 +284,11 @@ class DenunciaService:
                 )
             ).scalar_one_or_none()
             if winner is not None:
+                if winner.payload_hash != digest:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Esa clave de idempotencia ya se usó con otro lote.",
+                    )
                 return list(winner.resultado)
             raise
         return resultados

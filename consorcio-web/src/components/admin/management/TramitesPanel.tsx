@@ -251,7 +251,7 @@ export default function TramitesPanel() {
         title="Gestión de Trámites"
         subtitle="Seguimiento de trámites del Consorcio Canalero"
         actions={
-          <Button leftSection={<IconPlus size={18} />} onClick={open}>
+          <Button variant="filled" color="institucional" leftSection={<IconPlus size={18} />} onClick={open}>
             Nuevo Trámite
           </Button>
         }
@@ -336,7 +336,7 @@ export default function TramitesPanel() {
               label="Fecha de ingreso"
               {...form.getInputProps('fecha_ingreso')}
             />
-            <Button type="submit" fullWidth mt="md" loading={submitting}>
+            <Button type="submit" variant="filled" color="institucional" fullWidth mt="md" loading={submitting}>
               Crear Trámite
             </Button>
           </Stack>

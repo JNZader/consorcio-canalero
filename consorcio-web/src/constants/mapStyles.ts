@@ -32,7 +32,7 @@ export const MAP_LAYER_COLORS = {
   // Analysis-specific
   analysisArea: mapColorTokens.h3b82f6,
   flood: mapColorTokens.h0EA5E9,
-  floodOptical: mapColorTokens.h22C55E,
+  floodOptical: mapColorTokens.h22c55e,
   floodFusion: mapColorTokens.hA855F7,
 } as const;
 

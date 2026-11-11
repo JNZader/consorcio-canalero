@@ -4,7 +4,7 @@
 #   ./scripts/visual-regression.sh --update-snapshots
 set -euo pipefail
 
-IMAGE="mcr.microsoft.com/playwright:v1.64.1-noble"
+IMAGE="mcr.microsoft.com/playwright:v1.65.0-noble"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 exec docker run --rm --ipc=host \

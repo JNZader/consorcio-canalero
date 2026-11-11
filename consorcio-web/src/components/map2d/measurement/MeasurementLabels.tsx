@@ -250,7 +250,7 @@ export function MeasurementLabels({
                   background: isProfileActive
                     ? mapChromeVars.profileSurface
                     : 'var(--cc-color-surface-raised)',
-                  color: isProfileActive ? mapChromeVars.profileText : 'var(--cc-color-text-muted)',
+                  color: isProfileActive ? mapChromeVars.profileText : 'var(--cc-on-imagery-fg-muted)',
                   fontSize: 10,
                   fontWeight: 600,
                   cursor: 'pointer',
@@ -279,7 +279,7 @@ export function MeasurementLabels({
                 border: 0,
                 borderRadius: '50%',
                 background: 'transparent',
-                color: 'var(--cc-color-text-muted)',
+                color: 'var(--cc-on-imagery-fg-muted)',
                 fontSize: 11,
                 lineHeight: 1,
                 cursor: 'pointer',

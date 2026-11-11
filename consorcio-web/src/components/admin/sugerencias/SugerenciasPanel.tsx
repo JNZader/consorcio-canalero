@@ -156,7 +156,7 @@ export default function SugerenciasPanel() {
               data: relevadosFC as import('geojson').FeatureCollection,
               // Match the default relevados palette used by Pilar Azul's map
               // paint factory (see `canalesLayers.ts::CANALES_COLORS`).
-              style: { color: mapColorTokens.h1D4ED8, weight: 3, opacity: 0.9 },
+              style: { color: mapColorTokens.h1d4ed8, weight: 3, opacity: 0.9 },
             },
           ]
         : [],
@@ -329,25 +329,25 @@ export default function SugerenciasPanel() {
         <StatsCard
           label="Pendientes"
           value={stats?.pendiente ?? 0}
-          color="yellow"
+          color="orange"
           icon={IconClock}
         />
         <StatsCard
           label="En Agenda"
           value={stats?.en_agenda ?? 0}
-          color="blue"
+          color="institucional"
           icon={IconCalendar}
         />
         <StatsCard
           label="Ciudadanas"
           value={stats?.ciudadanas ?? 0}
-          color="cyan"
+          color="agua"
           icon={IconUsers}
         />
         <StatsCard
           label="Internas"
           value={stats?.internas ?? 0}
-          color="violet"
+          color="institucional"
           icon={IconBuilding}
         />
       </SimpleGrid>

@@ -1,6 +1,6 @@
 .header {
-  background-color: var(--mantine-color-body);
-  border-bottom: 1px solid var(--mantine-color-default-border);
+  background-color: var(--cc-color-surface);
+  border-bottom: 1px solid var(--cc-color-border);
   position: sticky;
   top: 0;
   z-index: var(--z-header, 100);

@@ -261,7 +261,7 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
                 </Text>
               ) : (
                 <>
-                  <Text span c="green" fw={700}>
+                  <Text span c="exito" fw={700}>
                     {budgetRatio}%
                   </Text>{' '}
                   del total anual
@@ -322,7 +322,7 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
                 </Text>
               ) : (
                 <>
-                  <Text span c="blue" fw={700}>
+                  <Text span c="institucional" fw={700}>
                     {reportesNuevosSemana}
                   </Text>{' '}
                   nuevos esta semana

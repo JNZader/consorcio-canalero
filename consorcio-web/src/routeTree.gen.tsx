@@ -64,6 +64,7 @@ const FinanzasPanel = lazy(() => import('./components/admin/management/FinanzasP
 const DemPipelinePanel = lazy(() => import('./components/admin/DemPipelinePanel'));
 const ConocimientoPanel = lazy(() => import('./components/admin/ConocimientoPanel'));
 const CanalesPublicacionPanel = lazy(() => import('./components/admin/CanalesPublicacionPanel'));
+const ThemeLabPanel = lazy(() => import('./components/admin/ThemeLabPanel'));
 
 // Import admin layout directly (not lazy) to prevent flicker
 import { AdminLayoutContent } from './components/admin/AdminLayout';
@@ -698,6 +699,13 @@ const adminCanalesRoute = createRoute({
   component: () => <CanalesPublicacionPanel />,
 });
 
+// Theme Lab: local brand preview packs (admin-only nav; parent adminGuard still applies).
+const adminThemeLabRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/laboratorio-tema',
+  component: () => <ThemeLabPanel />,
+});
+
 // ============================================
 // ROUTE TREE
 // ============================================
@@ -716,6 +724,7 @@ const adminRouteTree = adminLayoutRoute.addChildren([
   adminFinanzasRoute,
   adminConocimientoRoute,
   adminCanalesRoute,
+  adminThemeLabRoute,
 ]);
 
 export const routeTree = rootRouteWithComponent.addChildren([

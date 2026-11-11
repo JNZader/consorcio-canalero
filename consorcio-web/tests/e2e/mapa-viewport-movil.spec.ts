@@ -165,16 +165,11 @@ test.describe('Mapa en teléfono parado (360×800)', () => {
     expect(landscape).toBe(false);
   });
 
-  // Era `fixme` por un PRODUCT BUG que la primera corrida honesta de esta suite
-  // destapó (2026-08-04): en 360×800 el canvas arrancaba en y≈442 (cabecera ≈61
-  // + Paper del título + banner satelital + una top bar de 149px, porque en
-  // 360px de ancho todo envuelve) y medía 500px → terminaba en y≈942, 142px
-  // afuera. El rework portrait lo cierra con las mismas dos palancas que B2-2.1
-  // usó en horizontal, y ninguna oculta nada:
-  //   · la top bar ya no se renderiza en móvil (vive en el Drawer);
-  //   · título + banner + Reportar bajan DEBAJO del mapa con `order`.
-  // Presupuesto nuevo: `calc(100dvh - 96px)` = 61 cabecera + 12 py del
-  // Container + 12 mb del Paper del mapa + 11 de holgura.
+  // Portrait (#682 / MOB): el header del mapa queda ARRIBA (order: 0) para
+  // que Reportar Incidente entre sin un segundo botón. La top bar flotante
+  // sigue sin renderizarse en móvil (vive en el Drawer). El presupuesto del
+  // canvas es `calc(100dvh - 280px)` para que, con título+banner+CTA arriba,
+  // el lienzo y los docks entren en 360×800 sin scroll (canary 2026-11-08).
   test('el canvas y los controles entran en el viewport sin scroll', {
     tag: ['@e2e', '@mapa', '@movil', '@B2-2.7'],
   }, async ({ page }) => {
@@ -184,23 +179,24 @@ test.describe('Mapa en teléfono parado (360×800)', () => {
     await expectFitsViewport(page, PORTRAIT.height);
   });
 
-  test('el título queda DEBAJO del mapa, no oculto', {
+  test('el título queda ARRIBA del mapa con Reportar visible', {
     tag: ['@e2e', '@mapa', '@movil', '@B2-2.7'],
   }, async ({ page }) => {
     const ready = await gotoMapWorkspace(page);
     requireCondition(ready, 'El shell del mapa no montó (dev server/auth no disponible)');
 
     const titulo = page.getByRole('heading', { name: 'Mapa Interactivo' });
-    // Nada se oculta: el reflow es `order`, no `display: none`. El banner
-    // satelital y el botón Reportar viajan con él (viven en el mismo Paper).
+    // Portrait: order: 0 deja el Paper del título arriba del canvas. Landscape
+    // sigue bajándolo con order: 2 (mapaPage.css). Nada se oculta con display.
     await expect(titulo).toBeVisible();
+    await expect(page.getByRole('link', { name: /Reportar Incidente/i })).toBeVisible();
 
     const canvas = await page.getByTestId('map-workspace-canvas').boundingBox();
     const heading = await titulo.boundingBox();
     expect(canvas, 'el canvas tiene caja').not.toBeNull();
     expect(heading, 'el título tiene caja').not.toBeNull();
     if (canvas && heading) {
-      expect(heading.y).toBeGreaterThan(canvas.y);
+      expect(heading.y).toBeLessThan(canvas.y);
     }
   });
 

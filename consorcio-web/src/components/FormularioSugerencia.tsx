@@ -11,7 +11,6 @@ import {
   Text,
   Textarea,
   TextInput,
-  Title,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -32,6 +31,7 @@ import {
 } from './suggestion-form/suggestionFormUtils';
 import { useSuggestionFormState } from './suggestion-form/useSuggestionFormState';
 import { LiveRegionProvider, useLiveRegion, VisuallyHidden } from './ui/accessibility';
+import { PageHeader } from './ui/PageHeader';
 import { ContactVerificationSection } from './verification';
 
 const SUGERENCIA_OFFLINE_TOAST_ID = 'sugerencia-sin-conexion';
@@ -213,12 +213,13 @@ function FormularioContenido() {
         </VisuallyHidden>
       )}
 
-      <Title order={2} mb="md">
-        Enviar Sugerencia
-      </Title>
-      <Text c="dimmed" mb="xl">
-        Proponé temas o mejoras para que la comisión las considere en sus próximas reuniones
-      </Text>
+      <PageHeader
+        title="Enviar Sugerencia"
+        subtitle="Proponé temas o mejoras para que la comisión las considere en sus próximas reuniones"
+        order={2}
+        size="h2"
+        mb="xl"
+      />
 
       <Box mb="xl">
         <SuggestionStepIndicator
@@ -227,7 +228,7 @@ function FormularioContenido() {
           label="Verificar identidad"
           badge={
             contactoVerificado ? (
-              <Badge color="green" size="sm" variant="light">
+              <Badge color="exito" size="sm" variant="light">
                 Verificado
               </Badge>
             ) : undefined

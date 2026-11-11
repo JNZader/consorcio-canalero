@@ -8,7 +8,6 @@ import {
   PasswordInput,
   Stack,
   Text,
-  Title,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -22,6 +21,7 @@ import { withBasePath } from '../../lib/basePath';
 import { erroresUi, textoError } from '../../lib/userFacingError';
 import { validatePassword } from '../../lib/validators';
 import { IconAlertCircle, IconCheck, IconLock } from '../ui/icons';
+import { PageHeader } from '../ui/PageHeader';
 
 const RESET_PASSWORD_ERROR_ID = 'reset-password-error';
 const RESET_CONFIRM_PASSWORD_ERROR_ID = 'reset-confirm-password-error';
@@ -206,9 +206,7 @@ export default function ResetPasswordForm({ token, code }: ResetPasswordFormProp
   return (
     <Center mih="80vh">
       <Paper shadow="md" p="xl" radius="md" w={400}>
-        <Title order={2} ta="center" mb="md">
-          Nueva Contraseña
-        </Title>
+        <PageHeader title="Nueva Contraseña" align="center" size="h2" mb="md" />
 
         {success ? (
           <Stack gap="md">

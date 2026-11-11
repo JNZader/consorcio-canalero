@@ -14,7 +14,7 @@ import {
   Timeline,
   Title,
 } from '@mantine/core';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CATEGORY_OPTIONS, getAllowedNextEstados } from '../../../../constants';
 import type { Report } from '../../../../lib/api';
 import { API_URL, apiFetch } from '../../../../lib/api';
@@ -81,7 +81,7 @@ export function ReportDetailModal({
   setAdminNotes,
   onUpdate,
   updating,
-  onAsignadoChange,
+  onAssigneeChange,
 }: Readonly<{
   opened: boolean;
   onClose: () => void;
@@ -96,7 +96,8 @@ export function ReportDetailModal({
   setAdminNotes: (value: string) => void;
   onUpdate: () => void;
   updating: boolean;
-  onAsignadoChange?: (asignado: string | null) => void;
+  /** Keep parent list/selectedReport in sync after auto-save PATCH. */
+  onAssigneeChange?: (denunciaId: string, asignadoA: string | null) => void;
 }>) {
   return (
     <Modal opened={opened} onClose={onClose} title="Detalle de Denuncia" size="lg">
@@ -221,11 +222,11 @@ export function ReportDetailModal({
               radius="md"
               withBorder
               style={{
-                background: 'light-dark(var(--mantine-color-green-0), var(--mantine-color-dark-5))',
-                borderColor: 'var(--mantine-color-green-4)',
+                background: 'light-dark(var(--mantine-color-exito-0), var(--mantine-color-dark-5))',
+                borderColor: 'var(--mantine-color-exito-4)',
               }}
             >
-              <Text size="sm" fw={600} c="green.7" mb={4}>
+              <Text size="sm" fw={600} c="exito.7" mb={4}>
                 Respuesta pública actual
               </Text>
               <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
@@ -237,7 +238,7 @@ export function ReportDetailModal({
           <Paper
             p="md"
             style={{
-              background: 'light-dark(var(--mantine-color-blue-0), var(--mantine-color-dark-5))',
+              background: 'light-dark(var(--mantine-color-institucional-0), var(--mantine-color-dark-5))',
             }}
             radius="md"
           >
@@ -263,7 +264,7 @@ export function ReportDetailModal({
                 key={selectedReport.id}
                 denunciaId={selectedReport.id}
                 initialAsignado={selectedReport.asignado_a ?? null}
-                onAsignadoChange={onAsignadoChange}
+                onAssigneeChange={onAssigneeChange}
               />
               <Textarea
                 label="Comentario Público"
@@ -340,19 +341,15 @@ export function ReportDetailModal({
 function AssigneeField({
   denunciaId,
   initialAsignado,
-  onAsignadoChange,
+  onAssigneeChange,
 }: {
   denunciaId: string;
   initialAsignado?: string | null;
-  onAsignadoChange?: (asignado: string | null) => void;
+  onAssigneeChange?: (denunciaId: string, asignadoA: string | null) => void;
 }) {
   const [options, setOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [value, setValue] = useState<string | null>(initialAsignado ?? null);
   const [error, setError] = useState<string | null>(null);
-  // Último valor confirmado por el backend. En un PATCH fallido revertimos
-  // acá y NO a `initialAsignado`: si ya hubo un save exitoso en esta
-  // sesión del modal, `initialAsignado` quedó viejo.
-  const persistedRef = useRef<string | null>(initialAsignado ?? null);
 
   useEffect(() => {
     let cancelled = false;
@@ -380,22 +377,17 @@ function AssigneeField({
         // Arranca un intento nuevo: el error del intento anterior no
         // tiene por qué seguir en pantalla.
         setError(null);
+        const previous = value;
         setValue(next);
         void apiFetch(`/denuncias/${denunciaId}`, {
           method: 'PATCH',
           body: JSON.stringify({ asignado_a: next }),
         })
           .then(() => {
-            persistedRef.current = next;
-            // El padre guarda el valor persistido en `selectedReport`:
-            // sin esto, reabrir el modal re-seedeaba el campo desde un
-            // `asignado_a` viejo y la asignación "desaparecía".
-            onAsignadoChange?.(next);
+            onAssigneeChange?.(denunciaId, next);
           })
           .catch(() => {
-            // Sin el revert el Select quedaba mostrando un asignado que
-            // nunca llegó al backend.
-            setValue(persistedRef.current);
+            setValue(previous);
             setError('No se pudo guardar la asignación');
           });
       }}

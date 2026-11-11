@@ -162,7 +162,7 @@ export function SuggestionDetailModal({
                 <Text size="sm" fw={500}>
                   Geometría sugerida
                 </Text>
-                <Badge color="blue" variant="light">
+                <Badge color="institucional" variant="light">
                   Propuesta no oficial
                 </Badge>
               </Group>
@@ -190,7 +190,7 @@ export function SuggestionDetailModal({
                   Agendar para Reunión
                 </Text>
                 {agendarFecha && (
-                  <Text size="xs" c="violet.7" fw={600}>
+                  <Text size="xs" c="institucional.7" fw={600}>
                     {formatDate(agendarFecha.toISOString().split('T')[0])}
                   </Text>
                 )}

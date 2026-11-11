@@ -82,19 +82,19 @@ describe('map skeleton geometry (T3c fix 5a)', () => {
   });
 
   /**
-   * Portrait rework — the same reflow landscape got in B2-2.1, for the case the
-   * first honest e2e run measured: at 360x800 the canvas started at y~442 and
-   * ran 142px past the fold.
+   * Portrait (#682 / MOB): header stays ABOVE the map (order: 0) so Reportar
+   * is visible; canvas budget must leave room for that Paper. Canary on
+   * 7a3b98d8 measured canvas.y≈249 — 220px overflowed 800px viewport.
    */
-  it('gives portrait phones their own budget and drops the header below the map', () => {
+  it('gives portrait phones a budget that fits with the header above the map', () => {
     const query = css.match(
       /@media \(pointer: coarse\) and \(orientation: portrait\) and \(max-width: 47\.9375em\)\s*\{([\s\S]*?)\n\}/
     );
     expect(query).not.toBeNull();
     const body = query?.[1] ?? '';
 
-    // 61 header + 12 container-py + 12 Paper mb + 11 slack.
-    expect(body).toContain('--map-canvas-height: calc(100dvh - 220px)');
+    // ~73 sitio+py + ~176 título/banner/Reportar + ~31 mb/holgura.
+    expect(body).toContain('--map-canvas-height: calc(100dvh - 280px)');
     // Reportar queda en el header, arriba del mapa.
     expect(body).toContain('order: 0');
     expect(body).not.toContain('order: 2');
