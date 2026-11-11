@@ -226,8 +226,9 @@ export function ImageExplorerFloodAnalysis({
         <div>
           <Title order={5}>Detectar inundación</Title>
           <Text size="xs" c="dimmed">
-            Elegí el día de la crecida y uno posterior sin agua. La fusión arma el par Antes /
-            Después para el mapa.
+            Elegí el día de la crecida y la fecha sin agua. Solo la fusión necesita la referencia
+            al menos 1 día después (arma el par Antes / Después); radar y óptico aceptan el mismo
+            día.
           </Text>
         </div>
 
@@ -252,7 +253,10 @@ export function ImageExplorerFloodAnalysis({
             onChange={(e) => setNormalDate(e.currentTarget.value)}
             size="sm"
             description={
-              floodDate && normalDate && !fusionComparisonReady(floodDate, normalDate)
+              floodDate &&
+              normalDate &&
+              method === 'fusion' &&
+              !fusionComparisonReady(floodDate, normalDate)
                 ? 'Tiene que ser al menos 1 día después de la crecida'
                 : undefined
             }

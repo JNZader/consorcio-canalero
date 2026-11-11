@@ -177,7 +177,7 @@ describe('ImageExplorerFloodAnalysis', () => {
     expect(screen.getByLabelText(/Fecha sin agua/i)).toHaveValue('2015-03-20');
   });
 
-  it('blocks when reference is not after flood date', async () => {
+  it('blocks same-day reference for fusion', async () => {
     const user = userEvent.setup();
     render(
       <ImageExplorerFloodAnalysis onSetLeftImage={vi.fn()} onSetRightImage={vi.fn()} />,
@@ -190,6 +190,26 @@ describe('ImageExplorerFloodAnalysis', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/1 día/i);
     expect(screen.getByRole('button', { name: /^Detectar inundación$/i })).toBeDisabled();
     expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
+  it('same-day reference only blocks fusion: sar_only enables the run', async () => {
+    const user = userEvent.setup();
+    render(
+      <ImageExplorerFloodAnalysis onSetLeftImage={vi.fn()} onSetRightImage={vi.fn()} />,
+      { wrapper }
+    );
+
+    await user.type(screen.getByLabelText(/Fecha de crecida/i), '2024-01-10');
+    await user.type(screen.getByLabelText(/Fecha sin agua/i), '2024-01-10');
+    await user.selectOptions(screen.getByRole('combobox'), 'sar_only');
+
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('button', { name: /^Detectar inundación$/i })).toBeEnabled();
+
+    // Volver a fusion con las mismas fechas reactiva el gate (regla por método).
+    await user.selectOptions(screen.getByRole('combobox'), 'fusion');
+    expect(screen.getByRole('alert')).toHaveTextContent(/1 día/i);
+    expect(screen.getByRole('button', { name: /^Detectar inundación$/i })).toBeDisabled();
   });
 
   it('cancelar con el fallback de Sentinel-1 en vuelo no aplica tiles ni toast de éxito', async () => {
