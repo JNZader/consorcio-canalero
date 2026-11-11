@@ -68,15 +68,24 @@ export function fusionComparisonReady(startDate: string, endDate: string): boole
 export function validateFloodAnalysisDates(
   startDate: string,
   endDate: string,
-  _method: FloodAnalysisMethod
+  method: FloodAnalysisMethod
 ): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
     return 'Usá fechas en formato AAAA-MM-DD.';
   }
   const span = daySpanInclusiveStartExclusiveEnd(startDate, endDate);
   if (span == null) return 'Fechas inválidas.';
-  if (span < FUSION_COMPARISON_MIN_SPAN_DAYS) {
-    return 'La fecha sin agua tiene que ser al menos 1 día después de la crecida.';
+  // Backend (gee_tasks_support.build_flood_analysis_result): the >=1-day span
+  // gate only guards the fusion comparison branch. sar_only / optical_only run
+  // with any span, including same-day, so the min-span error is fusion-only.
+  if (method === 'fusion' && span < FUSION_COMPARISON_MIN_SPAN_DAYS) {
+    return 'Para fusión, la fecha sin agua tiene que ser al menos 1 día después de la crecida.';
+  }
+  // Sanity floor for every method: a reference date BEFORE the flood makes no
+  // sense (the input label says "después") and sends the backend an inverted
+  // filterDate range.
+  if (span < 0) {
+    return 'La fecha sin agua no puede ser anterior a la crecida.';
   }
   return null;
 }
