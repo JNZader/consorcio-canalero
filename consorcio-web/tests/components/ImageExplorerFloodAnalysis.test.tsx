@@ -59,6 +59,13 @@ const sarTile = {
   collection: 'COPERNICUS/S1_GRD',
 };
 
+/** Tile S1 que devuelve el fallback para el lado normal (2024-01-20). */
+const sentinel1NormalTile = {
+  ...sarTile,
+  tile_url: 'https://earthengine.googleapis.com/v1/projects/x/maps/s1-normal/tiles/{z}/{x}/{y}',
+  target_date: '2024-01-20',
+};
+
 function sarOnlyJobCompleted(id: string) {
   return {
     id,
@@ -100,7 +107,6 @@ describe('ImageExplorerFloodAnalysis', () => {
   beforeEach(() => {
     apiFetchMock.mockReset();
     vi.mocked(showSuccess).mockClear();
-    vi.mocked(showError).mockClear();
   });
 
   it('submits flood analysis, polls, and pushes comparison sides', async () => {
@@ -172,7 +178,7 @@ describe('ImageExplorerFloodAnalysis', () => {
     expect(screen.getByLabelText(/Fecha sin agua/i)).toHaveValue('2015-03-20');
   });
 
-  it('blocks when reference is not after flood date', async () => {
+  it('blocks same-day reference for fusion', async () => {
     const user = userEvent.setup();
     render(
       <ImageExplorerFloodAnalysis onSetLeftImage={vi.fn()} onSetRightImage={vi.fn()} />,
@@ -185,6 +191,26 @@ describe('ImageExplorerFloodAnalysis', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/1 día/i);
     expect(screen.getByRole('button', { name: /^Detectar inundación$/i })).toBeDisabled();
     expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
+  it('same-day reference only blocks fusion: sar_only enables the run', async () => {
+    const user = userEvent.setup();
+    render(
+      <ImageExplorerFloodAnalysis onSetLeftImage={vi.fn()} onSetRightImage={vi.fn()} />,
+      { wrapper }
+    );
+
+    await user.type(screen.getByLabelText(/Fecha de crecida/i), '2024-01-10');
+    await user.type(screen.getByLabelText(/Fecha sin agua/i), '2024-01-10');
+    await user.selectOptions(screen.getByRole('combobox'), 'sar_only');
+
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('button', { name: /^Detectar inundación$/i })).toBeEnabled();
+
+    // Volver a fusion con las mismas fechas reactiva el gate (regla por método).
+    await user.selectOptions(screen.getByRole('combobox'), 'fusion');
+    expect(screen.getByRole('alert')).toHaveTextContent(/1 día/i);
+    expect(screen.getByRole('button', { name: /^Detectar inundación$/i })).toBeDisabled();
   });
 
   it('cancelar con el fallback de Sentinel-1 en vuelo no aplica tiles ni toast de éxito', async () => {
@@ -397,6 +423,209 @@ describe('ImageExplorerFloodAnalysis', () => {
     expect(onSetLeft).not.toHaveBeenCalled();
     expect(onSetRight).not.toHaveBeenCalled();
     expect(showSuccess).not.toHaveBeenCalled();
+  });
+
+  it('re-attach al último análisis re-pollea el mismo job sin POSTear uno nuevo', async () => {
+    const onSetLeft = vi.fn();
+    const onSetRight = vi.fn();
+    const user = userEvent.setup();
+
+    const jobCompleted = {
+      id: 'job-1',
+      tipo: 'flood',
+      estado: 'completed',
+      resultado: {
+        method: 'fusion',
+        comparison: {
+          normal_rgb: normalTile,
+          flood_detection: floodTile,
+        },
+      },
+    };
+
+    // POST (job nuevo) + GET que completa + GET del re-attach al MISMO id.
+    apiFetchMock
+      .mockResolvedValueOnce({ id: 'job-1', tipo: 'flood', estado: 'pending' })
+      .mockResolvedValueOnce(jobCompleted)
+      .mockResolvedValueOnce(jobCompleted);
+
+    render(<ImageExplorerFloodAnalysis onSetLeftImage={onSetLeft} onSetRightImage={onSetRight} />, {
+      wrapper,
+    });
+
+    await fillDatesAndRun(user);
+    await waitFor(() => {
+      expect(onSetLeft).toHaveBeenCalledTimes(1);
+      expect(onSetRight).toHaveBeenCalledTimes(1);
+    });
+
+    // Tras el run completado, el reintento responsable re-atachea el poll.
+    await user.click(screen.getByRole('button', { name: /Revisar último análisis/i }));
+
+    await waitFor(() => {
+      expect(onSetLeft).toHaveBeenCalledTimes(2);
+      expect(onSetRight).toHaveBeenCalledTimes(2);
+    });
+
+    // Un solo POST en toda la sesión: el re-attach sólo hizo GETs del último id.
+    const postCalls = apiFetchMock.mock.calls.filter((call) => call[1]?.method === 'POST');
+    expect(postCalls).toHaveLength(1);
+    expect(apiFetchMock.mock.calls[1][0]).toBe('/geo/gee/analysis/job-1');
+    expect(apiFetchMock.mock.calls[2][0]).toBe('/geo/gee/analysis/job-1');
+  });
+
+  it('el re-attach no se ofrece durante el polling y sí tras cancelar', async () => {
+    const user = userEvent.setup();
+
+    // POST + poll eterno: deja el run en polling hasta que se cancele.
+    apiFetchMock
+      .mockResolvedValueOnce({ id: 'job-1', tipo: 'flood', estado: 'pending' })
+      .mockImplementationOnce(() => new Promise(() => {}));
+
+    render(<ImageExplorerFloodAnalysis onSetLeftImage={vi.fn()} onSetRightImage={vi.fn()} />, {
+      wrapper,
+    });
+
+    await fillDatesAndRun(user);
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(2));
+
+    // Sin polls paralelos: durante el polling no hay botón de re-attach.
+    expect(screen.queryByRole('button', { name: /Revisar último análisis/i })).toBeNull();
+
+    // Cancelar deja el job vivo en el servidor: el re-attach recupera el handle.
+    await user.click(screen.getByRole('button', { name: /Cancelar/i }));
+    expect(screen.getByRole('button', { name: /Revisar último análisis/i })).toBeInTheDocument();
+  });
+  it('comparación con sólo tile de crecida dispara el fallback S1 y completa el par (#710)', async () => {
+    const onSetLeft = vi.fn();
+    const onSetRight = vi.fn();
+    const onPairReady = vi.fn();
+    const user = userEvent.setup();
+
+    apiFetchMock
+      .mockResolvedValueOnce({ id: 'job-1', tipo: 'flood', estado: 'pending' })
+      .mockResolvedValueOnce({
+        id: 'job-1',
+        tipo: 'flood',
+        estado: 'completed',
+        resultado: {
+          method: 'fusion',
+          comparison: { flood_detection: floodTile },
+        },
+      })
+      .mockResolvedValueOnce(sentinel1NormalTile);
+
+    render(
+      <ImageExplorerFloodAnalysis
+        onSetLeftImage={onSetLeft}
+        onSetRightImage={onSetRight}
+        onPairReady={onPairReady}
+      />,
+      { wrapper }
+    );
+
+    await fillDatesAndRun(user);
+
+    await waitFor(() => {
+      expect(onSetLeft).toHaveBeenCalled();
+      expect(onSetRight).toHaveBeenCalled();
+    });
+
+    // Tercer fetch: fallback S1 de la referencia para la fecha sin agua.
+    expect(apiFetchMock.mock.calls[2][0]).toMatch(/\/geo\/gee\/images\/sentinel1/);
+    expect(apiFetchMock.mock.calls[2][0]).toContain('target_date=2024-01-20');
+    expect(onSetLeft.mock.calls[0][0].target_date).toBe('2024-01-20');
+    expect(onSetRight.mock.calls[0][0].visualization).toBe('inundacion');
+    expect(showSuccess).toHaveBeenCalledWith(
+      'Detección lista',
+      'Par listo. Usá Abrir en mapa en la bandeja.'
+    );
+    expect(onPairReady).toHaveBeenCalled();
+  });
+
+  it('comparación con sólo tile de crecida y fallback S1 fallido queda parcial explícito (#710)', async () => {
+    const onSetLeft = vi.fn();
+    const onSetRight = vi.fn();
+    const onPairReady = vi.fn();
+    const user = userEvent.setup();
+
+    apiFetchMock
+      .mockResolvedValueOnce({ id: 'job-1', tipo: 'flood', estado: 'pending' })
+      .mockResolvedValueOnce({
+        id: 'job-1',
+        tipo: 'flood',
+        estado: 'completed',
+        resultado: {
+          method: 'fusion',
+          comparison: { flood_detection: floodTile },
+        },
+      })
+      .mockRejectedValueOnce(new Error('S1 no disponible'));
+
+    render(
+      <ImageExplorerFloodAnalysis
+        onSetLeftImage={onSetLeft}
+        onSetRightImage={onSetRight}
+        onPairReady={onPairReady}
+      />,
+      { wrapper }
+    );
+
+    await fillDatesAndRun(user);
+
+    await waitFor(() => expect(onSetRight).toHaveBeenCalled());
+
+    expect(onSetLeft).not.toHaveBeenCalled();
+    expect(showSuccess).not.toHaveBeenCalled();
+    expect(onPairReady).not.toHaveBeenCalled();
+    expect(screen.getByText(/Comparación incompleta/i)).toBeInTheDocument();
+  });
+
+  it('comparación con sólo referencia aplica el Antes y no toca el lado derecho (#710)', async () => {
+    const onSetLeft = vi.fn();
+    const onSetRight = vi.fn();
+    const onPairReady = vi.fn();
+    const user = userEvent.setup();
+
+    apiFetchMock
+      .mockResolvedValueOnce({ id: 'job-1', tipo: 'flood', estado: 'pending' })
+      .mockResolvedValueOnce({
+        id: 'job-1',
+        tipo: 'flood',
+        estado: 'completed',
+        resultado: {
+          method: 'fusion',
+          comparison: { normal_rgb: normalTile },
+        },
+      });
+
+    render(
+      <ImageExplorerFloodAnalysis
+        onSetLeftImage={onSetLeft}
+        onSetRightImage={onSetRight}
+        onPairReady={onPairReady}
+      />,
+      { wrapper }
+    );
+
+    await fillDatesAndRun(user);
+
+    await waitFor(() => expect(onSetLeft).toHaveBeenCalled());
+
+    expect(onSetLeft.mock.calls[0][0].target_date).toBe('2024-01-20');
+    // El slider derecho conserva su tile anterior: nunca se pisa con un par incompleto.
+    expect(onSetRight).not.toHaveBeenCalled();
+    expect(showSuccess).not.toHaveBeenCalled();
+    expect(onPairReady).not.toHaveBeenCalled();
+    expect(screen.getByText(/Comparación incompleta/i)).toBeInTheDocument();
+  });
+});
+
+describe('ImageExplorerFloodAnalysis — superficie de errores (#712)', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    vi.mocked(showSuccess).mockClear();
+    vi.mocked(showError).mockClear();
   });
 
   it('job failed desconocido: copy humano en Alert/toast, traceback crudo solo truncado en statusLine', async () => {

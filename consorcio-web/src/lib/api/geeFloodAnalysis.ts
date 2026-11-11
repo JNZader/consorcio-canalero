@@ -70,15 +70,24 @@ export function fusionComparisonReady(startDate: string, endDate: string): boole
 export function validateFloodAnalysisDates(
   startDate: string,
   endDate: string,
-  _method: FloodAnalysisMethod
+  method: FloodAnalysisMethod
 ): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
     return 'Usá fechas en formato AAAA-MM-DD.';
   }
   const span = daySpanInclusiveStartExclusiveEnd(startDate, endDate);
   if (span == null) return 'Fechas inválidas.';
-  if (span < FUSION_COMPARISON_MIN_SPAN_DAYS) {
-    return 'La fecha sin agua tiene que ser al menos 1 día después de la crecida.';
+  // Backend (gee_tasks_support.build_flood_analysis_result): the >=1-day span
+  // gate only guards the fusion comparison branch. sar_only / optical_only run
+  // with any span, including same-day, so the min-span error is fusion-only.
+  if (method === 'fusion' && span < FUSION_COMPARISON_MIN_SPAN_DAYS) {
+    return 'Para fusión, la fecha sin agua tiene que ser al menos 1 día después de la crecida.';
+  }
+  // Sanity floor for every method: a reference date BEFORE the flood makes no
+  // sense (the input label says "después") and sends the backend an inverted
+  // filterDate range.
+  if (span < 0) {
+    return 'La fecha sin agua no puede ser anterior a la crecida.';
   }
   return null;
 }
@@ -106,14 +115,25 @@ function asImageResult(
   };
 }
 
+export type FloodComparisonSource =
+  | 'comparison'
+  | 'flood_only'
+  | 'normal_only'
+  | 'sar'
+  | 'optical'
+  | 'empty';
+
 export interface FloodComparisonSides {
   left: ImageResultLike | null;
   right: ImageResultLike | null;
-  source: 'comparison' | 'sar' | 'optical' | 'empty';
+  source: FloodComparisonSource;
 }
 
 /**
  * Pick left (normal) / right (flood) tiles from a completed analisis.resultado.
+ * 'comparison' requires BOTH sides: a one-sided comparison blob reports
+ * 'flood_only' / 'normal_only' so the caller can run the S1 fallback or surface
+ * an explicit partial state instead of a broken pair (#710).
  */
 export function pickFloodComparisonSides(
   resultado: FloodAnalysisResultado | null | undefined
@@ -124,9 +144,13 @@ export function pickFloodComparisonSides(
   if (comparison) {
     const left = asImageResult(comparison.normal_rgb);
     const right = asImageResult(comparison.flood_detection) ?? asImageResult(comparison.flood_rgb);
-    if (left || right) {
+    if (left && right) {
       return { left, right, source: 'comparison' };
     }
+    // Fallo parcial: un lado del par sin el otro no es una comparación (#710).
+    if (right) return { left: null, right, source: 'flood_only' };
+    if (left) return { left, right: null, source: 'normal_only' };
+    // Comparison blob sin tiles utilizables: seguir con las fuentes simples.
   }
 
   const sar = asImageResult(resultado.sar);
@@ -256,8 +280,26 @@ export function floodAnalysisErrorCopy(
 export interface PollFloodAnalysisOptions {
   intervalMs?: number;
   maxAttempts?: number;
+  /**
+   * Rechazos transitorios consecutivos del GET de estado que se bancan antes
+   * de declarar fracaso: el N-ésimo rechazo seguido corta el poll. Antes de
+   * eso, cada rechazo reintenta con backoff incremental (1s, 2s, 4s…).
+   * El AbortError del operador nunca se reintenta: corta en el acto.
+   */
+  maxTransientErrors?: number;
   signal?: AbortSignal;
   onTick?: (analisis: AnalisisGeoResponse) => void;
+}
+
+/** Backoff tras el primer rechazo transitorio: 1s→2s→4s… */
+const TRANSIENT_BACKOFF_BASE_MS = 1000;
+
+function transientBackoffMs(consecutiveErrors: number): number {
+  return TRANSIENT_BACKOFF_BASE_MS * 2 ** (consecutiveErrors - 1);
+}
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === 'AbortError';
 }
 
 export async function pollFloodAnalysisUntilDone(
@@ -266,13 +308,30 @@ export async function pollFloodAnalysisUntilDone(
 ): Promise<AnalisisGeoResponse> {
   const intervalMs = options.intervalMs ?? 4000;
   const maxAttempts = options.maxAttempts ?? 75;
+  const maxTransientErrors = options.maxTransientErrors ?? 3;
   let last: AnalisisGeoResponse | null = null;
+  let transientErrors = 0;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (options.signal?.aborted) {
       throw new DOMException('Aborted', 'AbortError');
     }
-    last = await getFloodAnalysis(analisisId, options.signal);
+    let current: AnalisisGeoResponse;
+    try {
+      current = await getFloodAnalysis(analisisId, options.signal);
+    } catch (err) {
+      // La cancelación (operador, run nuevo, desmonte) corta inmediato: ni retry ni tragar.
+      if (isAbortError(err)) throw err;
+      transientErrors += 1;
+      if (transientErrors >= maxTransientErrors) {
+        throw err;
+      }
+      // Un 5xx/timeout aislado no mata el loop mientras el job siga vivo atrás.
+      await sleep(transientBackoffMs(transientErrors), options.signal);
+      continue;
+    }
+    transientErrors = 0;
+    last = current;
     options.onTick?.(last);
     if (last.estado === 'completed' || last.estado === 'failed') {
       return last;
