@@ -7,6 +7,7 @@ import { showError, showSuccess } from '../../../lib/notifications';
 import { erroresUi, textoError } from '../../../lib/userFacingError';
 import { useLiveRegion } from '../../ui/accessibility';
 import { ConfirmDialog } from '../../ui/ConfirmDialog';
+import { REPORTS_SORT_KEYS, resolveBandejaSort } from '../bandejaSort';
 import { ReportDetailModal } from './components/ReportDetailModal';
 import { ReportsFilters } from './components/ReportsFilters';
 import { ReportsTableContent } from './components/ReportsTableContent';
@@ -32,7 +33,10 @@ function readBandejaQuery() {
     estado: params.get('estado'),
     categoria: params.get('categoria'),
     page: Number.isFinite(page) && page > 0 ? page : 1,
-    sort: params.get('sort') || 'created_at',
+    // Sort fuera de la whitelist de la bandeja → default del panel: el
+    // backend responde 400 para cualquier `sort` que no conoce, y una
+    // URL compartida con un valor stale dejaba la bandeja en error.
+    sort: resolveBandejaSort(params.get('sort'), REPORTS_SORT_KEYS),
     // Cualquier valor no reconocido cae en el default del backend.
     order: params.get('order') === 'asc' ? ('asc' as const) : ('desc' as const),
   };
