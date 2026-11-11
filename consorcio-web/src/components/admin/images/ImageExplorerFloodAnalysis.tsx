@@ -20,13 +20,16 @@ import {
   FLOOD_ANALYSIS_METHODS,
   type FloodAnalysisMethod,
   fetchSentinel1FloodTile,
+  floodAnalysisErrorCopy,
   fusionComparisonReady,
+  isAuthError,
   pickFloodComparisonSides,
   pollFloodAnalysisUntilDone,
   submitFloodAnalysis,
   validateFloodAnalysisDates,
 } from '../../../lib/api/geeFloodAnalysis';
 import { showError, showInfo, showSuccess } from '../../../lib/notifications';
+import { erroresUi, type MensajeError, textoError } from '../../../lib/userFacingError';
 import { createSelectedImageFromResult, type ImageResultLike } from './imageExplorerUtils';
 
 type RunState = 'idle' | 'submitting' | 'polling' | 'completed' | 'failed';
@@ -49,6 +52,26 @@ function methodLabel(m: FloodAnalysisMethod): string {
   if (m === 'fusion') return 'Fusión (recomendado)';
   if (m === 'sar_only') return 'Solo radar';
   return 'Solo óptico';
+}
+
+/**
+ * Fallback de referencia radar para jobs sar_only (#712): el abort y el
+ * rechazo de sesión (401/403) se propagan — silenciarlos mostraba un éxito
+ * parcial sin que el operador supiera que el tile fue rechazado. Timeout/5xx
+ * del tile S1 sí se toleran: se sigue solo con el lado de crecida.
+ */
+async function fetchSarNormalSide(
+  normalDate: string,
+  signal: AbortSignal
+): Promise<SelectedImage | null> {
+  try {
+    const normalTile = await fetchSentinel1FloodTile(normalDate, signal);
+    return toSelected(normalTile);
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') throw err;
+    if (isAuthError(err)) throw err;
+    return null; // Keep going with flood side only; operator can fill Antes from Comparar.
+  }
 }
 
 export function ImageExplorerFloodAnalysis({
@@ -89,6 +112,17 @@ export function ImageExplorerFloodAnalysis({
     (state === 'idle' || state === 'failed' || state === 'completed');
 
   const activeStep = !floodDate ? 0 : !normalDate || validationError ? 1 : 2;
+
+  /**
+   * Superficie de fallo única (#712): copy humano en Alert/toast, detalle crudo
+   * (si lo hay) solo truncado en statusLine.
+   */
+  function failWithCopy(mensaje: MensajeError, detalleTecnico: string | null) {
+    setState('failed');
+    setError(textoError(mensaje));
+    showError(mensaje.titulo, mensaje.detalle);
+    if (detalleTecnico) setStatusLine(detalleTecnico);
+  }
 
   async function handleRun() {
     const gate = validateFloodAnalysisDates(floodDate, normalDate, method);
@@ -133,10 +167,10 @@ export function ImageExplorerFloodAnalysis({
       if (abortRef.current !== controller) return;
 
       if (done.estado === 'failed') {
-        setState('failed');
-        const msg = done.error || 'El análisis falló en el worker.';
-        setError(msg);
-        showError('Detección fallida', msg);
+        // done.error llega como "{ExcType}: {exc}\n{traceback}": copy humano en
+        // Alert/toast, el crudo solo truncado en statusLine (#712).
+        const { mensaje, detalleTecnico } = floodAnalysisErrorCopy(done.error);
+        failWithCopy(mensaje, detalleTecnico);
         return;
       }
 
@@ -145,14 +179,7 @@ export function ImageExplorerFloodAnalysis({
       const right = toSelected(sides.right);
 
       if (!left && sides.source === 'sar' && normalDate) {
-        try {
-          const normalTile = await fetchSentinel1FloodTile(normalDate, controller.signal);
-          left = toSelected(normalTile);
-        } catch (err) {
-          // El abort (cancelación, run nuevo o desmonte) no se traga: lo maneja el catch superior.
-          if (err instanceof DOMException && err.name === 'AbortError') throw err;
-          // Keep going with flood side only; operator can fill Antes from Comparar.
-        }
+        left = await fetchSarNormalSide(normalDate, controller.signal);
       }
 
       // El fallback pudo quedar un rato en vuelo: si otro run tomó el control, no aplicar nada.
@@ -162,12 +189,11 @@ export function ImageExplorerFloodAnalysis({
       if (right) onSetRightImage(right);
 
       if (!left && !right) {
-        setState('failed');
-        const detail =
-          done.resultado?.comparison_error ||
-          'El job terminó sin tiles utilizables. Probá fusión con una fecha sin agua al menos 1 día después de la crecida.';
-        setError(detail);
-        showError('Sin tiles', detail);
+        const { mensaje, detalleTecnico } = floodAnalysisErrorCopy(
+          done.resultado?.comparison_error,
+          erroresUi.floodTilesVacios
+        );
+        failWithCopy(mensaje, detalleTecnico);
         return;
       }
 
@@ -184,6 +210,12 @@ export function ImageExplorerFloodAnalysis({
       // El error de un run suplantado no debe pisar el estado del run vigente.
       if (abortRef.current !== controller) return;
       setState('failed');
+      // Sesión rechazada (submit, poll o fallback S1): copy dedicada, no el
+      // detalle crudo ni un "falló el worker" genérico (#712).
+      if (isAuthError(err)) {
+        failWithCopy(erroresUi.floodSesionExpirada, null);
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Error desconocido';
       setError(msg);
       showError('Detección fallida', msg);

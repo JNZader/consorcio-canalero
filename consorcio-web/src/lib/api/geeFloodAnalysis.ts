@@ -5,6 +5,8 @@
  */
 
 import type { ImageResultLike } from '../../components/admin/images/imageExplorerUtils';
+import { QueryError } from '../queryError';
+import { erroresUi, type MensajeError } from '../userFacingError';
 import { apiFetch, GEE_TIMEOUT } from './core';
 
 export const FLOOD_ANALYSIS_METHODS = ['fusion', 'sar_only', 'optical_only'] as const;
@@ -159,10 +161,96 @@ export async function getFloodAnalysis(
   analisisId: string,
   signal?: AbortSignal
 ): Promise<AnalisisGeoResponse> {
-  return apiFetch<AnalisisGeoResponse>(`/geo/gee/analysis/${analisisId}`, {
+  // Idem rainfall/canalesPublicacion: un id con "/" o "?" no puede armar el
+  // path ni colar query params contra la base (#712).
+  return apiFetch<AnalisisGeoResponse>(`/geo/gee/analysis/${encodeURIComponent(analisisId)}`, {
     signal,
     timeout: GEE_TIMEOUT,
   });
+}
+
+/**
+ * Auth rejection coming out of the API core (#712): 401/403 is NOT "tile no
+ * disponible" and must not be swallowed by degrading surfaces.
+ *
+ * - ``QueryError`` with 401 (refresh + retry also rejected) or 403.
+ * - The session-dead path of ``apiFetch`` throws a plain ``Error`` with this
+ *   fixed message after dispatching ``auth:expired`` (RES2-001) — the message
+ *   is the only handle, and it is core.ts's documented contract.
+ */
+export function isAuthError(error: unknown): boolean {
+  if (error instanceof QueryError) {
+    return error.statusCode === 401 || error.statusCode === 403;
+  }
+  return error instanceof Error && error.message.startsWith('Tu sesión ha expirado');
+}
+
+/** Cap for the raw backend detail shown as secondary text (statusLine). */
+const FLOOD_ERROR_TECH_DETAIL_MAX_CHARS = 140;
+
+/** URLs enteras (host + project ids de GEE incluidos) no van al operador. */
+const URL_SCRUB_RE = /https?:\/\/\S+/g;
+
+/**
+ * Colapsa, lava y trunca: una línea corta, sin URLs, nunca el traceback
+ * entero. El scrub es ANTES del truncado — un prefijo posicional solo
+ * recortaría el final y dejaría pasar una URL de la cabecera del error.
+ */
+function truncateTechDetail(raw: string): string {
+  const clean = raw
+    .replace(URL_SCRUB_RE, '[url]')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return clean.length <= FLOOD_ERROR_TECH_DETAIL_MAX_CHARS
+    ? clean
+    : `${clean.slice(0, FLOOD_ERROR_TECH_DETAIL_MAX_CHARS - 1)}…`;
+}
+
+/**
+ * Known flood-worker failure signatures (#712): ``done.error`` y
+ * ``comparison_error`` llegan como ``"{ExcType}: {exc}\n{traceback}"``, con
+ * paths del filesystem, project ids y URLs de GEE que no van verbatim al
+ * operador. Primero gana el patrón (el timeout de celery es el más común).
+ */
+const FLOOD_KNOWN_ERROR_PATTERNS: readonly (readonly [RegExp, MensajeError])[] = [
+  [/timed?\s*out|timeout|deadline|SoftTimeLimitExceeded/i, erroresUi.floodAnalisisTimeout],
+  [/quota|rate\s*limit|too many requests|\b429\b/i, erroresUi.floodAnalisisCuota],
+  [
+    /no\s+(?:sr\s+)?scenes?|no\s+images?|sin\s+escenas?|empty\s+(?:image\s+)?collection|no\s+se\s+encontraron\s+im[aá]genes/i,
+    erroresUi.floodAnalisisSinEscena,
+  ],
+];
+
+export interface FloodAnalysisErrorCopy {
+  /** Copy humano para Alert/toast (patrón erroresUi). */
+  readonly mensaje: MensajeError;
+  /**
+   * Detalle crudo truncado para superficies secundarias (statusLine); null
+   * cuando el error es conocido o no hay detalle.
+   */
+  readonly detalleTecnico: string | null;
+}
+
+/**
+ * Map a raw backend flood error to human copy (#712): conocido → mensaje
+ * corto; desconocido → genérico + el detalle técnico colapsado y truncado,
+ * nunca verbatim completo con URLs/paths.
+ */
+export function floodAnalysisErrorCopy(
+  rawError: string | null | undefined,
+  fallback: MensajeError = erroresUi.floodAnalisis
+): FloodAnalysisErrorCopy {
+  const raw = typeof rawError === 'string' ? rawError.trim() : '';
+  if (!raw) return { mensaje: fallback, detalleTecnico: null };
+  // Los patrones se evalúan SOLO contra la primera línea ("{ExcType}: {exc}").
+  // Probar contra el string entero hacía que un frame del traceback con
+  // "timeout = 300" en locals clasificara un error ajeno como timeout y
+  // devolviera detalleTecnico null — escondiendo la causa real (review 712).
+  const head = raw.split('\n', 1)[0] ?? raw;
+  for (const [pattern, mensaje] of FLOOD_KNOWN_ERROR_PATTERNS) {
+    if (pattern.test(head)) return { mensaje, detalleTecnico: null };
+  }
+  return { mensaje: fallback, detalleTecnico: truncateTechDetail(raw) };
 }
 
 export interface PollFloodAnalysisOptions {
