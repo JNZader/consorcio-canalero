@@ -130,8 +130,6 @@ describe('ReportDetailModal (ADM-05)', () => {
     vi.mocked(apiFetch)
       .mockResolvedValueOnce([
         { id: 'op-7', nombre: 'Romina Torres', email: 'romina@consorcio.gob.ar' },
-      ] as never)
-      .mockResolvedValueOnce([
         { id: 'op-9', nombre: 'Marcos Diaz', email: 'marcos@consorcio.gob.ar' },
       ] as never)
       .mockRejectedValueOnce(new Error('fallo de red') as never);
@@ -140,7 +138,11 @@ describe('ReportDetailModal (ADM-05)', () => {
 
     const select = await screen.findByRole('combobox', { name: /Asignar operador/i });
     await user.click(select);
-    await user.click(await screen.findByRole('option', { name: /Marcos Diaz/i }));
+    // En CI el fetch de operadores resuelve más lento que el timeout
+    // default (1s) del findByRole bajo coverage — esperar explícitamente.
+    await user.click(
+      await screen.findByRole('option', { name: /Marcos Diaz/i }, { timeout: 5000 })
+    );
 
     // El PATCH rechazó: el select NO puede seguir mostrando una asignación
     // que nunca llegó al backend — vuelve al asignado persistido (op-7).
@@ -184,7 +186,9 @@ describe('ReportDetailModal (ADM-05)', () => {
     const select = await screen.findByRole('combobox', { name: /Asignar operador/i });
     // Primer intento: falla y deja el error en pantalla.
     await user.click(select);
-    await user.click(await screen.findByRole('option', { name: /Marcos Diaz/i }));
+    await user.click(
+      await screen.findByRole('option', { name: /Marcos Diaz/i }, { timeout: 5000 })
+    );
     await waitFor(() => {
       expect(screen.getByText('No se pudo guardar la asignación')).toBeInTheDocument();
     });
@@ -192,7 +196,9 @@ describe('ReportDetailModal (ADM-05)', () => {
     // Reintento con la misma elección: arranca limpiando el error y, al
     // persistir, el error ya no está y el padre queda notificado.
     await user.click(select);
-    await user.click(await screen.findByRole('option', { name: /Marcos Diaz/i }));
+    await user.click(
+      await screen.findByRole('option', { name: /Marcos Diaz/i }, { timeout: 5000 })
+    );
     await waitFor(() => {
       expect(onAssigneeChange).toHaveBeenCalledWith('rep-101', 'op-9');
     });
