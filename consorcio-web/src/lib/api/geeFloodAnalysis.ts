@@ -168,8 +168,26 @@ export async function getFloodAnalysis(
 export interface PollFloodAnalysisOptions {
   intervalMs?: number;
   maxAttempts?: number;
+  /**
+   * Rechazos transitorios consecutivos del GET de estado que se bancan antes
+   * de declarar fracaso: el N-ésimo rechazo seguido corta el poll. Antes de
+   * eso, cada rechazo reintenta con backoff incremental (1s, 2s, 4s…).
+   * El AbortError del operador nunca se reintenta: corta en el acto.
+   */
+  maxTransientErrors?: number;
   signal?: AbortSignal;
   onTick?: (analisis: AnalisisGeoResponse) => void;
+}
+
+/** Backoff tras el primer rechazo transitorio: 1s→2s→4s… */
+const TRANSIENT_BACKOFF_BASE_MS = 1000;
+
+function transientBackoffMs(consecutiveErrors: number): number {
+  return TRANSIENT_BACKOFF_BASE_MS * 2 ** (consecutiveErrors - 1);
+}
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === 'AbortError';
 }
 
 export async function pollFloodAnalysisUntilDone(
@@ -178,13 +196,30 @@ export async function pollFloodAnalysisUntilDone(
 ): Promise<AnalisisGeoResponse> {
   const intervalMs = options.intervalMs ?? 4000;
   const maxAttempts = options.maxAttempts ?? 75;
+  const maxTransientErrors = options.maxTransientErrors ?? 3;
   let last: AnalisisGeoResponse | null = null;
+  let transientErrors = 0;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (options.signal?.aborted) {
       throw new DOMException('Aborted', 'AbortError');
     }
-    last = await getFloodAnalysis(analisisId, options.signal);
+    let current: AnalisisGeoResponse;
+    try {
+      current = await getFloodAnalysis(analisisId, options.signal);
+    } catch (err) {
+      // La cancelación (operador, run nuevo, desmonte) corta inmediato: ni retry ni tragar.
+      if (isAbortError(err)) throw err;
+      transientErrors += 1;
+      if (transientErrors >= maxTransientErrors) {
+        throw err;
+      }
+      // Un 5xx/timeout aislado no mata el loop mientras el job siga vivo atrás.
+      await sleep(transientBackoffMs(transientErrors), options.signal);
+      continue;
+    }
+    transientErrors = 0;
+    last = current;
     options.onTick?.(last);
     if (last.estado === 'completed' || last.estado === 'failed') {
       return last;

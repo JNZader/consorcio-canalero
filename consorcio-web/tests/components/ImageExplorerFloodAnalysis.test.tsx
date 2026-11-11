@@ -396,4 +396,76 @@ describe('ImageExplorerFloodAnalysis', () => {
     expect(onSetRight).not.toHaveBeenCalled();
     expect(showSuccess).not.toHaveBeenCalled();
   });
+
+  it('re-attach al último análisis re-pollea el mismo job sin POSTear uno nuevo', async () => {
+    const onSetLeft = vi.fn();
+    const onSetRight = vi.fn();
+    const user = userEvent.setup();
+
+    const jobCompleted = {
+      id: 'job-1',
+      tipo: 'flood',
+      estado: 'completed',
+      resultado: {
+        method: 'fusion',
+        comparison: {
+          normal_rgb: normalTile,
+          flood_detection: floodTile,
+        },
+      },
+    };
+
+    // POST (job nuevo) + GET que completa + GET del re-attach al MISMO id.
+    apiFetchMock
+      .mockResolvedValueOnce({ id: 'job-1', tipo: 'flood', estado: 'pending' })
+      .mockResolvedValueOnce(jobCompleted)
+      .mockResolvedValueOnce(jobCompleted);
+
+    render(<ImageExplorerFloodAnalysis onSetLeftImage={onSetLeft} onSetRightImage={onSetRight} />, {
+      wrapper,
+    });
+
+    await fillDatesAndRun(user);
+    await waitFor(() => {
+      expect(onSetLeft).toHaveBeenCalledTimes(1);
+      expect(onSetRight).toHaveBeenCalledTimes(1);
+    });
+
+    // Tras el run completado, el reintento responsable re-atachea el poll.
+    await user.click(screen.getByRole('button', { name: /Revisar último análisis/i }));
+
+    await waitFor(() => {
+      expect(onSetLeft).toHaveBeenCalledTimes(2);
+      expect(onSetRight).toHaveBeenCalledTimes(2);
+    });
+
+    // Un solo POST en toda la sesión: el re-attach sólo hizo GETs del último id.
+    const postCalls = apiFetchMock.mock.calls.filter((call) => call[1]?.method === 'POST');
+    expect(postCalls).toHaveLength(1);
+    expect(apiFetchMock.mock.calls[1][0]).toBe('/geo/gee/analysis/job-1');
+    expect(apiFetchMock.mock.calls[2][0]).toBe('/geo/gee/analysis/job-1');
+  });
+
+  it('el re-attach no se ofrece durante el polling y sí tras cancelar', async () => {
+    const user = userEvent.setup();
+
+    // POST + poll eterno: deja el run en polling hasta que se cancele.
+    apiFetchMock
+      .mockResolvedValueOnce({ id: 'job-1', tipo: 'flood', estado: 'pending' })
+      .mockImplementationOnce(() => new Promise(() => {}));
+
+    render(<ImageExplorerFloodAnalysis onSetLeftImage={vi.fn()} onSetRightImage={vi.fn()} />, {
+      wrapper,
+    });
+
+    await fillDatesAndRun(user);
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(2));
+
+    // Sin polls paralelos: durante el polling no hay botón de re-attach.
+    expect(screen.queryByRole('button', { name: /Revisar último análisis/i })).toBeNull();
+
+    // Cancelar deja el job vivo en el servidor: el re-attach recupera el handle.
+    await user.click(screen.getByRole('button', { name: /Cancelar/i }));
+    expect(screen.getByRole('button', { name: /Revisar último análisis/i })).toBeInTheDocument();
+  });
 });
