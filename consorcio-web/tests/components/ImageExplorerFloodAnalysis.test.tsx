@@ -189,6 +189,9 @@ describe('ImageExplorerFloodAnalysis', () => {
     await user.type(screen.getByLabelText(/Fecha sin agua/i), '2024-01-10');
 
     expect(screen.getByRole('alert')).toHaveTextContent(/1 día/i);
+    // La regla de span vive SOLO en la Alert (#714): el hint del input es neutro.
+    expect(screen.queryByText('Tiene que ser al menos 1 día después de la crecida')).toBeNull();
+    expect(screen.getByText('Formato AAAA-MM-DD')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Detectar inundación$/i })).toBeDisabled();
     expect(apiFetchMock).not.toHaveBeenCalled();
   });

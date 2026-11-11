@@ -235,6 +235,7 @@ export default function ImageExplorerPanel() {
 
           {tab === 'detectar' && (
             <div style={{ marginBottom: 16 }}>
+              {/* Setters crudos a propósito: los handle* derivan del preview `result` del explorador, mientras que esta card empuja tiles propios del job GEE (la persistencia/evento viven en el setter del hook). */}
               <ImageExplorerFloodAnalysis
                 onSetLeftImage={controller.setLeftImage}
                 onSetRightImage={controller.setRightImage}
