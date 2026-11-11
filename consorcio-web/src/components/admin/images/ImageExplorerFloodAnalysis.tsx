@@ -65,6 +65,13 @@ export function ImageExplorerFloodAnalysis({
   const [statusLine, setStatusLine] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  /**
+   * Último job posteado por esta card. Permite re-atacharse al job vivo
+   * (GET + poll del mismo id) en vez de POSTear un análisis nuevo — el
+   * reintento ciega duplica trabajo GEE. Se escribe antes de cada setState
+   * del run, así el render que habilita el botón ya lo ve poblado.
+   */
+  const lastRunRef = useRef<{ id: string; normalDate: string } | null>(null);
 
   useEffect(() => {
     if (initialFloodDate) setFloodDate(initialFloodDate);
@@ -87,8 +94,121 @@ export function ImageExplorerFloodAnalysis({
     !!normalDate &&
     !validationError &&
     (state === 'idle' || state === 'failed' || state === 'completed');
+  // Re-attach disponible sólo fuera de un run en vuelo (sin polls paralelos).
+  const canRecheckLast =
+    lastRunRef.current !== null &&
+    (state === 'idle' || state === 'failed' || state === 'completed');
 
   const activeStep = !floodDate ? 0 : !normalDate || validationError ? 1 : 2;
+
+  /**
+   * Fase común a un run nuevo y al re-attach al último job: poll del id,
+   * aplicación del par Antes/Después y desenlace en la card.
+   */
+  async function pollAndApply(
+    analisisId: string,
+    controller: AbortController,
+    referenceNormalDate: string
+  ) {
+    setState('polling');
+    setStatusLine('Analizando…');
+
+    const done = await pollFloodAnalysisUntilDone(analisisId, {
+      signal: controller.signal,
+      onTick: (tick) => {
+        // Tick de un run suplantado: no pisar el statusLine del run vigente.
+        if (abortRef.current !== controller) return;
+        setStatusLine(
+          tick.estado === 'running' || tick.estado === 'pending'
+            ? 'Analizando…'
+            : `Estado: ${tick.estado}`
+        );
+      },
+    });
+
+    // Run suplantado (cancelación o run nuevo): descartar el resultado sin tocar estado.
+    if (abortRef.current !== controller) return;
+
+    if (done.estado === 'failed') {
+      setState('failed');
+      const msg = done.error || 'El análisis falló en el worker.';
+      setError(msg);
+      showError('Detección fallida', msg);
+      return;
+    }
+
+    const sides = pickFloodComparisonSides(done.resultado);
+    let left = toSelected(sides.left);
+    const right = toSelected(sides.right);
+
+    // Sin lado normal, el fallback S1 aplica tanto al job sar puro como al
+    // fallo parcial flood_only (crecida sin normal_rgb) (#710).
+    if (!left && (sides.source === 'sar' || sides.source === 'flood_only') && referenceNormalDate) {
+      try {
+        const normalTile = await fetchSentinel1FloodTile(referenceNormalDate, controller.signal);
+        left = toSelected(normalTile);
+      } catch (err) {
+        // El abort (cancelación, run nuevo o desmonte) no se traga: lo maneja el catch superior.
+        if (err instanceof DOMException && err.name === 'AbortError') throw err;
+        // Keep going with flood side only; operator can fill Antes from Comparar.
+      }
+    }
+
+    // El fallback pudo quedar un rato en vuelo: si otro run tomó el control, no aplicar nada.
+    if (abortRef.current !== controller) return;
+
+    if (left) onSetLeftImage(left);
+    if (right) onSetRightImage(right);
+
+    if (!left && !right) {
+      setState('failed');
+      const detail =
+        done.resultado?.comparison_error ||
+        'El job terminó sin tiles utilizables. Probá fusión con una fecha sin agua al menos 1 día después de la crecida.';
+      setError(detail);
+      showError('Sin tiles', detail);
+      return;
+    }
+
+    setState('completed');
+
+    // sar/optical nunca prometieron un par: el tile de crecida es el entregable.
+    if (sides.source === 'sar' || sides.source === 'optical') {
+      const hint = 'Tile de crecida listo (y referencia radar si se pudo). Revisá la bandeja.';
+      setStatusLine(hint);
+      showSuccess('Detección lista', hint);
+      onPairReady?.();
+      return;
+    }
+
+    if (left && right) {
+      const hint = 'Par listo. Usá Abrir en mapa en la bandeja.';
+      setStatusLine(hint);
+      showSuccess('Detección lista', hint);
+      onPairReady?.();
+      return;
+    }
+
+    // Fallo parcial explícito (#710): el par quedó incompleto y NO se presenta
+    // como éxito. Estado 'completed' (el job terminó y hay al menos un tile
+    // aplicable, y habilita reintentar sin resetear el form) + statusLine y
+    // toast informativo que dicen qué lado falta. El lado ausente no se pisa.
+    const partialHint = right
+      ? 'Comparación incompleta: tile de crecida sin referencia. Cargá el Antes desde Comparar o reintentá.'
+      : 'Comparación incompleta: no se detectó crecida; quedó sólo la referencia sin agua.';
+    setStatusLine(partialHint);
+    showInfo('Comparación incompleta', partialHint);
+  }
+
+  function handleRunFailure(err: unknown, controller: AbortController) {
+    if (err instanceof DOMException && err.name === 'AbortError') return;
+    // El error de un run suplantado no debe pisar el estado del run vigente.
+    if (abortRef.current !== controller) return;
+    setState('failed');
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    setError(msg);
+    showError('Detección fallida', msg);
+  }
 
   async function handleRun() {
     const gate = validateFloodAnalysisDates(floodDate, normalDate, method);
@@ -113,103 +233,34 @@ export function ImageExplorerFloodAnalysis({
       );
       // Un POST que resuelve tras una cancelación no puede revivir el run.
       if (abortRef.current !== controller) return;
-      setState('polling');
-      setStatusLine('Analizando…');
-
-      const done = await pollFloodAnalysisUntilDone(created.id, {
-        signal: controller.signal,
-        onTick: (tick) => {
-          // Tick de un run suplantado: no pisar el statusLine del run vigente.
-          if (abortRef.current !== controller) return;
-          setStatusLine(
-            tick.estado === 'running' || tick.estado === 'pending'
-              ? 'Analizando…'
-              : `Estado: ${tick.estado}`
-          );
-        },
-      });
-
-      // Run suplantado (cancelación o run nuevo): descartar el resultado sin tocar estado.
-      if (abortRef.current !== controller) return;
-
-      if (done.estado === 'failed') {
-        setState('failed');
-        const msg = done.error || 'El análisis falló en el worker.';
-        setError(msg);
-        showError('Detección fallida', msg);
-        return;
-      }
-
-      const sides = pickFloodComparisonSides(done.resultado);
-      let left = toSelected(sides.left);
-      const right = toSelected(sides.right);
-
-      // Sin lado normal, el fallback S1 aplica tanto al job sar puro como al
-      // fallo parcial flood_only (crecida sin normal_rgb) (#710).
-      if (!left && (sides.source === 'sar' || sides.source === 'flood_only') && normalDate) {
-        try {
-          const normalTile = await fetchSentinel1FloodTile(normalDate, controller.signal);
-          left = toSelected(normalTile);
-        } catch (err) {
-          // El abort (cancelación, run nuevo o desmonte) no se traga: lo maneja el catch superior.
-          if (err instanceof DOMException && err.name === 'AbortError') throw err;
-          // Keep going with flood side only; operator can fill Antes from Comparar.
-        }
-      }
-
-      // El fallback pudo quedar un rato en vuelo: si otro run tomó el control, no aplicar nada.
-      if (abortRef.current !== controller) return;
-
-      if (left) onSetLeftImage(left);
-      if (right) onSetRightImage(right);
-
-      if (!left && !right) {
-        setState('failed');
-        const detail =
-          done.resultado?.comparison_error ||
-          'El job terminó sin tiles utilizables. Probá fusión con una fecha sin agua al menos 1 día después de la crecida.';
-        setError(detail);
-        showError('Sin tiles', detail);
-        return;
-      }
-
-      setState('completed');
-
-      // sar/optical nunca prometieron un par: el tile de crecida es el entregable.
-      if (sides.source === 'sar' || sides.source === 'optical') {
-        const hint = 'Tile de crecida listo (y referencia radar si se pudo). Revisá la bandeja.';
-        setStatusLine(hint);
-        showSuccess('Detección lista', hint);
-        onPairReady?.();
-        return;
-      }
-
-      if (left && right) {
-        const hint = 'Par listo. Usá Abrir en mapa en la bandeja.';
-        setStatusLine(hint);
-        showSuccess('Detección lista', hint);
-        onPairReady?.();
-        return;
-      }
-
-      // Fallo parcial explícito (#710): el par quedó incompleto y NO se presenta
-      // como éxito. Se elige estado 'completed' (el job terminó y hay al menos un
-      // tile aplicable, y habilita reintentar sin resetear el form) + statusLine
-      // y toast informativo que dicen qué lado falta. El lado ausente no se pisa:
-      // en normal_only el slider derecho conserva el tile anterior.
-      const partialHint = right
-        ? 'Comparación incompleta: tile de crecida sin referencia. Cargá el Antes desde Comparar o reintentá.'
-        : 'Comparación incompleta: no se detectó crecida; quedó sólo la referencia sin agua.';
-      setStatusLine(partialHint);
-      showInfo('Comparación incompleta', partialHint);
+      // Queda registrado para que un reintento posterior re-atachee el poll
+      // en vez de POSTear otro job GEE.
+      lastRunRef.current = { id: created.id, normalDate };
+      await pollAndApply(created.id, controller, normalDate);
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return;
-      // El error de un run suplantado no debe pisar el estado del run vigente.
-      if (abortRef.current !== controller) return;
-      setState('failed');
-      const msg = err instanceof Error ? err.message : 'Error desconocido';
-      setError(msg);
-      showError('Detección fallida', msg);
+      handleRunFailure(err, controller);
+    }
+  }
+
+  /**
+   * Re-attach al último job: GET de estado + poll del mismo analisisId,
+   * sin POSTear un análisis nuevo. Referencia el normalDate del run
+   * original (el fallback de Sentinel-1 no debe usar fechas editadas después).
+   */
+  async function handleRecheckLast() {
+    const lastRun = lastRunRef.current;
+    if (!lastRun) return;
+
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setError(null);
+
+    try {
+      await pollAndApply(lastRun.id, controller, lastRun.normalDate);
+    } catch (err) {
+      handleRunFailure(err, controller);
     }
   }
 
@@ -303,6 +354,11 @@ export function ImageExplorerFloodAnalysis({
           {(state === 'submitting' || state === 'polling') && (
             <Button size="sm" variant="default" onClick={handleCancel}>
               Cancelar
+            </Button>
+          )}
+          {canRecheckLast && (
+            <Button size="sm" variant="light" onClick={() => void handleRecheckLast()}>
+              Revisar último análisis
             </Button>
           )}
         </Group>

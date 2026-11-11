@@ -1,10 +1,20 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { apiFetchMock } = vi.hoisted(() => ({ apiFetchMock: vi.fn() }));
+
+// geeFloodAnalysis importa apiFetch de ./core — mockear ese módulo para
+// controlar los GET de estado del poll sin tocar la red.
+vi.mock('../../src/lib/api/core', () => ({
+  apiFetch: apiFetchMock,
+  GEE_TIMEOUT: 1000,
+}));
 
 import {
   type FloodAnalysisMethod,
   type FloodAnalysisResultado,
   fusionComparisonReady,
   pickFloodComparisonSides,
+  pollFloodAnalysisUntilDone,
   validateFloodAnalysisDates,
 } from '../../src/lib/api/geeFloodAnalysis';
 
@@ -155,5 +165,76 @@ describe('pickFloodComparisonSides', () => {
   it('returns empty when resultado has no tiles', () => {
     expect(pickFloodComparisonSides({ method: 'fusion' }).source).toBe('empty');
     expect(pickFloodComparisonSides(null).source).toBe('empty');
+  });
+});
+
+describe('pollFloodAnalysisUntilDone', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+  });
+
+  it('resuelve tras 2 rechazos transitorios seguidos de éxito', async () => {
+    vi.useFakeTimers();
+    try {
+      apiFetchMock
+        .mockRejectedValueOnce(new Error('503 Service Unavailable'))
+        .mockRejectedValueOnce(new Error('La solicitud excedió el tiempo límite (300s)'))
+        .mockResolvedValueOnce({ id: 'job-1', tipo: 'flood', estado: 'completed' });
+
+      const promise = pollFloodAnalysisUntilDone('job-1');
+      // Drena los backoffs incrementales (1s tras el primer rechazo, 2s tras el segundo).
+      await vi.runAllTimersAsync();
+
+      await expect(promise).resolves.toMatchObject({ id: 'job-1', estado: 'completed' });
+      expect(apiFetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rechaza al tercer rechazo transitorio consecutivo', async () => {
+    vi.useFakeTimers();
+    try {
+      apiFetchMock.mockRejectedValue(new Error('502 Bad Gateway'));
+
+      const promise = pollFloodAnalysisUntilDone('job-1');
+      // Registrar la expectativa antes de avanzar evita la unhandled rejection.
+      const expectation = expect(promise).rejects.toThrow('502 Bad Gateway');
+      await vi.runAllTimersAsync();
+      await expectation;
+
+      expect(apiFetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('AbortError corta inmediato, sin reintento', async () => {
+    apiFetchMock.mockRejectedValue(new DOMException('Aborted', 'AbortError'));
+
+    await expect(pollFloodAnalysisUntilDone('job-1')).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('un GET exitoso resetea el contador de transitorios', async () => {
+    vi.useFakeTimers();
+    try {
+      apiFetchMock
+        .mockRejectedValueOnce(new Error('503'))
+        .mockResolvedValueOnce({ id: 'job-1', tipo: 'flood', estado: 'running' })
+        .mockRejectedValueOnce(new Error('503'))
+        .mockResolvedValueOnce({ id: 'job-1', tipo: 'flood', estado: 'completed' });
+
+      // Sin reset, el segundo 503 sería el tercer transitorio acumulado y mataría el poll.
+      const promise = pollFloodAnalysisUntilDone('job-1', { intervalMs: 1000 });
+      await vi.runAllTimersAsync();
+
+      await expect(promise).resolves.toMatchObject({ estado: 'completed' });
+      expect(apiFetchMock).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
