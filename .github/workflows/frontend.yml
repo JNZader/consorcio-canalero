@@ -411,6 +411,12 @@ jobs:
     env:
       CI: '1'
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      # Firefox refuses to launch when $HOME is not owned by the current
+      # user (the GH Actions container mounts /github/home for uid 1001
+      # while the job runs as root). Playwright's own error message
+      # prescribes HOME=/root; without it every Desktop Firefox spec dies
+      # at launch (run 43058111786: 81 instant failures, other engines OK).
+      HOME: /root
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install dependencies
