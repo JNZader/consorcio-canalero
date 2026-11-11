@@ -136,6 +136,15 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Error closing map-pdf rate limiter", error=str(e))
     try:
+        # Same class of leak as the ficha limiter above: the GEE analysis
+        # limiter owns its own Redis client (own namespace, own limits), so it
+        # needs its own close on shutdown (#713).
+        from app.domains.geo.router import get_gee_analysis_rate_limiter
+
+        await get_gee_analysis_rate_limiter().close()
+    except Exception as e:
+        logger.warning("Error closing GEE analysis rate limiter", error=str(e))
+    try:
         from app.core.cache import get_cache
 
         await get_cache().close()
