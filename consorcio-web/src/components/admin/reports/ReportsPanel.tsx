@@ -376,6 +376,14 @@ export default function ReportsPanel() {
         setAdminNotes={setAdminNotes}
         onUpdate={handleUpdateStatus}
         updating={updating}
+        // El AssigneeField se re-seedea desde `selectedReport.asignado_a`
+        // al reabrir el modal; sin esta propagación una asignación guardada
+        // "desaparecía" porque el estado local del panel quedaba viejo.
+        onAsignadoChange={(asignado) =>
+          setSelectedReport((current) =>
+            current ? { ...current, asignado_a: asignado ?? undefined } : current
+          )
+        }
       />
     </Container>
   );

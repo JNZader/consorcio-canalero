@@ -14,7 +14,7 @@ import {
   Timeline,
   Title,
 } from '@mantine/core';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CATEGORY_OPTIONS, getAllowedNextEstados } from '../../../../constants';
 import type { Report } from '../../../../lib/api';
 import { API_URL, apiFetch } from '../../../../lib/api';
@@ -81,6 +81,7 @@ export function ReportDetailModal({
   setAdminNotes,
   onUpdate,
   updating,
+  onAsignadoChange,
 }: Readonly<{
   opened: boolean;
   onClose: () => void;
@@ -95,6 +96,7 @@ export function ReportDetailModal({
   setAdminNotes: (value: string) => void;
   onUpdate: () => void;
   updating: boolean;
+  onAsignadoChange?: (asignado: string | null) => void;
 }>) {
   return (
     <Modal opened={opened} onClose={onClose} title="Detalle de Denuncia" size="lg">
@@ -261,6 +263,7 @@ export function ReportDetailModal({
                 key={selectedReport.id}
                 denunciaId={selectedReport.id}
                 initialAsignado={selectedReport.asignado_a ?? null}
+                onAsignadoChange={onAsignadoChange}
               />
               <Textarea
                 label="Comentario Público"
@@ -337,13 +340,19 @@ export function ReportDetailModal({
 function AssigneeField({
   denunciaId,
   initialAsignado,
+  onAsignadoChange,
 }: {
   denunciaId: string;
   initialAsignado?: string | null;
+  onAsignadoChange?: (asignado: string | null) => void;
 }) {
   const [options, setOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [value, setValue] = useState<string | null>(initialAsignado ?? null);
   const [error, setError] = useState<string | null>(null);
+  // Último valor confirmado por el backend. En un PATCH fallido revertimos
+  // acá y NO a `initialAsignado`: si ya hubo un save exitoso en esta
+  // sesión del modal, `initialAsignado` quedó viejo.
+  const persistedRef = useRef<string | null>(initialAsignado ?? null);
 
   useEffect(() => {
     let cancelled = false;
@@ -368,11 +377,27 @@ function AssigneeField({
       value={value}
       clearable
       onChange={(next) => {
+        // Arranca un intento nuevo: el error del intento anterior no
+        // tiene por qué seguir en pantalla.
+        setError(null);
         setValue(next);
         void apiFetch(`/denuncias/${denunciaId}`, {
           method: 'PATCH',
           body: JSON.stringify({ asignado_a: next }),
-        }).catch(() => setError('No se pudo guardar la asignación'));
+        })
+          .then(() => {
+            persistedRef.current = next;
+            // El padre guarda el valor persistido en `selectedReport`:
+            // sin esto, reabrir el modal re-seedeaba el campo desde un
+            // `asignado_a` viejo y la asignación "desaparecía".
+            onAsignadoChange?.(next);
+          })
+          .catch(() => {
+            // Sin el revert el Select quedaba mostrando un asignado que
+            // nunca llegó al backend.
+            setValue(persistedRef.current);
+            setError('No se pudo guardar la asignación');
+          });
       }}
     />
   );
