@@ -22,6 +22,17 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 
+class EmailDeliveryError(RuntimeError):
+    """A send that ``raise_on_error=True`` asked to surface as a failure.
+
+    The module's default contract is "log and swallow" so a flaky SMTP
+    provider never aborts the register / forgot-password flows. Callers
+    that own a delivery pipeline (the denuncias status-mail Celery task)
+    need the failure to schedule a retry, so they opt in and the skips
+    (SMTP unwired, library missing) stop being silent no-ops for them.
+    """
+
+
 def is_configured() -> bool:
     """True when there's enough SMTP config to actually send mail."""
     return bool(settings.smtp_host and settings.smtp_from)
@@ -33,17 +44,23 @@ async def send_email(
     subject: str,
     body_text: str,
     body_html: str | None = None,
+    raise_on_error: bool = False,
 ) -> None:
     """Send a single email. Silent no-op when SMTP isn't configured.
 
     Always logs the attempt (without the body) so operators can trace
-    delivery decisions in the structured log.
+    delivery decisions in the structured log. With ``raise_on_error=True``
+    a non-delivery raises instead of degrading silently: skipped sends
+    raise this module's :class:`EmailDeliveryError`, and an SMTP failure
+    re-raises the provider's original exception after it is logged.
     """
     if not is_configured():
         logger.info(
             "email send skipped (SMTP not configured)",
             extra={"to_email_domain": to_email.split("@", 1)[-1], "subject": subject},
         )
+        if raise_on_error:
+            raise EmailDeliveryError("email send skipped: SMTP not configured")
         return
 
     msg = EmailMessage()
@@ -63,8 +80,10 @@ async def send_email(
     except ImportError:
         # Lib not installed in this environment — log and bail. The
         # caller never observes a failure (we don't want a missed
-        # email to abort the registration flow).
+        # email to abort the registration flow) unless it opted in.
         logger.warning("email send aborted: aiosmtplib not installed", extra={"subject": subject})
+        if raise_on_error:
+            raise EmailDeliveryError("email send aborted: aiosmtplib not installed") from None
         return
 
     # aiosmtplib treats ``start_tls`` and ``use_tls`` as mutually
@@ -94,9 +113,13 @@ async def send_email(
             },
         )
     except Exception as exc:  # noqa: BLE001 — never abort the caller
-        # Don't propagate — a flaky SMTP provider must not block the
-        # user-facing flow (register / forgot-password).
+        # Don't propagate by default — a flaky SMTP provider must not block
+        # the user-facing flow (register / forgot-password). Opt-in callers
+        # get the original exception re-raised (after it is logged) so their
+        # own retry policy can act on it.
         logger.exception("email send failed", extra={"subject": subject, "error": str(exc)})
+        if raise_on_error:
+            raise
 
 
 def send_email_blocking(
@@ -105,11 +128,13 @@ def send_email_blocking(
     subject: str,
     body_text: str,
     body_html: str | None = None,
+    raise_on_error: bool = False,
 ) -> None:
     """Sync wrapper for places that don't have an event loop handy.
 
     Spins up a one-shot loop. Use ``send_email`` directly from async
-    code paths to avoid the overhead.
+    code paths to avoid the overhead. ``raise_on_error`` is passed
+    through to :func:`send_email`.
     """
     asyncio.run(
         send_email(
@@ -117,6 +142,7 @@ def send_email_blocking(
             subject=subject,
             body_text=body_text,
             body_html=body_html,
+            raise_on_error=raise_on_error,
         )
     )
 
