@@ -250,6 +250,8 @@ class TestImportZonasPayload:
                 {"features": [{"geometry": None, "properties": {}}]},
             )
         assert exc_info.value.status_code == 400
+        # Issue #699: validation failure must not have touched the DB.
+        db.execute.assert_not_called()
 
     def test_unsupported_geometry_raises(self):
         from app.domains.geo.router_common import _import_zonas_operativas_payload
@@ -269,6 +271,46 @@ class TestImportZonasPayload:
                 },
             )
         assert exc_info.value.status_code == 400
+        # Issue #699: validation failure must not have touched the DB.
+        db.execute.assert_not_called()
+
+    def test_invalid_feature_mid_list_no_delete(self):
+        """A valid feature before an invalid one must not trigger the delete (#699)."""
+        from app.domains.geo.router_common import _import_zonas_operativas_payload
+
+        db = MagicMock()
+        db.execute.return_value = MagicMock(rowcount=0)
+        with pytest.raises(HTTPException) as exc_info:
+            _import_zonas_operativas_payload(
+                db,
+                {
+                    "features": [
+                        {
+                            "geometry": {
+                                "type": "Polygon",
+                                "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]],
+                            },
+                            "properties": {"cuenca": "norte", "nombre": "Z1"},
+                        },
+                        {
+                            "geometry": {"type": "Point", "coordinates": [0, 0]},
+                            "properties": {},
+                        },
+                        {
+                            "geometry": {
+                                "type": "Polygon",
+                                "coordinates": [[[2, 2], [3, 2], [3, 3], [2, 2]]],
+                            },
+                            "properties": {"cuenca": "sur", "nombre": "Z2"},
+                        },
+                    ]
+                },
+            )
+        assert exc_info.value.status_code == 400
+        assert "Feature 2" in exc_info.value.detail
+        # The delete must only run after EVERY feature validated.
+        db.execute.assert_not_called()
+        db.add.assert_not_called()
 
     def test_valid_import(self):
         from app.domains.geo.router_common import _import_zonas_operativas_payload
