@@ -104,14 +104,25 @@ function asImageResult(
   };
 }
 
+export type FloodComparisonSource =
+  | 'comparison'
+  | 'flood_only'
+  | 'normal_only'
+  | 'sar'
+  | 'optical'
+  | 'empty';
+
 export interface FloodComparisonSides {
   left: ImageResultLike | null;
   right: ImageResultLike | null;
-  source: 'comparison' | 'sar' | 'optical' | 'empty';
+  source: FloodComparisonSource;
 }
 
 /**
  * Pick left (normal) / right (flood) tiles from a completed analisis.resultado.
+ * 'comparison' requires BOTH sides: a one-sided comparison blob reports
+ * 'flood_only' / 'normal_only' so the caller can run the S1 fallback or surface
+ * an explicit partial state instead of a broken pair (#710).
  */
 export function pickFloodComparisonSides(
   resultado: FloodAnalysisResultado | null | undefined
@@ -122,9 +133,13 @@ export function pickFloodComparisonSides(
   if (comparison) {
     const left = asImageResult(comparison.normal_rgb);
     const right = asImageResult(comparison.flood_detection) ?? asImageResult(comparison.flood_rgb);
-    if (left || right) {
+    if (left && right) {
       return { left, right, source: 'comparison' };
     }
+    // Fallo parcial: un lado del par sin el otro no es una comparación (#710).
+    if (right) return { left: null, right, source: 'flood_only' };
+    if (left) return { left, right: null, source: 'normal_only' };
+    // Comparison blob sin tiles utilizables: seguir con las fuentes simples.
   }
 
   const sar = asImageResult(resultado.sar);

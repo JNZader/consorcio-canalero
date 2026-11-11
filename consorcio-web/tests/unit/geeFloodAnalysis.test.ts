@@ -65,7 +65,51 @@ describe('pickFloodComparisonSides', () => {
       },
     };
     const sides = pickFloodComparisonSides(resultado);
+    expect(sides.source).toBe('comparison');
     expect(sides.right?.visualization).toBe('rgb');
+  });
+
+  it('reports flood_only when comparison has flood tile but no normal_rgb (#710)', () => {
+    const resultado: FloodAnalysisResultado = {
+      comparison: {
+        flood_detection: tile('2024-01-10', 'inundacion'),
+      },
+    };
+    const sides = pickFloodComparisonSides(resultado);
+    expect(sides.source).toBe('flood_only');
+    expect(sides.left).toBeNull();
+    expect(sides.right?.target_date).toBe('2024-01-10');
+  });
+
+  it('reports normal_only when comparison has normal_rgb but no flood tile (#710)', () => {
+    const resultado: FloodAnalysisResultado = {
+      comparison: {
+        normal_rgb: tile('2024-01-20', 'rgb'),
+      },
+    };
+    const sides = pickFloodComparisonSides(resultado);
+    expect(sides.source).toBe('normal_only');
+    expect(sides.left?.target_date).toBe('2024-01-20');
+    expect(sides.right).toBeNull();
+  });
+
+  it('comparison blob without usable tiles is not a comparison (#710)', () => {
+    expect(pickFloodComparisonSides({ comparison: {} }).source).toBe('empty');
+    expect(pickFloodComparisonSides({ comparison: { normal_rgb: { target_date: '2024-01-20' } } }).source).toBe(
+      'empty'
+    );
+  });
+
+  it('comparison blob without tiles falls through to sar (#710)', () => {
+    const resultado: FloodAnalysisResultado = {
+      comparison: {},
+      sar: {
+        ...tile('2024-01-10', 'vv_flood'),
+        sensor: 'Sentinel-1',
+        collection: 'COPERNICUS/S1_GRD',
+      },
+    };
+    expect(pickFloodComparisonSides(resultado).source).toBe('sar');
   });
 
   it('uses sar as right when no comparison', () => {

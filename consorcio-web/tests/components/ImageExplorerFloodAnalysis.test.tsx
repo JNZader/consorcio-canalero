@@ -58,6 +58,13 @@ const sarTile = {
   collection: 'COPERNICUS/S1_GRD',
 };
 
+/** Tile S1 que devuelve el fallback para el lado normal (2024-01-20). */
+const sentinel1NormalTile = {
+  ...sarTile,
+  tile_url: 'https://earthengine.googleapis.com/v1/projects/x/maps/s1-normal/tiles/{z}/{x}/{y}',
+  target_date: '2024-01-20',
+};
+
 function sarOnlyJobCompleted(id: string) {
   return {
     id,
@@ -395,5 +402,129 @@ describe('ImageExplorerFloodAnalysis', () => {
     expect(onSetLeft).not.toHaveBeenCalled();
     expect(onSetRight).not.toHaveBeenCalled();
     expect(showSuccess).not.toHaveBeenCalled();
+  });
+
+  it('comparación con sólo tile de crecida dispara el fallback S1 y completa el par (#710)', async () => {
+    const onSetLeft = vi.fn();
+    const onSetRight = vi.fn();
+    const onPairReady = vi.fn();
+    const user = userEvent.setup();
+
+    apiFetchMock
+      .mockResolvedValueOnce({ id: 'job-1', tipo: 'flood', estado: 'pending' })
+      .mockResolvedValueOnce({
+        id: 'job-1',
+        tipo: 'flood',
+        estado: 'completed',
+        resultado: {
+          method: 'fusion',
+          comparison: { flood_detection: floodTile },
+        },
+      })
+      .mockResolvedValueOnce(sentinel1NormalTile);
+
+    render(
+      <ImageExplorerFloodAnalysis
+        onSetLeftImage={onSetLeft}
+        onSetRightImage={onSetRight}
+        onPairReady={onPairReady}
+      />,
+      { wrapper }
+    );
+
+    await fillDatesAndRun(user);
+
+    await waitFor(() => {
+      expect(onSetLeft).toHaveBeenCalled();
+      expect(onSetRight).toHaveBeenCalled();
+    });
+
+    // Tercer fetch: fallback S1 de la referencia para la fecha sin agua.
+    expect(apiFetchMock.mock.calls[2][0]).toMatch(/\/geo\/gee\/images\/sentinel1/);
+    expect(apiFetchMock.mock.calls[2][0]).toContain('target_date=2024-01-20');
+    expect(onSetLeft.mock.calls[0][0].target_date).toBe('2024-01-20');
+    expect(onSetRight.mock.calls[0][0].visualization).toBe('inundacion');
+    expect(showSuccess).toHaveBeenCalledWith(
+      'Detección lista',
+      'Par listo. Usá Abrir en mapa en la bandeja.'
+    );
+    expect(onPairReady).toHaveBeenCalled();
+  });
+
+  it('comparación con sólo tile de crecida y fallback S1 fallido queda parcial explícito (#710)', async () => {
+    const onSetLeft = vi.fn();
+    const onSetRight = vi.fn();
+    const onPairReady = vi.fn();
+    const user = userEvent.setup();
+
+    apiFetchMock
+      .mockResolvedValueOnce({ id: 'job-1', tipo: 'flood', estado: 'pending' })
+      .mockResolvedValueOnce({
+        id: 'job-1',
+        tipo: 'flood',
+        estado: 'completed',
+        resultado: {
+          method: 'fusion',
+          comparison: { flood_detection: floodTile },
+        },
+      })
+      .mockRejectedValueOnce(new Error('S1 no disponible'));
+
+    render(
+      <ImageExplorerFloodAnalysis
+        onSetLeftImage={onSetLeft}
+        onSetRightImage={onSetRight}
+        onPairReady={onPairReady}
+      />,
+      { wrapper }
+    );
+
+    await fillDatesAndRun(user);
+
+    await waitFor(() => expect(onSetRight).toHaveBeenCalled());
+
+    expect(onSetLeft).not.toHaveBeenCalled();
+    expect(showSuccess).not.toHaveBeenCalled();
+    expect(onPairReady).not.toHaveBeenCalled();
+    expect(screen.getByText(/Comparación incompleta/i)).toBeInTheDocument();
+  });
+
+  it('comparación con sólo referencia aplica el Antes y no toca el lado derecho (#710)', async () => {
+    const onSetLeft = vi.fn();
+    const onSetRight = vi.fn();
+    const onPairReady = vi.fn();
+    const user = userEvent.setup();
+
+    apiFetchMock
+      .mockResolvedValueOnce({ id: 'job-1', tipo: 'flood', estado: 'pending' })
+      .mockResolvedValueOnce({
+        id: 'job-1',
+        tipo: 'flood',
+        estado: 'completed',
+        resultado: {
+          method: 'fusion',
+          comparison: { normal_rgb: normalTile },
+        },
+      });
+
+    render(
+      <ImageExplorerFloodAnalysis
+        onSetLeftImage={onSetLeft}
+        onSetRightImage={onSetRight}
+        onPairReady={onPairReady}
+      />,
+      { wrapper }
+    );
+
+    await fillDatesAndRun(user);
+
+    await waitFor(() => expect(onSetLeft).toHaveBeenCalled());
+
+    expect(onSetLeft.mock.calls[0][0].target_date).toBe('2024-01-20');
+    // El slider derecho conserva su tile anterior: nunca se pisa con un par incompleto.
+    expect(onSetRight).not.toHaveBeenCalled();
+    expect(showSuccess).not.toHaveBeenCalled();
+    expect(onPairReady).not.toHaveBeenCalled();
+    expect(screen.getByText(/Comparación incompleta/i)).toBeInTheDocument();
   });
 });
