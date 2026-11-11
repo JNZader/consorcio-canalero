@@ -144,7 +144,9 @@ export function ImageExplorerFloodAnalysis({
       let left = toSelected(sides.left);
       const right = toSelected(sides.right);
 
-      if (!left && sides.source === 'sar' && normalDate) {
+      // Sin lado normal, el fallback S1 aplica tanto al job sar puro como al
+      // fallo parcial flood_only (crecida sin normal_rgb) (#710).
+      if (!left && (sides.source === 'sar' || sides.source === 'flood_only') && normalDate) {
         try {
           const normalTile = await fetchSentinel1FloodTile(normalDate, controller.signal);
           left = toSelected(normalTile);
@@ -172,13 +174,34 @@ export function ImageExplorerFloodAnalysis({
       }
 
       setState('completed');
-      const hint =
-        sides.source === 'comparison'
-          ? 'Par listo. Usá Abrir en mapa en la bandeja.'
-          : 'Tile de crecida listo (y referencia radar si se pudo). Revisá la bandeja.';
-      setStatusLine(hint);
-      showSuccess('Detección lista', hint);
-      onPairReady?.();
+
+      // sar/optical nunca prometieron un par: el tile de crecida es el entregable.
+      if (sides.source === 'sar' || sides.source === 'optical') {
+        const hint = 'Tile de crecida listo (y referencia radar si se pudo). Revisá la bandeja.';
+        setStatusLine(hint);
+        showSuccess('Detección lista', hint);
+        onPairReady?.();
+        return;
+      }
+
+      if (left && right) {
+        const hint = 'Par listo. Usá Abrir en mapa en la bandeja.';
+        setStatusLine(hint);
+        showSuccess('Detección lista', hint);
+        onPairReady?.();
+        return;
+      }
+
+      // Fallo parcial explícito (#710): el par quedó incompleto y NO se presenta
+      // como éxito. Se elige estado 'completed' (el job terminó y hay al menos un
+      // tile aplicable, y habilita reintentar sin resetear el form) + statusLine
+      // y toast informativo que dicen qué lado falta. El lado ausente no se pisa:
+      // en normal_only el slider derecho conserva el tile anterior.
+      const partialHint = right
+        ? 'Comparación incompleta: tile de crecida sin referencia. Cargá el Antes desde Comparar o reintentá.'
+        : 'Comparación incompleta: no se detectó crecida; quedó sólo la referencia sin agua.';
+      setStatusLine(partialHint);
+      showInfo('Comparación incompleta', partialHint);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       // El error de un run suplantado no debe pisar el estado del run vigente.
