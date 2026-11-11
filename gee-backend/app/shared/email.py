@@ -15,11 +15,25 @@ from __future__ import annotations
 import asyncio
 import logging
 from email.message import EmailMessage
-from typing import Literal
+from typing import Literal, TypedDict
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+class EmailTemplate(TypedDict):
+    """Exact keys the send_email kwargs-unpacking callsites rely on.
+
+    Returning this instead of ``dict[str, str]`` lets mypy accept
+    ``send_email(to_email=..., **template)`` now that send_email has a
+    non-str parameter (raise_on_error) — a bare dict unpacking cannot
+    prove it will not bind to it.
+    """
+
+    subject: str
+    body_text: str
+    body_html: str
 
 
 class EmailDeliveryError(RuntimeError):
@@ -157,7 +171,7 @@ def build_verification_email(
     frontend_url: str,
     *,
     query_parameter: Literal["code", "token"],
-) -> dict[str, str]:
+) -> EmailTemplate:
     """Build verification email for short-code or legacy-token mode."""
     link = f"{frontend_url.rstrip('/')}/verify-email?{query_parameter}={credential}"
     if query_parameter == "code":
@@ -206,7 +220,7 @@ def build_reset_email(
     frontend_url: str,
     *,
     query_parameter: Literal["code", "token"],
-) -> dict[str, str]:
+) -> EmailTemplate:
     """Build password-reset email for short-code or legacy-token mode."""
     link = f"{frontend_url.rstrip('/')}/reset-password?{query_parameter}={credential}"
     if query_parameter == "code":
