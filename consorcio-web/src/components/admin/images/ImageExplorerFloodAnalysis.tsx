@@ -111,12 +111,16 @@ export function ImageExplorerFloodAnalysis({
         { startDate: floodDate, endDate: normalDate, method },
         controller.signal
       );
+      // Un POST que resuelve tras una cancelación no puede revivir el run.
+      if (abortRef.current !== controller) return;
       setState('polling');
       setStatusLine('Analizando…');
 
       const done = await pollFloodAnalysisUntilDone(created.id, {
         signal: controller.signal,
         onTick: (tick) => {
+          // Tick de un run suplantado: no pisar el statusLine del run vigente.
+          if (abortRef.current !== controller) return;
           setStatusLine(
             tick.estado === 'running' || tick.estado === 'pending'
               ? 'Analizando…'
@@ -124,6 +128,9 @@ export function ImageExplorerFloodAnalysis({
           );
         },
       });
+
+      // Run suplantado (cancelación o run nuevo): descartar el resultado sin tocar estado.
+      if (abortRef.current !== controller) return;
 
       if (done.estado === 'failed') {
         setState('failed');
@@ -141,10 +148,15 @@ export function ImageExplorerFloodAnalysis({
         try {
           const normalTile = await fetchSentinel1FloodTile(normalDate, controller.signal);
           left = toSelected(normalTile);
-        } catch {
+        } catch (err) {
+          // El abort (cancelación, run nuevo o desmonte) no se traga: lo maneja el catch superior.
+          if (err instanceof DOMException && err.name === 'AbortError') throw err;
           // Keep going with flood side only; operator can fill Antes from Comparar.
         }
       }
+
+      // El fallback pudo quedar un rato en vuelo: si otro run tomó el control, no aplicar nada.
+      if (abortRef.current !== controller) return;
 
       if (left) onSetLeftImage(left);
       if (right) onSetRightImage(right);
@@ -169,6 +181,8 @@ export function ImageExplorerFloodAnalysis({
       onPairReady?.();
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
+      // El error de un run suplantado no debe pisar el estado del run vigente.
+      if (abortRef.current !== controller) return;
       setState('failed');
       const msg = err instanceof Error ? err.message : 'Error desconocido';
       setError(msg);
