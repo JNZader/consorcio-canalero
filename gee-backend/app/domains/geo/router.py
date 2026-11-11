@@ -168,14 +168,16 @@ async def enforce_gee_analysis_rate_limit(
     if settings.rate_limit_disabled:
         return
 
-    permitido, _restantes, reset = await get_gee_analysis_rate_limiter().check(
-        f"operator:{user.id}"
-    )
+    limiter = get_gee_analysis_rate_limiter()
+    permitido, _restantes, reset = await limiter.check(f"operator:{user.id}")
     if not permitido:
         raise RateLimitExceededError(
             message="Límite de corridas de análisis GEE alcanzado. Reintentá más tarde.",
             retry_after=max(1, int(reset)),
-            limit=settings.gee_analysis_rate_limit_requests,
+            # El límite REAL es el del limiter que acaba de denegar — leer el
+            # setting acá divorciaba el 429 de la ventana que realmente corre
+            # (un limiter con budget parcheado en la instancia reportaba el default).
+            limit=limiter.max_requests,
         )
 
 
