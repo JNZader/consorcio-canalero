@@ -681,9 +681,18 @@ def test_accessibility_gate_uses_lockfile_playwright_across_all_browsers() -> No
     assert playwright["version"] == playwright["dependencies"]["playwright"]
     assert "npm ci --no-audit --no-fund" in accessibility
     assert "--legacy-peer-deps" not in accessibility
-    assert "npx playwright install --with-deps chromium firefox webkit" in accessibility
+    # El job usa el mismo container pineado que el job visual: los tres
+    # browsers vienen horneados en la imagen. Desde el 2026-11-11 NO se
+    # instala nada del CDN de Playwright en el camino critico (dos corridas
+    # seguidas colgadas hasta el timeout). El tag se deriva de la version
+    # del lockfile: si @playwright/test sube y el tag no, este contrato
+    # rompe — garantia mas fuerte que la linea de instalacion anterior.
+    assert "npx playwright install" not in accessibility
+    assert f"mcr.microsoft.com/playwright:v{playwright['version']}-noble" in accessibility
+    assert "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'" in accessibility
     assert "@latest" not in accessibility
-    assert "CI=1 npm run test:a11y" in accessibility
+    assert "CI: '1'" in accessibility
+    assert "npm run test:a11y" in accessibility
     assert (
         "uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2"
         in accessibility

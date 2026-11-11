@@ -47,6 +47,7 @@ import { useElevationProfileCursor } from './useElevationProfileCursor';
 import { useFichaDrawWiring } from './useFichaDrawWiring';
 import { useFichaInteraction } from './useFichaInteraction';
 import { useFichaOverlayTabs } from './useFichaOverlayTabs';
+import { useGeolocatePinMarker } from './useGeolocatePinMarker';
 import { useHazardMapState } from './useHazardMapState';
 import { useMapExportHandlers } from './useMapActionHandlers';
 import { useMapDragSignal } from './useMapDragSignal';
@@ -566,6 +567,8 @@ export function useMapaMapLibreStage(input: MapaMapLibreStageInput) {
   // (admin reports → "Ver en mapa"). Reads the URL once on mount; the
   // marker is auto-popped and the user can close it.
   useReportHighlight({ mapRef, mapReady });
+  // ET3-GEO: renders the «Ubicarme» GPS pin written to `reportAnchorStore`.
+  useGeolocatePinMarker({ mapRef, mapReady });
   useQuickPlaceMarker({ mapRef, mapReady, place: quickPlace });
   useElevationProfileCursor({
     mapRef,
