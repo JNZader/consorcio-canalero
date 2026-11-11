@@ -484,11 +484,20 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
   // desktop `.mapTopBar`, and — on mobile — `LayerControlsPanel`'s own "Base"
   // section inside the Drawer. `MapBaseSelectorPanel` and `LayerControlsPanel`
   // take the exact same three props, so the object is spread into either one.
+  // La selección es el dueño del ciclo de vida de la ubicación de denuncia
+  // (ET3-GEO): cada vez que el anchor se reescribe o se limpia, el pin efímero
+  // de «Ubicarme» se retira con él — el mapa mantiene un solo punto de
+  // contexto de reporte a la vez.
   useEffect(() => {
+    const { setAnchor, setGeolocatePin } = useReportAnchorStore.getState();
+    const clearReportPins = () => {
+      setAnchor(null);
+      setGeolocatePin(null);
+    };
     const feature = selectedFeatures[0];
     const geometry = feature?.geometry;
     if (!geometry) {
-      useReportAnchorStore.getState().setAnchor(null);
+      clearReportPins();
       return;
     }
     const coords =
@@ -498,10 +507,11 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
           ? geometry.coordinates[0]
           : null;
     if (!coords || coords.length < 2) {
-      useReportAnchorStore.getState().setAnchor(null);
+      clearReportPins();
       return;
     }
-    useReportAnchorStore.getState().setAnchor({ lng: coords[0], lat: coords[1] });
+    setGeolocatePin(null);
+    setAnchor({ lng: coords[0], lat: coords[1] });
   }, [selectedFeatures]);
 
   const baseControls = {
