@@ -12,6 +12,7 @@ const announceMock = vi.fn();
 vi.mock('../../src/lib/api', () => ({
   reportsApi: {
     getAll: vi.fn(),
+    bulkUpdate: vi.fn(),
   },
   apiFetch: vi.fn(),
 }));
@@ -427,5 +428,44 @@ describe('ReportsPanel', () => {
         'asc'
       );
     });
+  });
+
+  it('shows the error, closes the dialog and keeps the selection when the bulk update rejects', async () => {
+    const user = userEvent.setup();
+    // Antes del fix, `runBulk` no tenía catch: este rechazo quedaba
+    // unhandled (sin toast, sin announce) y el ConfirmDialog quedaba
+    // colgado en loading para siempre.
+    vi.mocked(reportsApi.bulkUpdate).mockRejectedValueOnce(new Error('500'));
+
+    renderPanel();
+    await screen.findByText('Canal desbordado en zona norte');
+
+    await user.click(screen.getByRole('checkbox', { name: 'Seleccionar denuncia rep-1' }));
+    await user.click(screen.getByRole('button', { name: 'Pasar 1 a en revisión' }));
+
+    const dialog = screen.getByRole('dialog', { name: /cambiar estado/i });
+    await user.click(within(dialog).getByRole('button', { name: 'Confirmar' }));
+
+    await waitFor(() => {
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'No pudimos guardar el cambio de la denuncia',
+          message: 'Revisá la conexión y volvé a intentar.',
+          color: 'alerta',
+        })
+      );
+    });
+    expect(announceMock).toHaveBeenCalledWith(
+      'No pudimos guardar el cambio de la denuncia. Revisá la conexión y volvé a intentar.'
+    );
+
+    // El diálogo se cierra...
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /cambiar estado/i })).not.toBeInTheDocument();
+    });
+    // ...pero la selección queda intacta para que el operador reintente.
+    expect(screen.getByRole('button', { name: 'Pasar 1 a en revisión' })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Seleccionar denuncia rep-1' })).toBeChecked();
+    expect(reportsApi.getAll).toHaveBeenCalledTimes(1);
   });
 });
