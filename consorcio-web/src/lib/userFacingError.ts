@@ -172,4 +172,28 @@ export const erroresUi = {
     'No pudimos iniciar el procesamiento del terreno',
     'Volvé a intentar en unos minutos.'
   ),
+  floodAnalisis: mensajeError(
+    'No pudimos completar la detección de inundación',
+    'Volvé a intentar en unos minutos. Si sigue igual, probá con otras fechas.'
+  ),
+  floodAnalisisTimeout: mensajeError(
+    'El análisis tardó demasiado',
+    'El servidor de imágenes no respondió a tiempo. Volvé a intentar en unos minutos.'
+  ),
+  floodAnalisisSinEscena: mensajeError(
+    'No encontramos imágenes para esas fechas',
+    'Probá con fechas cercanas a la crecida o cambiá el método: el radar cubre más días que el óptico.'
+  ),
+  floodAnalisisCuota: mensajeError(
+    'Se alcanzó el límite de consultas al servidor de imágenes',
+    'Esperá unos minutos y volvé a correr la detección.'
+  ),
+  floodTilesVacios: mensajeError(
+    'No pudimos armar el par de imágenes',
+    'El job terminó sin tiles utilizables. Probá fusión con una fecha sin agua al menos 1 día después de la crecida.'
+  ),
+  floodSesionExpirada: mensajeError(
+    'Tu sesión expiró',
+    'La detección se cortó porque el servidor rechazó la sesión. Iniciá sesión de nuevo y volvé a correrla.'
+  ),
 } as const;

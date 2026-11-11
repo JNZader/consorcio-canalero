@@ -22,6 +22,7 @@ vi.mock('../../src/lib/notifications', () => ({
 }));
 
 import { showError, showSuccess } from '../../src/lib/notifications';
+import { QueryError } from '../../src/lib/queryError';
 import { ImageExplorerFloodAnalysis } from '../../src/components/admin/images/ImageExplorerFloodAnalysis';
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -617,5 +618,210 @@ describe('ImageExplorerFloodAnalysis', () => {
     expect(showSuccess).not.toHaveBeenCalled();
     expect(onPairReady).not.toHaveBeenCalled();
     expect(screen.getByText(/Comparación incompleta/i)).toBeInTheDocument();
+  });
+});
+
+describe('ImageExplorerFloodAnalysis — superficie de errores (#712)', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    vi.mocked(showSuccess).mockClear();
+    vi.mocked(showError).mockClear();
+  });
+
+  it('job failed desconocido: copy humano en Alert/toast, traceback crudo solo truncado en statusLine', async () => {
+    const onSetLeft = vi.fn();
+    const onSetRight = vi.fn();
+    const user = userEvent.setup();
+    const rawError = [
+      'SQLAlchemyError: could not connect to server',
+      'Traceback (most recent call last):',
+      '  File "/app/shared/storage.py", line 10, in connect',
+      'https://earthengine.googleapis.com/v1/projects/canalero-x/maps/abc123/tiles/{z}/{x}/{y}',
+    ].join('\n');
+
+    apiFetchMock
+      .mockResolvedValueOnce({ id: 'job-1', tipo: 'flood', estado: 'pending' })
+      .mockResolvedValueOnce({ id: 'job-1', tipo: 'flood', estado: 'failed', error: rawError });
+
+    render(<ImageExplorerFloodAnalysis onSetLeftImage={onSetLeft} onSetRightImage={onSetRight} />, {
+      wrapper,
+    });
+
+    await fillDatesAndRun(user);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/No pudimos completar la detección de inundación/i);
+    // El Alert no muestra el error crudo: ni traceback ni paths ni URLs (#712).
+    expect(alert).not.toHaveTextContent('SQLAlchemyError');
+    expect(alert).not.toHaveTextContent('/app/shared/storage.py');
+    expect(alert).not.toHaveTextContent('googleapis');
+
+    // Toast humano, sin el detalle crudo.
+    const [toastTitulo, toastDetalle] = vi.mocked(showError).mock.calls.at(-1) ?? [];
+    expect(toastTitulo).toMatch(/No pudimos completar/i);
+    expect(`${toastTitulo} ${toastDetalle}`).not.toContain('https://');
+
+    // El crudo queda como statusLine secundario: una línea, truncado, sin la
+    // cola con ids de proyecto.
+    const statusLine = screen.getByText('SQLAlchemyError', { exact: false });
+    expect(statusLine.textContent?.length).toBeLessThanOrEqual(140);
+    expect(statusLine.textContent).not.toContain('\n');
+    expect(statusLine.textContent).not.toContain('canalero-x');
+
+    expect(showSuccess).not.toHaveBeenCalled();
+    expect(onSetLeft).not.toHaveBeenCalled();
+    expect(onSetRight).not.toHaveBeenCalled();
+  });
+
+  it('job failed con timeout GEE: copy corta y el traceback no aparece en ningún lado', async () => {
+    const user = userEvent.setup();
+    apiFetchMock
+      .mockResolvedValueOnce({ id: 'job-1', tipo: 'flood', estado: 'pending' })
+      .mockResolvedValueOnce({
+        id: 'job-1',
+        tipo: 'flood',
+        estado: 'failed',
+        error: 'SoftTimeLimitExceeded: maximum time limit\nTraceback (most recent call last):\n  File "/app/domains/geo/gee_tasks.py", line 182',
+      });
+
+    render(<ImageExplorerFloodAnalysis onSetLeftImage={vi.fn()} onSetRightImage={vi.fn()} />, {
+      wrapper,
+    });
+
+    await fillDatesAndRun(user);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/El análisis tardó demasiado/i);
+    expect(document.body.textContent).not.toContain('Traceback');
+    expect(document.body.textContent).not.toContain('SoftTimeLimitExceeded');
+    expect(document.body.textContent).not.toContain('/app/domains/geo/gee_tasks.py');
+  });
+
+  it('job completed sin tiles mapea comparison_error: quota conocida, sin ids de proyecto', async () => {
+    const onSetLeft = vi.fn();
+    const onSetRight = vi.fn();
+    const user = userEvent.setup();
+
+    apiFetchMock
+      .mockResolvedValueOnce({ id: 'job-1', tipo: 'flood', estado: 'pending' })
+      .mockResolvedValueOnce({
+        id: 'job-1',
+        tipo: 'flood',
+        estado: 'completed',
+        resultado: {
+          method: 'fusion',
+          comparison_error: 'EEException: Quota exceeded for project canalero-prod',
+        },
+      });
+
+    render(<ImageExplorerFloodAnalysis onSetLeftImage={onSetLeft} onSetRightImage={onSetRight} />, {
+      wrapper,
+    });
+
+    await fillDatesAndRun(user);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/límite de consultas al servidor de imágenes/i);
+    expect(document.body.textContent).not.toContain('canalero-prod');
+    expect(showSuccess).not.toHaveBeenCalled();
+    expect(onSetLeft).not.toHaveBeenCalled();
+    expect(onSetRight).not.toHaveBeenCalled();
+  });
+
+  it('job completed sin tiles ni comparison_error usa la copy de fallback', async () => {
+    const user = userEvent.setup();
+    apiFetchMock
+      .mockResolvedValueOnce({ id: 'job-1', tipo: 'flood', estado: 'pending' })
+      .mockResolvedValueOnce({
+        id: 'job-1',
+        tipo: 'flood',
+        estado: 'completed',
+        resultado: { method: 'fusion' },
+      });
+
+    render(<ImageExplorerFloodAnalysis onSetLeftImage={vi.fn()} onSetRightImage={vi.fn()} />, {
+      wrapper,
+    });
+
+    await fillDatesAndRun(user);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/No pudimos armar el par de imágenes/i);
+    expect(alert).toHaveTextContent(/al menos 1 día después/i);
+  });
+
+  it('fallback S1 con 401: sesión expirada visible, sin éxito parcial ni tiles aplicados', async () => {
+    const onSetLeft = vi.fn();
+    const onSetRight = vi.fn();
+    const user = userEvent.setup();
+
+    apiFetchMock
+      .mockResolvedValueOnce({ id: 'job-1', tipo: 'flood', estado: 'pending' })
+      .mockResolvedValueOnce(sarOnlyJobCompleted('job-1'))
+      .mockRejectedValueOnce(new QueryError('Not authenticated', 401));
+
+    render(<ImageExplorerFloodAnalysis onSetLeftImage={onSetLeft} onSetRightImage={onSetRight} />, {
+      wrapper,
+    });
+
+    await fillDatesAndRun(user);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/Tu sesión expiró/i);
+    expect(alert).toHaveTextContent(/Iniciá sesión de nuevo/i);
+    expect(alert).not.toHaveTextContent('Not authenticated');
+
+    const [toastTitulo, toastDetalle] = vi.mocked(showError).mock.calls.at(-1) ?? [];
+    expect(toastTitulo).toMatch(/Tu sesión expiró/i);
+    expect(toastDetalle).toMatch(/Iniciá sesión de nuevo/i);
+
+    // No hay éxito parcial: el tile de crecida tampoco se aplica en silencio.
+    expect(showSuccess).not.toHaveBeenCalled();
+    expect(onSetLeft).not.toHaveBeenCalled();
+    expect(onSetRight).not.toHaveBeenCalled();
+    // El run quedó en failed: el botón vuelve a estar habilitado.
+    expect(screen.getByRole('button', { name: /^Detectar inundación$/i })).toBeEnabled();
+  });
+
+  it('fallback S1 con la sesión muerta del core (Error plano) también se muestra como expirada', async () => {
+    const user = userEvent.setup();
+    apiFetchMock
+      .mockResolvedValueOnce({ id: 'job-1', tipo: 'flood', estado: 'pending' })
+      .mockResolvedValueOnce(sarOnlyJobCompleted('job-1'))
+      .mockRejectedValueOnce(new Error('Tu sesión ha expirado. Por favor iniciá sesión nuevamente.'));
+
+    render(<ImageExplorerFloodAnalysis onSetLeftImage={vi.fn()} onSetRightImage={vi.fn()} />, {
+      wrapper,
+    });
+
+    await fillDatesAndRun(user);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/Tu sesión expiró/i);
+    expect(showSuccess).not.toHaveBeenCalled();
+  });
+
+  it('fallback S1 con timeout/5xx sigue degradado: solo tile de crecida y toast de éxito', async () => {
+    const onSetLeft = vi.fn();
+    const onSetRight = vi.fn();
+    const user = userEvent.setup();
+
+    apiFetchMock
+      .mockResolvedValueOnce({ id: 'job-1', tipo: 'flood', estado: 'pending' })
+      .mockResolvedValueOnce(sarOnlyJobCompleted('job-1'))
+      .mockRejectedValueOnce(new Error('La solicitud excedió el tiempo límite (300s)'));
+
+    render(<ImageExplorerFloodAnalysis onSetLeftImage={onSetLeft} onSetRightImage={onSetRight} />, {
+      wrapper,
+    });
+
+    await fillDatesAndRun(user);
+
+    await waitFor(() => {
+      expect(onSetRight).toHaveBeenCalledWith(expect.objectContaining({ sensor: 'Sentinel-1' }));
+    });
+    expect(onSetLeft).not.toHaveBeenCalled();
+    expect(showSuccess).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });
