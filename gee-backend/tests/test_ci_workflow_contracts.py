@@ -13,6 +13,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TRIVY_ACTION = "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25"
 TRIVY_VERSION = "v0.70.0"
+CODEQL_UPLOAD_SARIF = (
+    "uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3"
+)
+DOCKER_LOGIN_ACTION = "uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0"
 GITHUB_WORKSPACE = "$" + "{{ github.workspace }}"
 GHCR_ROOT = "ghcr.io/jnzader/consorcio-canalero"
 # PR #249 measured that moving authStore between two file-level shards only
@@ -134,9 +138,7 @@ def _mutation_source(target: str) -> str:
 
 
 def _assert_fail_closed_trivy(job: str) -> None:
-    upload = (
-        "uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1"
-    )
+    upload = CODEQL_UPLOAD_SARIF
 
     assert f"uses: {TRIVY_ACTION}" in job
     assert f"version: {TRIVY_VERSION}" in job
@@ -226,9 +228,7 @@ def _assert_frozen_image_policy(
     assert report in artifact_tail
     assert sarif in artifact_tail
 
-    upload_sarif = job.index(
-        "uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1"
-    )
+    upload_sarif = job.index(CODEQL_UPLOAD_SARIF)
     upload_tail = job[upload_sarif:]
     assert "if: always()" in upload_tail
     assert f"sarif_file: {sarif}" in upload_tail
@@ -359,7 +359,7 @@ def _assert_scanned_manifest_is_published(
 ) -> None:
     build = "uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0"
     scan = f"uses: {TRIVY_ACTION}"
-    login = "uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0"
+    login = DOCKER_LOGIN_ACTION
     push_candidate = 'docker push "$CANDIDATE_IMAGE"'
     inspect_remote = (
         "docker buildx imagetools inspect \"$CANDIDATE_IMAGE\" --format '{{json .Manifest}}'"
