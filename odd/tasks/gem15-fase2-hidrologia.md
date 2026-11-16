@@ -2,8 +2,9 @@
 
 Objetivo: generar los números hidrológicos que el paper de GEM-15 no tiene, para
 decidir la Fase 3 (#724). Branch: `feat/gem15-fase2-hidrologia`. Estrategia de
-entrega: un PR a main cuando los números estén documentados. Runner: pytest
-(`gee-backend/tests/new/`) para lo que sea testeable; los pasos de análisis
+entrega: un PR a main cuando los números estén documentados. Runner: pytest —
+contratos con fakes en `gee-backend/tests/unit/`, integración real PG en
+`gee-backend/tests/new/`; los pasos de análisis
 corren como ETL dentro del contenedor backend (`python -m app.domains.geo.etl.*`,
 patrón de `generate_canal_catchments.py`).
 
@@ -39,7 +40,7 @@ patrón de `generate_canal_catchments.py`).
 
 | ID | S# | Ruta | Estado | Commit |
 |----|----|------|--------|--------|
-| T1 | S1 | ETL: descarga GEM-15 dtm del AOI como GeoTIFF aparte (asset `projects/climate-and-sustainability/assets/gem-15_v1`, banda `dtm`) + GLO-30 del mismo AOI, sin tocar `download_dem_impl` | pendiente | — |
+| T1 | S1 | ETL: descarga GEM-15 dtm del AOI como GeoTIFF aparte (asset `projects/climate-and-sustainability/assets/gem-15_v1`, banda `dtm`) + GLO-30 del mismo AOI, sin tocar `download_dem_impl` | hecho | 094238ac |
 | T2 | S2 | Grilla geoid EGM96→EGM2008: obtenerla y aplicarla al GEM-15 antes de cualquier comparación | pendiente | — |
 | T3 | S2 | Debias regional GEM-15 vs GLO-30 sobre terreno estable (máscara de pendiente; offset medido, no asumido) | pendiente | — |
 | T4 | S1 | Correr pipeline WBT idéntico sobre ambos DEMs corregidos → flow_dir/flow_acc/streams/catchments con sufijos propios `_gem15` / `_glo30` | pendiente | — |
@@ -59,3 +60,13 @@ patrón de `generate_canal_catchments.py`).
 - L3 (2026-11-16, Javier): "diria que 1....porque la realidad es que no hay un
   registro" — alcance de eventos = opción 1: métricas solo con canal_consorcio +
   cruces; SAR on-demand como anexo cualitativo si existen registros.
+- L4 (2026-11-16): T1 hecho en 094238ac (RED→GREEN, 6/6 unit). Review RDD
+  (lente review-reliability, lineage review-7bc233fdce5d4f2c): APPROVED,
+  authority quemada. Tres hallazgos informativos NO bloqueantes, anotados como
+  deuda: (a) R3-failure-path-tmp-leak WARNING — el .tmp.tif persiste si el
+  download falla a mitad; mitigado por el sweeper de .tmp.tif que ya vive en
+  `processing_wbt_support` (mismo comportamiento que `download_dem_impl`, el
+  gemelo es intencional); (b) R3-parity-wiring-untested SUGGESTION — el
+  same-grid de ambas llamadas solo está probado en main() no-cover; (c)
+  R3-runner-dir-mismatch SUGGESTION — corregido: esta cabecera ahora declara
+  tests/unit además de tests/new.
