@@ -18,6 +18,9 @@ paths = [
 regexes = [
   # Recharts dataKey, not a token.
   '''elevation_aw3d30''',
+  # Recharts dataKey for the GEM-15 series (generic-api-key trips on the
+  # trailing digits) — same case as elevation_aw3d30 above.
+  '''elevation_gem15''',
   # Public API hostname written in a comment.
   '''cc10demayo-api\.javierzader\.com''',
 ]
