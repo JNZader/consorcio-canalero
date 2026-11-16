@@ -16,9 +16,7 @@ TRIVY_VERSION = "v0.70.0"
 CODEQL_UPLOAD_SARIF = (
     "uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3"
 )
-DOCKER_LOGIN_ACTION = (
-    "uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0"
-)
+DOCKER_LOGIN_ACTION = "uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0"
 GITHUB_WORKSPACE = "$" + "{{ github.workspace }}"
 GHCR_ROOT = "ghcr.io/jnzader/consorcio-canalero"
 # PR #249 measured that moving authStore between two file-level shards only
