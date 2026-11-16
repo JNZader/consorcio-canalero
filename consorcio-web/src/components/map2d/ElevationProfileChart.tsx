@@ -192,6 +192,11 @@ const SERIES = [
     name: 'NASADEM',
     color: 'var(--mantine-color-violet-6)',
   },
+  {
+    key: 'elevation_gem15' as const,
+    name: 'GEM-15',
+    color: 'var(--mantine-color-pink-6)',
+  },
 ];
 
 type SeriesKey = (typeof SERIES)[number]['key'];
@@ -845,6 +850,17 @@ export function ElevationProfileChart({
                       isAnimationActive={false}
                     />
                   ) : null}
+                  {visibleSeries.some((series) => series.key === 'elevation_gem15') ? (
+                    <Line
+                      type="linear"
+                      dataKey="elevation_gem15"
+                      name="GEM-15"
+                      stroke="var(--mantine-color-pink-6)"
+                      dot={false}
+                      connectNulls
+                      isAnimationActive={false}
+                    />
+                  ) : null}
                   {simulatedCanal?.ok ? (
                     <Line
                       type="linear"
@@ -1279,6 +1295,11 @@ export function ElevationProfileChart({
               {profile?.nasadem_disclaimer ? (
                 <Text size="xs" c="dimmed" data-testid="elevation-profile-nasadem">
                   {profile.nasadem_disclaimer}
+                </Text>
+              ) : null}
+              {profile?.gem15_disclaimer ? (
+                <Text size="xs" c="dimmed" data-testid="elevation-profile-gem15">
+                  {profile.gem15_disclaimer}
                 </Text>
               ) : null}
             </Stack>
