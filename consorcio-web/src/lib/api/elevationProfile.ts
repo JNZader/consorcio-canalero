@@ -16,6 +16,7 @@ export type ElevationProfilePoint = {
   elevation_mde_ar?: number | null;
   elevation_aw3d30?: number | null;
   elevation_nasadem?: number | null;
+  elevation_gem15?: number | null;
   lon?: number;
   lat?: number;
   /** Part index on a multi-part trace. Absent on a single LineString, so the
@@ -34,6 +35,7 @@ export type ElevationProfileResponse = {
   mde_ar_disclaimer?: string;
   aw3d30_disclaimer?: string;
   nasadem_disclaimer?: string;
+  gem15_disclaimer?: string;
   /** `hit` when the row came from `elevation_profile_cache`; `miss` when it was
    * computed now. Additive: the series is identical either way. */
   cache?: 'hit' | 'miss';

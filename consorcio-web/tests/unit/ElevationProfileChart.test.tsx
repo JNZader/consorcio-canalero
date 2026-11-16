@@ -209,7 +209,7 @@ describe('<ElevationProfileChart />', () => {
     expect(screen.getByTestId('elevation-profile-disclaimer')).toHaveTextContent('GLO-30');
   });
 
-  it('renders AW3D30 and NASADEM disclaimers when sampled', async () => {
+  it('renders AW3D30, NASADEM and GEM-15 disclaimers when sampled', async () => {
     vi.mocked(fetchElevationProfile).mockResolvedValueOnce({
       puntos: [
         {
@@ -217,10 +217,18 @@ describe('<ElevationProfileChart />', () => {
           elevation_m: 120,
           elevation_aw3d30: 121,
           elevation_nasadem: 118,
+          elevation_gem15: 119,
+        },
+        {
+          distance_m: 15,
+          elevation_m: 118,
+          elevation_aw3d30: 119,
+          elevation_nasadem: 116,
+          elevation_gem15: 117,
         },
       ],
-      length_m: 0,
-      min_elevation_m: 120,
+      length_m: 15,
+      min_elevation_m: 118,
       max_elevation_m: 120,
       source: 'dem_filled.tif',
       cell_m: 15,
@@ -228,12 +236,16 @@ describe('<ElevationProfileChart />', () => {
         'Perfil sobre Copernicus GLO-30 (~30 m). No es cota de proyecto ni sección de canal.',
       aw3d30_disclaimer: 'AW3D30 v4.1 (JAXA, DSM óptico). Algunas teselas se rellenan con GLO-30.',
       nasadem_disclaimer: 'NASADEM (SRTM 2000, EGM96). No es cota de proyecto.',
+      gem15_disclaimer:
+        'GEM-15 v1 (Google, experimental — under review). This dataset is produced by Google (CC-BY 4.0).',
     });
     const user = userEvent.setup();
     renderWithMantine(<ElevationProfileChart geometry={line} />);
     await user.click(screen.getByRole('button', { name: 'Perfil de elevación' }));
     expect(await screen.findByTestId('elevation-profile-aw3d30')).toHaveTextContent('JAXA');
     expect(screen.getByTestId('elevation-profile-nasadem')).toHaveTextContent('NASADEM');
+    expect(screen.getByTestId('elevation-profile-gem15')).toHaveTextContent('Google');
+    expect(screen.getByTestId('elevation-profile-legend')).toHaveTextContent('GEM-15');
   });
 
   it('only asks GEE when the operator opts into DEM comparison', async () => {
@@ -258,19 +270,33 @@ describe('<ElevationProfileChart />', () => {
           elevation_m: 120,
           elevation_aw3d30: 121,
           elevation_nasadem: 118,
+          elevation_gem15: 119,
+        },
+        {
+          distance_m: 15,
+          elevation_m: 118,
+          elevation_aw3d30: 119,
+          elevation_nasadem: 116,
+          elevation_gem15: 117,
         },
       ],
       aw3d30_disclaimer: 'AW3D30 v4.1 (JAXA, DSM óptico). Algunas teselas se rellenan con GLO-30.',
       nasadem_disclaimer: 'NASADEM (SRTM 2000, EGM96). No es cota de proyecto.',
+      gem15_disclaimer:
+        'GEM-15 v1 (Google, experimental — under review). This dataset is produced by Google (CC-BY 4.0).',
     });
     const user = userEvent.setup();
     renderWithMantine(<ElevationProfileChart geometry={line} />);
     await user.click(screen.getByRole('button', { name: 'Perfil de elevación' }));
     expect(await screen.findByTestId('elevation-profile-disclaimer')).toHaveTextContent('GLO-30');
     expect(screen.queryByTestId('elevation-profile-aw3d30')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('elevation-profile-gem15')).not.toBeInTheDocument();
+    expect(screen.getByTestId('elevation-profile-legend')).not.toHaveTextContent('GEM-15');
     await user.click(screen.getByRole('checkbox', { name: /Comparar DEMs/i }));
     expect(fetchElevationProfile).toHaveBeenLastCalledWith(line, undefined, true);
     expect(await screen.findByTestId('elevation-profile-aw3d30')).toHaveTextContent('JAXA');
+    expect(screen.getByTestId('elevation-profile-gem15')).toHaveTextContent('Google');
+    expect(screen.getByTestId('elevation-profile-legend')).toHaveTextContent('GEM-15');
   });
 
   it('reloads when the selected line changes', async () => {

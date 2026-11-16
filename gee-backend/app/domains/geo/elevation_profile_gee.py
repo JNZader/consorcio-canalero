@@ -1,7 +1,7 @@
 """Optional GEE DEM samples on the same vertices as the GLO-30 profile.
 
-GLO-30 stays the product series. AW3D30 and NASADEM are consistency checks.
-A GEE failure is a no-op: the local profile still returns.
+GLO-30 stays the product series. AW3D30, NASADEM and GEM-15 are consistency
+checks. A GEE failure is a no-op: the local profile still returns.
 """
 
 from __future__ import annotations
@@ -15,6 +15,12 @@ AW3D30_DISCLAIMER = (
 )
 NASADEM_DISCLAIMER = (
     "NASADEM (SRTM 2000, EGM96). GEE ≤400 muestras, el resto interpolado. No es cota de proyecto."
+)
+GEM15_DISCLAIMER = (
+    "GEM-15 v1 (Google, experimental — under review). DTM 15m, datum EGM96 "
+    "(GLO-30 usa EGM2008: diferencia esperada ~0.5–1.5m, comparabilidad limitada). "
+    "GEE ≤400 muestras, el resto interpolado. No es cota de proyecto. "
+    "This dataset is produced by Google (CC-BY 4.0)."
 )
 
 
@@ -62,11 +68,11 @@ def aplicar_gee_dems(
     *,
     sampler: Callable[
         [Sequence[tuple[float, float]]],
-        tuple[list[Optional[float]], list[Optional[float]]],
+        tuple[list[Optional[float]], list[Optional[float]], list[Optional[float]]],
     ]
     | None = None,
 ) -> dict[str, Any]:
-    """Attach ``elevation_aw3d30`` / ``elevation_nasadem`` when GEE answers."""
+    """Attach ``elevation_aw3d30`` / ``elevation_nasadem`` / ``elevation_gem15`` when GEE answers."""
     puntos = payload.get("puntos")
     if not isinstance(puntos, list) or not puntos:
         return payload
@@ -80,25 +86,30 @@ def aplicar_gee_dems(
     pick = indices_submuestreo(len(lonlats))
     subset = [lonlats[i] for i in pick]
     try:
-        sample = sampler or _sample_aw3d30_nasadem
-        aw_vals, nasa_vals = sample(subset)
+        sample = sampler or _sample_comparison_dems
+        aw_vals, nasa_vals, gem_vals = sample(subset)
     except Exception:
         return payload
-    if len(aw_vals) != len(pick) or len(nasa_vals) != len(pick):
+    if len(aw_vals) != len(pick) or len(nasa_vals) != len(pick) or len(gem_vals) != len(pick):
         return payload
     distancias = [float(punto["distance_m"]) for punto in puntos]
     aw_sparse: list[Optional[float]] = [None] * len(puntos)
     nasa_sparse: list[Optional[float]] = [None] * len(puntos)
-    for index, aw_val, nasa_val in zip(pick, aw_vals, nasa_vals):
+    gem_sparse: list[Optional[float]] = [None] * len(puntos)
+    for index, aw_val, nasa_val, gem_val in zip(pick, aw_vals, nasa_vals, gem_vals):
         aw_sparse[index] = aw_val
         nasa_sparse[index] = nasa_val
+        gem_sparse[index] = gem_val
     aw_filled = interpolar_serie(distancias, aw_sparse)
     nasa_filled = interpolar_serie(distancias, nasa_sparse)
-    for punto, aw_val, nasa_val in zip(puntos, aw_filled, nasa_filled):
+    gem_filled = interpolar_serie(distancias, gem_sparse)
+    for punto, aw_val, nasa_val, gem_val in zip(puntos, aw_filled, nasa_filled, gem_filled):
         punto["elevation_aw3d30"] = aw_val
         punto["elevation_nasadem"] = nasa_val
+        punto["elevation_gem15"] = gem_val
     payload["aw3d30_disclaimer"] = AW3D30_DISCLAIMER
     payload["nasadem_disclaimer"] = NASADEM_DISCLAIMER
+    payload["gem15_disclaimer"] = GEM15_DISCLAIMER
     return payload
 
 
@@ -112,11 +123,16 @@ def _finite_or_none(value: Any) -> Optional[float]:
     return number
 
 
-def _sample_aw3d30_nasadem(
+def _sample_comparison_dems(
     lonlats: Sequence[tuple[float, float]],
-) -> tuple[list[Optional[float]], list[Optional[float]]]:
+) -> tuple[list[Optional[float]], list[Optional[float]], list[Optional[float]]]:
+    """One stacked reduceRegions call for AW3D30, NASADEM and GEM-15.
+
+    GEM-15 is 15 m native, but it rides the shared stack at scale=30 on
+    purpose: one GEE round-trip, one quota unit. Comparison, not product.
+    """
     if not lonlats:
-        return [], []
+        return [], [], []
     from app.domains.geo.gee_service import _ensure_initialized
     import ee
 
@@ -130,6 +146,11 @@ def _sample_aw3d30_nasadem(
         .mosaic()
         .select(["DSM"], ["aw3d30"])
         .addBands(ee.Image("NASA/NASADEM_HGT/001").select(["elevation"], ["nasadem"]))
+        .addBands(
+            ee.ImageCollection("projects/climate-and-sustainability/assets/gem-15_v1")
+            .mosaic()
+            .select(["dtm"], ["gem15"])
+        )
     )
     sampled = stacked.reduceRegions(
         collection=ee.FeatureCollection(features),
@@ -145,8 +166,10 @@ def _sample_aw3d30_nasadem(
             props_by_i[index] = props
     aw: list[Optional[float]] = []
     nasa: list[Optional[float]] = []
+    gem: list[Optional[float]] = []
     for index in range(len(lonlats)):
         props = props_by_i.get(index, {})
         aw.append(_finite_or_none(props.get("aw3d30")))
         nasa.append(_finite_or_none(props.get("nasadem")))
-    return aw, nasa
+        gem.append(_finite_or_none(props.get("gem15")))
+    return aw, nasa, gem

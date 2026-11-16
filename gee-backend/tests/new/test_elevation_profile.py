@@ -281,14 +281,40 @@ def test_aplicar_gee_dems_writes_strided_samples() -> None:
 
     def fake_sampler(lonlats):
         assert len(lonlats) == 3
-        return [111.0, 112.0, 113.0], [101.0, None, 103.0]
+        return [111.0, 112.0, 113.0], [101.0, None, 103.0], [91.0, None, 93.0]
 
     out = aplicar_gee_dems(payload, sampler=fake_sampler)
     assert out["puntos"][0]["elevation_aw3d30"] == 111.0
     assert out["puntos"][1]["elevation_nasadem"] == pytest.approx(102.0)
     assert out["puntos"][2]["elevation_nasadem"] == 103.0
+    assert out["puntos"][0]["elevation_gem15"] == 91.0
+    assert out["puntos"][1]["elevation_gem15"] == pytest.approx(92.0)
+    assert out["puntos"][2]["elevation_gem15"] == 93.0
     assert "JAXA" in out["aw3d30_disclaimer"]
     assert "NASADEM" in out["nasadem_disclaimer"]
+    assert "Google" in out["gem15_disclaimer"]
+    assert "CC-BY" in out["gem15_disclaimer"]
+
+
+def test_aplicar_gee_dems_keeps_gem15_nulls_when_no_coverage() -> None:
+    """GEM-15 outside its coverage must degrade to nulls, not break the other series."""
+    from app.domains.geo.elevation_profile_gee import aplicar_gee_dems
+
+    payload = {
+        "puntos": [
+            {"distance_m": 0.0, "elevation_m": 120.0, "lon": -62.7, "lat": -32.6},
+            {"distance_m": 30.0, "elevation_m": 117.0, "lon": -62.72, "lat": -32.62},
+        ]
+    }
+
+    def fake_sampler(_lonlats):
+        return [111.0, 113.0], [101.0, 103.0], [None, None]
+
+    out = aplicar_gee_dems(payload, sampler=fake_sampler)
+    assert [punto["elevation_gem15"] for punto in out["puntos"]] == [None, None]
+    assert out["puntos"][0]["elevation_aw3d30"] == 111.0
+    assert out["puntos"][1]["elevation_nasadem"] == 103.0
+    assert "gem15_disclaimer" in out
 
 
 def test_aplicar_gee_dems_is_noop_when_sampler_raises() -> None:
@@ -301,7 +327,9 @@ def test_aplicar_gee_dems_is_noop_when_sampler_raises() -> None:
 
     out = aplicar_gee_dems(payload, sampler=boom)
     assert "elevation_aw3d30" not in out["puntos"][0]
+    assert "elevation_gem15" not in out["puntos"][0]
     assert "aw3d30_disclaimer" not in out
+    assert "gem15_disclaimer" not in out
 
 
 def test_public_elevation_route_is_anonymous_and_never_samples_gee(monkeypatch) -> None:

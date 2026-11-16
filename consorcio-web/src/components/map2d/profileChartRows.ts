@@ -48,6 +48,7 @@ export type ProfileChartRow = {
   elevation_mde_ar: number | null;
   elevation_aw3d30: number | null;
   elevation_nasadem: number | null;
+  elevation_gem15: number | null;
   lon?: number;
   lat?: number;
   simulatedSolera?: number | null;
@@ -61,6 +62,7 @@ function rowOf(punto: ElevationProfilePoint): ProfileChartRow {
     elevation_mde_ar: punto.elevation_mde_ar ?? null,
     elevation_aw3d30: punto.elevation_aw3d30 ?? null,
     elevation_nasadem: punto.elevation_nasadem ?? null,
+    elevation_gem15: punto.elevation_gem15 ?? null,
     lon: punto.lon,
     lat: punto.lat,
   };
@@ -83,6 +85,7 @@ export function buildProfileChartRows(puntos: readonly ElevationProfilePoint[]):
         elevation_mde_ar: null,
         elevation_aw3d30: null,
         elevation_nasadem: null,
+        elevation_gem15: null,
         lon: anterior?.lon,
         lat: anterior?.lat,
       });

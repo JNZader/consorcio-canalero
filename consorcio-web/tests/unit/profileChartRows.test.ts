@@ -63,4 +63,14 @@ describe('buildProfileChartRows', () => {
 
     expect(rows.filter((row) => row.elevation_m === null)).toHaveLength(1);
   });
+
+  it('carries elevation_gem15 through rows and leaves null where absent', () => {
+    const rows = buildProfileChartRows([
+      { distance_m: 0, elevation_m: 120, elevation_gem15: 119 },
+      { distance_m: 15, elevation_m: 118 },
+    ]);
+
+    expect(rows[0]?.elevation_gem15).toBe(119);
+    expect(rows[1]?.elevation_gem15).toBeNull();
+  });
 });
