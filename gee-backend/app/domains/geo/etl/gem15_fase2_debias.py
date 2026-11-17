@@ -113,7 +113,8 @@ def apply_debias_impl(
     corrected = data.astype("float64") - offset_m
     if profile.get("nodata") is not None:
         corrected[data == profile["nodata"]] = profile["nodata"]
-    profile.update(dtype="float32", compress="deflate", predictor=3)
+    # predictor=2: el 3 (float) rompe el lector GeoTIFF de WhiteboxTools
+    profile.update(dtype="float32", compress="deflate", predictor=2)
     with rasterio_module.open(output_path, "w", **profile) as dst:
         dst.write(corrected.astype("float32"), 1)
     return output_path

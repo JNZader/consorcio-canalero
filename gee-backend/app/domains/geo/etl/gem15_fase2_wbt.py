@@ -60,7 +60,10 @@ def reproject_onto_reference_impl(
     with rasterio_module.open(src_path) as src:
         src_data = src.read(1)
         src_nodata = src.nodata
-    ref_profile.update(dtype="float32", compress="deflate", predictor=3)
+    # PREDICTOR=3 (float) rompe el lector GeoTIFF de WhiteboxTools (Rust):
+    # panic "does not currently support floating-point predictors" tragado por
+    # el wrapper de python como exit 0. PREDICTOR=2 es seguro para WBT.
+    ref_profile.update(dtype="float32", compress="deflate", predictor=2)
     # Los bordes de la huerta src que no cubren la grilla del reference se
     # rellenan con -9999 — y hay que DECLARARLO: WBT falla en silencio (exit 0
     # sin archivo) sobre un sentinel sin metadata de nodata. Verificado en el

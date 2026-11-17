@@ -181,7 +181,8 @@ def apply_egm96_to_egm2008_impl(
         mask = dem == dem_nodata
         corrected[mask] = dem_nodata
         profile["nodata"] = dem_nodata
-    profile.update(dtype="float32", compress="deflate", predictor=3)
+    # predictor=2: el 3 (float) rompe el lector GeoTIFF de WhiteboxTools
+    profile.update(dtype="float32", compress="deflate", predictor=2)
     with rasterio_module.open(output_path, "w", **profile) as dst:
         dst.write(corrected.astype("float32"), 1)
     return output_path
