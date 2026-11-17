@@ -45,7 +45,7 @@ patrón de `generate_canal_catchments.py`).
 | T3 | S2 | Debias regional GEM-15 vs GLO-30 sobre terreno estable (máscara de pendiente; offset medido, no asumido) | hecho | 14ee33ca |
 | T4 | S1 | Correr pipeline WBT idéntico sobre ambos DEMs corregidos → flow_dir/flow_acc/streams/catchments con sufijos propios `_gem15` / `_glo30` | hecho | 06b8cd33 |
 | T5 | S3 | Métricas vs verdad de terreno: % cruces correctamente derivados y desvío de líneas de flujo contra `canal_consorcio` relevados | hecho | 41c7ea0d |
-| T6 | S4 | Doc `docs/GEM15-FASE2-HIDROLOGIA.md` con los números y el veredicto para #724 | hecho | (T6 commit) |
+| T6 | S4 | Doc `docs/GEM15-FASE2-HIDROLOGIA.md` con los números y el veredicto para #724 | hecho | a1843069 |
 
 ## Log
 
