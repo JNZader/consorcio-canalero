@@ -112,3 +112,35 @@ class TestApplyDebias:
         with rasterio.open(out) as src:
             data = src.read(1)
         assert numpy.allclose(data, 100.0)
+
+    def test_nodata_pixels_survive_the_shift(self, tmp_path):
+        gem15 = numpy.full((10, 10), 101.5)
+        gem15[3, 3] = -9999.0
+        gem = _write_tif(tmp_path / "gem.tif", gem15, nodata=-9999.0)
+        out = str(tmp_path / "gem_debiased.tif")
+        mod.apply_debias_impl(
+            rasterio_module=rasterio,
+            numpy_module=numpy,
+            gem15_path=gem,
+            offset_m=1.5,
+            output_path=out,
+        )
+        with rasterio.open(out) as src:
+            data = src.read(1)
+            assert src.nodata == -9999.0
+        assert data[3, 3] == -9999.0
+        assert data[0, 0] == pytest.approx(100.0)
+
+
+class TestShapeMismatch:
+    def test_grids_of_different_shape_fail_loudly(self, tmp_path):
+        glo = _write_tif(tmp_path / "glo.tif", numpy.zeros((10, 10)))
+        gem = _write_tif(tmp_path / "gem.tif", numpy.zeros((10, 11)))
+        with pytest.raises(RuntimeError, match="grillas distintas"):
+            mod.compute_debias_offset_impl(
+                rasterio_module=rasterio,
+                numpy_module=numpy,
+                glo30_path=glo,
+                gem15_path=gem,
+                min_stable_cells=1,
+            )

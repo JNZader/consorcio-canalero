@@ -77,7 +77,9 @@ def ensure_geoid_grids_impl(
         paths[name] = final
         if final.exists() and _sha256_matches(hashlib_module, final, expected[name]):
             continue
-        tmp = final.with_suffix(".tmp")
+        # .tmp.tif (no .tmp) para que el sweeper de .tmp.tif del pipeline
+        # también barra los restos de las grillas si un run muere a mitad.
+        tmp = final.with_suffix(".tmp.tif")
         response = requests_module.get(url, stream=True, timeout=600)
         response.raise_for_status()
         with open(tmp, "wb") as f:
@@ -103,17 +105,20 @@ def bilinear_sample(
     xs,
     ys,
 ):
-    """Muestreo bilinear vectorizado de una grilla regular en lon/lat.
+    """Muestreo bilinear vectorizado de una grilla regular point-registered.
 
-    Fuera de rango clampea al borde (la grilla geoidal es global y el AOI está
-    lejos del antimeridiano, así que no hay wrap).
+    Las grillas geoid del CDN de PROJ son point-registered: el valor vive en el
+    CENTRO de cada celda (1440 valores de -180.0 a 179.75 con borde en
+    -180.125), no en la esquina del transform. Anclar al borde desplaza el
+    muestreo media celda (~13 km en la de 15'). Fuera de rango clampea al
+    borde (grilla global, AOI lejos del antimeridiano: sin wrap).
     """
     import numpy as np
 
     arr = np.asarray(values, dtype="float64")
     height, width = arr.shape
-    col = (np.asarray(xs, dtype="float64") - left) / xres
-    row = (top - np.asarray(ys, dtype="float64")) / yres
+    col = (np.asarray(xs, dtype="float64") - left) / xres - 0.5
+    row = (top - np.asarray(ys, dtype="float64")) / yres - 0.5
     col = np.clip(col, 0.0, width - 1.0)
     row = np.clip(row, 0.0, height - 1.0)
     c0 = np.floor(col).astype("int64")

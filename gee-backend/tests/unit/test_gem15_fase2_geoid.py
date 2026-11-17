@@ -41,9 +41,12 @@ def _write_tif(
 
 
 class TestBilinearSample:
-    def test_exact_at_cell_corners_and_bilinear_at_center(self):
+    """Point-registered: los valores viven en CENTROS de celda, no en la
+    esquina del transform (WARNING R3-geoid-halfcell-anchoring)."""
+
+    def test_exact_at_grid_points_and_bilinear_between(self):
         values = numpy.array([[0.0, 2.0], [4.0, 6.0]])  # row 0 = top (y=top)
-        # cell centers: (0.5, -0.5) -> (0+2+4+6)/4 = 3.0
+        # valores en (0.5,-0.5), (1.5,-0.5), (0.5,-1.5), (1.5,-1.5)
         out = mod.bilinear_sample(
             values,
             left=0.0,
@@ -53,18 +56,34 @@ class TestBilinearSample:
             xs=numpy.array([0.5]),
             ys=numpy.array([-0.5]),
         )
-        assert out[0] == pytest.approx(3.0)
-        # exact at a grid point (0,0)
+        assert out[0] == pytest.approx(0.0)
+        # equidistante de los 4 valores -> promedio
         out = mod.bilinear_sample(
             values,
             left=0.0,
             top=0.0,
             xres=1.0,
             yres=1.0,
-            xs=numpy.array([0.0]),
-            ys=numpy.array([0.0]),
+            xs=numpy.array([1.0]),
+            ys=numpy.array([-1.0]),
         )
-        assert out[0] == pytest.approx(0.0)
+        assert out[0] == pytest.approx(3.0)
+
+    def test_half_cell_anchor_gradient_field(self):
+        # con gradiente y punto INTERIOR: el anclaje point-registered pone el
+        # primer valor en x=0.5; muestrear x=0.75 da 0.25 (fracción entre los
+        # valores 0 y 1), no 0.75 como haría el anclaje a la esquina
+        values = numpy.arange(16, dtype="float64").reshape(4, 4)
+        out = mod.bilinear_sample(
+            values,
+            left=0.0,
+            top=0.0,
+            xres=1.0,
+            yres=1.0,
+            xs=numpy.array([0.75]),
+            ys=numpy.array([-0.5]),
+        )
+        assert out[0] == pytest.approx(0.25)
 
     def test_clamps_outside_bounds(self):
         values = numpy.array([[1.0, 1.0], [1.0, 1.0]])
@@ -127,7 +146,9 @@ class TestApplyEgm96ToEgm2008:
     def test_each_grid_sampled_with_own_geometry(self, tmp_path):
         """Regression: the two CDN grids differ in resolution and edge. Sampling
         one with the other's geometry produced ~20 m offsets silently (caught by
-        a real-grid probe on 2026-11-16, not by the equal-geometry tests)."""
+        a real-grid probe on 2026-11-16). The egm08 fixture carries a COLUMN
+        GRADIENT so a constant-field interpolation cannot mask a geometry
+        mixup (WARNING R3-vacuous-geometry-regression)."""
         dem = _write_tif(
             tmp_path / "dem.tif",
             [[100.0, 100.0], [100.0, 100.0]],
@@ -136,23 +157,25 @@ class TestApplyEgm96ToEgm2008:
             xres=0.001,
             yres=0.001,
         )
-        # egm96-like: 0.25° cells, edge at -180.125
+        # grillas LOCALES que cubren el DEM, con geometrías DISTINTAS entre sí
+        # (resolución y borde diferentes, como las reales del CDN)
+        # egm96-like: celdas de 0.5°, borde en -64.5/-32.5, undulación constante 21
         egm96 = _write_tif(
             tmp_path / "egm96.tif",
             numpy.full((4, 4), 21.0),
-            left=-180.125,
-            top=90.125,
-            xres=0.25,
-            yres=0.25,
+            left=-64.5,
+            top=-32.5,
+            xres=0.5,
+            yres=0.5,
         )
-        # egm08-like: ~0.0417° cells, DIFFERENT edge at -180.0208
+        # egm08-like: celdas de 0.1°, borde en -64.35/-32.35, v(r,c) = 20 + 0.5*c
         egm08 = _write_tif(
             tmp_path / "egm08.tif",
-            numpy.full((40, 40), 20.0),
-            left=-180.02083333333333,
-            top=90.02083333333333,
-            xres=0.041666666666666664,
-            yres=0.041666666666666664,
+            20.0 + 0.5 * numpy.tile(numpy.arange(7, dtype="float64"), (7, 1)),
+            left=-64.35,
+            top=-32.35,
+            xres=0.1,
+            yres=0.1,
         )
         out = str(tmp_path / "out.tif")
         mod.apply_egm96_to_egm2008_impl(
@@ -165,9 +188,18 @@ class TestApplyEgm96ToEgm2008:
         )
         with rasterio.open(out) as src:
             data = src.read(1)
-        # 100 + (21 - 20) = 101 everywhere; with the shared-geometry bug the
-        # egm08 array indexed at the egm96 grid's coarser cells drifts instead.
-        assert numpy.allclose(data, 101.0)
+        # esperado con aritmética directa (no vía la función): col CORRECTO =
+        # geometría egm08 (~3.0); con el bug de geometría compartida el col
+        # saldría de la transform egm96 (~0.5) y el resultado difiere >1 m.
+        left08, res08 = -64.35, 0.1
+        col_centers = numpy.array([-64.0 + 0.001 * (j + 0.5) for j in range(2)])
+        expected_cols = (col_centers - left08) / res08 - 0.5
+        expected = 100.0 + (21.0 - (20.0 + 0.5 * expected_cols))
+        assert numpy.allclose(data, numpy.tile(expected, (2, 1)), atol=0.01)
+        # no-vacuidad: el cálculo con la geometría equivocada da OTRO número
+        buggy_cols = (col_centers + 64.5) / 0.5 - 0.5
+        buggy = 100.0 + (21.0 - (20.0 + 0.5 * buggy_cols))
+        assert not numpy.allclose(data, numpy.tile(buggy, (2, 1)), atol=0.01)
 
     def test_nodata_pixels_survive(self, tmp_path, rasters):
         dem, egm96, egm08 = rasters
