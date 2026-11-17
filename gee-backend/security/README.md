@@ -42,7 +42,13 @@ trixie (Debian tracker: `vulnerable` in trixie, fixed only in forky/sid): four u
 seven more `libxml2` HIGH rows and three more `libexpat1` HIGH rows. Still present from before:
 CVE-2026-6653 (`libxml2`, pulled in by `libosmesa6`),
 CVE-2025-69720 (`ncurses`, 4 rows), CVE-2026-54369 (`libacl1`) and CVE-2026-9538 (`perl-base`,
-postponed). Net: 18 → 56 rows. See the consolidated evidence block in
+postponed). Net: 18 → 56 rows. On 2026-11-17 the rio-cogeo 5→7 PR (#729) was
+the first requirements-touching build after Debian drift: trixie reported two
+more unfixed `libsqlite3-0@3.46.1-7+deb13u2` HIGH rows (CVE-2026-119374,
+CVE-2026-119379 — no `FixedVersion`, same class as the util-linux debt). The
+multiset was regenerated from that PR's own CI Trivy report (55 rows, +2/-0,
+provenance unchanged per the 2026-10-21 precedent) and verified with
+`validate` against that report before commit. See the consolidated evidence block in
 `scripts/validate_image_security_policy.py`.
 
 Frontend Alpine `nginx`/`libxml2` debt is separate from this Debian baseline.
