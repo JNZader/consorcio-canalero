@@ -41,8 +41,8 @@ patrón de `generate_canal_catchments.py`).
 | ID | S# | Ruta | Estado | Commit |
 |----|----|------|--------|--------|
 | T1 | S1 | ETL: descarga GEM-15 dtm del AOI como GeoTIFF aparte (asset `projects/climate-and-sustainability/assets/gem-15_v1`, banda `dtm`) + GLO-30 del mismo AOI, sin tocar `download_dem_impl` | hecho | 094238ac |
-| T2 | S2 | Grilla geoid EGM96→EGM2008: obtenerla y aplicarla al GEM-15 antes de cualquier comparación | pendiente | — |
-| T3 | S2 | Debias regional GEM-15 vs GLO-30 sobre terreno estable (máscara de pendiente; offset medido, no asumido) | pendiente | — |
+| T2 | S2 | Grilla geoid EGM96→EGM2008: obtenerla y aplicarla al GEM-15 antes de cualquier comparación | hecho | edcb2eb3 |
+| T3 | S2 | Debias regional GEM-15 vs GLO-30 sobre terreno estable (máscara de pendiente; offset medido, no asumido) | hecho | 14ee33ca |
 | T4 | S1 | Correr pipeline WBT idéntico sobre ambos DEMs corregidos → flow_dir/flow_acc/streams/catchments con sufijos propios `_gem15` / `_glo30` | pendiente | — |
 | T5 | S3 | Métricas vs verdad de terreno: % cruces correctamente derivados y desvío de líneas de flujo contra `canal_consorcio` relevados | pendiente | — |
 | T6 | S4 | Doc `docs/GEM15-FASE2-HIDROLOGIA.md` con los números y el veredicto para #724 | pendiente | — |
@@ -70,3 +70,22 @@ patrón de `generate_canal_catchments.py`).
   same-grid de ambas llamadas solo está probado en main() no-cover; (c)
   R3-runner-dir-mismatch SUGGESTION — corregido: esta cabecera ahora declara
   tests/unit además de tests/new.
+- L5 (2026-11-16): T2 hecho en edcb2eb3 — grillas us_nga_egm96_15.tif +
+  us_nga_egm08_25.tif del CDN de PROJ (SHA256 pineado, fail-closed, se bajan
+  una vez al volumen /data/geo/{area}/fase2/grids/). Sonda con grillas REALES
+  sobre el AOI: corrección N96−N08 = −0.59 a −0.68 m — decímetros con
+  variación espacial, consistente con el disclaimer de fase 1; es la
+  ondulación que puede redirigir flujo en llanura. La sonda cazó un bug real
+  (muestrear EGM08 con la geometría de EGM96 → offsets ~20 m silenciosos);
+  corregido y fijado con test de regresión de geometrías distintas. 7/7 tests.
+  Review del commit: primero correction_required (hallazgos severos nunca
+  mostrados — el selector de untracked bloqueaba), luego de T3 el provider
+  autorizó recover scope_changed → sucesor review-b6221222bae4b1fc en curso.
+  ADEMÁS: review 4R del branch completo (T1+T2+doc) APPROVED y quemado
+  (lineage review-f2de63b5a79f862d).
+- L6 (2026-11-16): T3 hecho en 14ee33ca — stable_mask = rango focal 3x3 <
+  STABLE_WINDOW_RANGE_M (2 m) en AMBOS DEMs; offset = mediana de la diferencia
+  en celdas estables, MAD y fracción estable reportadas en
+  debias_report.json; fail-loud si < MIN_STABLE_CELLS (1000). 5/5 tests, 18/18
+  del feature. Queda correr el ETL real en el contenedor cuando se corran
+  T1→T3 sobre el AOI.
