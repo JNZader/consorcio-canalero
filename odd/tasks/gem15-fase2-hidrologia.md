@@ -89,3 +89,20 @@ patrón de `generate_canal_catchments.py`).
   debias_report.json; fail-loud si < MIN_STABLE_CELLS (1000). 5/5 tests, 18/18
   del feature. Queda correr el ETL real en el contenedor cuando se corran
   T1→T3 sobre el AOI.
+- L7 (2026-11-17): Todos los reviews RDD cerrados y quemados: T1 (reliability),
+  rama 4R hasta T2 (review-f2de63b5a79f862d), sucesor recover T2+T3
+  (review-b6221222bae4b1fc) y rama 4R completa v2 (review-755749cbead8f7fd) —
+  los cuatro APPROVED. Fix en 302ad811 a partir de los hallazgos: (a)
+  WARNING R3-geoid-halfcell-anchoring — las grillas PROJ son point-registered
+  (valores en centros; los bounds simétricos ±180.125 con 1440/721 puntos lo
+  prueban) y el sampler anclaba al borde → medio célula (~13 km en EGM96);
+  sonda real corregida: N96−N08 = −0.21 a −0.28 m sobre el AOI (antes
+  −0.59..−0.68 con el anclaje viejo; ~0.36 m de corrección). (b) WARNING
+  R3-vacuous-geometry-regression — la regresión de geometrías usaba campos
+  constantes (vacua); ahora grillas locales con gradiente por columna y
+  expected por aritmética directa + aserción de no-vacuidad. (c) Tests de
+  borde debias (nodata + shape mismatch). (d) tmp de grillas renombrado a
+  .tmp.tif para que el sweeper del pipeline los barza. 21/21 tests feature.
+  Deuda informativa restante (no bloqueante): tmp-leak en failure paths de
+  downloads (mitigado por sweeper), parity-wiring solo en main() no-cover,
+  importorskip hace skip silencioso del contrato si falta el módulo.
