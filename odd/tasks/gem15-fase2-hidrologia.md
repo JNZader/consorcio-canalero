@@ -44,7 +44,7 @@ patrón de `generate_canal_catchments.py`).
 | T2 | S2 | Grilla geoid EGM96→EGM2008: obtenerla y aplicarla al GEM-15 antes de cualquier comparación | hecho | edcb2eb3 |
 | T3 | S2 | Debias regional GEM-15 vs GLO-30 sobre terreno estable (máscara de pendiente; offset medido, no asumido) | hecho | 14ee33ca |
 | T4 | S1 | Correr pipeline WBT idéntico sobre ambos DEMs corregidos → flow_dir/flow_acc/streams/catchments con sufijos propios `_gem15` / `_glo30` | hecho | 06b8cd33 |
-| T5 | S3 | Métricas vs verdad de terreno: % cruces correctamente derivados y desvío de líneas de flujo contra `canal_consorcio` relevados | pendiente | — |
+| T5 | S3 | Métricas vs verdad de terreno: % cruces correctamente derivados y desvío de líneas de flujo contra `canal_consorcio` relevados | hecho | 41c7ea0d |
 | T6 | S4 | Doc `docs/GEM15-FASE2-HIDROLOGIA.md` con los números y el veredicto para #724 | pendiente | — |
 
 ## Log
@@ -115,3 +115,16 @@ patrón de `generate_canal_catchments.py`).
   del feature. Review 4R v3 de la rama (con fix 302ad811) sigue en vuelo.
   Corrección: el commit de T4 es 06b8cd33 (una versión anterior de esta línea
   citaba un hash escrito antes de crear el commit — nunca citar hashes futuros).
+- L9 (2026-11-17): T5 hecho en 41c7ea0d — canal_metrics_impl: puntos muestreados
+  cada celda a lo largo de los 41 canales relevados (relevados.geojson directo
+  del repo, sin DB), distancia (celdas) al cauce derivado más cercano vía
+  distance_transform_edt inyectable (scipy está en requirements-geo y dev, NO
+  en el runtime del backend — el ETL de métricas corre en geo-worker o backend
+  dev), mediana/p90 globales y por canal (= desvío en llanura) + cobertura a
+  tolerancia 2 celdas (= proxy del % cruces derivados). 4/4 tests, 29/29 del
+  feature. Nota de proceso: T5 no tuvo RED observado (test e impl se
+  escribieron en la misma tanda); las expectativas están calculadas a mano.
+- L10 (2026-11-17): reviews adicionales cerrados y quemados: rama con fix
+  (review-d8a1b00a93500f4b, 4R APPROVED) y rama con T4 (review-0a571fe8c8a7ac66,
+  en vuelo al momento de esta línea). Resta T6: correr los ETL reales en el
+  contenedor (T1→T5) y escribir docs/GEM15-FASE2-HIDROLOGIA.md con los números.
