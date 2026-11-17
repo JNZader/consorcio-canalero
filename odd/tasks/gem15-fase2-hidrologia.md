@@ -45,7 +45,7 @@ patrón de `generate_canal_catchments.py`).
 | T3 | S2 | Debias regional GEM-15 vs GLO-30 sobre terreno estable (máscara de pendiente; offset medido, no asumido) | hecho | 14ee33ca |
 | T4 | S1 | Correr pipeline WBT idéntico sobre ambos DEMs corregidos → flow_dir/flow_acc/streams/catchments con sufijos propios `_gem15` / `_glo30` | hecho | 06b8cd33 |
 | T5 | S3 | Métricas vs verdad de terreno: % cruces correctamente derivados y desvío de líneas de flujo contra `canal_consorcio` relevados | hecho | 41c7ea0d |
-| T6 | S4 | Doc `docs/GEM15-FASE2-HIDROLOGIA.md` con los números y el veredicto para #724 | pendiente | — |
+| T6 | S4 | Doc `docs/GEM15-FASE2-HIDROLOGIA.md` con los números y el veredicto para #724 | hecho | (T6 commit) |
 
 ## Log
 
@@ -128,3 +128,13 @@ patrón de `generate_canal_catchments.py`).
   (review-d8a1b00a93500f4b, 4R APPROVED) y rama con T4 (review-0a571fe8c8a7ac66,
   en vuelo al momento de esta línea). Resta T6: correr los ETL reales en el
   contenedor (T1→T5) y escribir docs/GEM15-FASE2-HIDROLOGIA.md con los números.
+- L11 (2026-11-17): CADENA REAL COMPLETA contra el AOI. Números finales:
+  datum N96−N08 = −0,21..−0,28 m; debias +2,62 m (MAD 0,77, 92,6% estable);
+  acumulación GLO-30 max 1.165.617 / 179.563 cauces vs GEM-15 max 3.689 /
+  4.466; métricas vs 41 canales (6.029 puntos): GLO-30 mediana 1,41 celdas
+  (~42 m), p90 5,83, cobertura 62,3% — GEM-15 mediana 759 celdas (~22,8 km),
+  cobertura 0,0%. VEREDICTO: GEM-15 no sirve para hidrología en esta llanura
+  con pipeline estándar; GLO-30 sigue de base. Tres bugs de WBT cazados en el
+  camino (nodata edges, PREDICTOR=3, pntr v2.4.0 — ver doc §Gotchas, el
+  pntr afecta al pipeline productivo en su próxima corrida con binario
+  nuevo). T6 = docs/GEM15-FASE2-HIDROLOGIA.md.
