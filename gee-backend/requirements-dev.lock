@@ -1011,9 +1011,9 @@ contourpy==1.4.0 \
     --hash=sha256:fa1b787362a3856e63dd2b89449f6c384d55ee1beb8f94f4bcc871b40f02462c \
     --hash=sha256:fc9feef8f1f001c5b87decadc67c4a5d1eebb62ca39c4763d1237ff62cf2b707
     # via matplotlib
-cosmic-ray==8.7.0 \
-    --hash=sha256:759510a02cf2b23ba15a00680ecc1fd6c74d3082622e5a7d2d514b5227267659 \
-    --hash=sha256:f1e8cdbd9b8c9d9145bc2b37247081b423d1e079d929a3da30714b23d40b4a70
+cosmic-ray==8.9.0 \
+    --hash=sha256:3a37732939e1119e459c7b21f7ff6b62d0d1d0ff18ef2b9ea1e3e90e7e7829c6 \
+    --hash=sha256:632737cbb3ea3965634ef275abadaeabef6c61ba895d0f3eb796947f555904b9
     # via -r requirements-dev.txt
 coverage==7.17.2 \
     --hash=sha256:01303d9e68b6e6bdc5459b54e3bd0e3539c94c25b50ac7362b7cbcacbc815fbc \
