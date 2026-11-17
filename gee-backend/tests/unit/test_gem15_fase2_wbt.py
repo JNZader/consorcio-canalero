@@ -69,14 +69,16 @@ class TestReprojectOntoReference:
 
 
 class RecordingWbt:
-    """Wbt falso: el primer método invocado queda grabado."""
+    """Wbt falso: métodos invocados y sus kwargs quedan grabados."""
 
     def __init__(self):
         self.method: str | None = None
+        self.kwargs: dict = {}
 
     def __getattr__(self, name):
         def call(*args, **kwargs):
             self.method = name
+            self.kwargs = kwargs
 
         return call
 
@@ -90,7 +92,7 @@ class FakeWbtRunner:
     def __call__(self, output_path, runner):
         wbt = RecordingWbt()
         runner(wbt, output_path)
-        self.calls.append((wbt.method, output_path))
+        self.calls.append((wbt.method, output_path, wbt.kwargs))
         open(output_path, "w").close()
         return 0
 
@@ -114,6 +116,8 @@ class TestWbtSteps:
         tools = [c[0] for c in runner.calls]
         assert tools == ["fill_depressions", "d8_pointer", "d8_flow_accumulation"]
         assert result["flow_dir"].endswith("flow_dir_gem15.tif")
+        # el binario v2.4.0 exige pntr=True cuando el input es un pointer
+        assert runner.calls[2][2] == {"out_type": "cells", "pntr": True}
         assert result["flow_acc"].endswith("flow_acc_gem15.tif")
         assert result["filled"].endswith("dem_filled_gem15.tif")
         for path in result.values():

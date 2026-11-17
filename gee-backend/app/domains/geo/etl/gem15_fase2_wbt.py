@@ -123,7 +123,15 @@ def run_wbt_steps_impl(
     run_wbt_tool(filled, lambda wbt, path: wbt.fill_depressions(dem_path, path))
     run_wbt_tool(flow_dir, lambda wbt, path: wbt.d8_pointer(filled, path))
     run_wbt_tool(
-        flow_acc, lambda wbt, path: wbt.d8_flow_accumulation(flow_dir, path, out_type="cells")
+        flow_acc,
+        # pntr=True es OBLIGATORIO con el binario v2.4.0 (bajado on-demand por
+        # el wrapper de python el 2026-11-17): sin el flag, acumula
+        # interpretando el POINTER como DEM y devuelve valores ~34 (basura).
+        # Con el flag reproduce exactamente el flow_acc productivo (max 487848,
+        # 91236 celdas >= 100). OJO: compute_flow_accumulation_impl del
+        # pipeline productivo NO lo pasa — expuesto al mismo bug en su próxima
+        # corrida con binario nuevo.
+        lambda wbt, path: wbt.d8_flow_accumulation(flow_dir, path, out_type="cells", pntr=True),
     )
     return {"filled": filled, "flow_dir": flow_dir, "flow_acc": flow_acc}
 
