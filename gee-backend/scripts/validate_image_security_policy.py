@@ -168,6 +168,9 @@ PLATFORM = "linux/amd64"
 # fix. El multiset exacto vive en frozen-image-debt.json y lo pinea
 # ``test_repository_policy_is_active_with_exact_stage2b2_observations``.
 # util-linux (36) + libxml2 (8) + ncurses (4) + libexpat1 (4) = 52 de 56.
+# 2026-11-17: +2 libsqlite3-0 HIGH sin fix (CVE-2026-119374/-119379, drift de
+# trixie visto en el build del PR #729) -> 55 filas; multiset regenerado del
+# reporte Trivy de ese mismo run de CI y validado contra el antes del commit.
 # Palanca externa: un digest nuevo de python:3.14-slim-trixie no ayuda (misma
 # trixie); solo Debian 13.8 o un DSA puntual bajan filas.
 #
