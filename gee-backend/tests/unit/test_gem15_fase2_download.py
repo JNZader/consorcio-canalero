@@ -84,8 +84,11 @@ class FakeRequests:
 
 
 class FakeSrc:
-    def __init__(self, profile: dict):
+    def __init__(self, profile: dict, data=None):
+        import numpy
+
         self.profile = profile
+        self._data = numpy.array(data if data is not None else [[100.0]], dtype="float32")
 
     def __enter__(self):
         return self
@@ -93,8 +96,8 @@ class FakeSrc:
     def __exit__(self, *exc):
         return False
 
-    def read(self):
-        return [[1]]
+    def read(self, index=None):
+        return self._data
 
 
 class FakeDst:
@@ -114,12 +117,13 @@ class FakeDst:
 
 
 class FakeRasterio:
-    def __init__(self):
+    def __init__(self, src_data=None):
         self.written: dict = {}
+        self._src_data = src_data
 
     def open(self, path: str, mode: str = "r", **profile):
         if mode == "r":
-            return FakeSrc({"driver": "GTiff", "compress": None})
+            return FakeSrc({"driver": "GTiff", "compress": None}, data=self._src_data)
         return FakeDst(path, profile, self.written)
 
 
@@ -179,6 +183,37 @@ class TestGem15DownloadContract:
         assert written["profile"]["compress"] == "deflate"
         assert written["profile"]["predictor"] == 2
         assert not (tmp_path / "dem_gem15_raw.tmp.tif").exists()
+
+    def test_gee_sentinel_9999_is_declared_as_nodata(self, tmp_path):
+        """GEE llena huecos del asset con -9999 sin declarar nodata; si no lo
+        declaramos, el sentinel viaja crudo y WBT falla en silencio sobre el
+        DEM (verificado en contenedor 2026-11-17)."""
+        ee = FakeEE()
+        rasterio = FakeRasterio(src_data=[[100.0, -9999.0], [100.0, 100.0]])
+        output = str(tmp_path / "dem_gem15_raw.tif")
+        mod.download_gem15_dtm_impl(
+            ee_module=ee,
+            requests_module=FakeRequests([b"x"]),
+            rasterio_module=rasterio,
+            ensure_parent_dir=lambda p: None,
+            zona_geometry={"type": "Point", "coordinates": [0, 0]},
+            output_path=output,
+        )
+        assert rasterio.written[output]["profile"]["nodata"] == -9999.0
+
+    def test_no_sentinel_leaves_nodata_undeclared(self, tmp_path):
+        ee = FakeEE()
+        rasterio = FakeRasterio(src_data=[[100.0, 101.0], [99.0, 100.0]])
+        output = str(tmp_path / "dem_gem15_raw.tif")
+        mod.download_gem15_dtm_impl(
+            ee_module=ee,
+            requests_module=FakeRequests([b"x"]),
+            rasterio_module=rasterio,
+            ensure_parent_dir=lambda p: None,
+            zona_geometry={"type": "Point", "coordinates": [0, 0]},
+            output_path=output,
+        )
+        assert "nodata" not in rasterio.written[output]["profile"]
 
     def test_scale_passthrough(self, tmp_path):
         ee = FakeEE()

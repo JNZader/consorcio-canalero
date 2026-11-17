@@ -74,8 +74,17 @@ def download_gem15_dtm_impl(
         for chunk in response.iter_content(chunk_size=8192):
             f.write(chunk)
     with rasterio_module.open(tmp_path) as src:
+        data = src.read(1)
         profile = src.profile.copy()
         profile.update(compress="deflate", predictor=2)
+        # GEE rellena los huecos del asset con -9999 SIN declararlo como
+        # nodata. Sin esta declaración, el sentinel viaja crudo por toda la
+        # cadena (geoid lo corrompe sumándole la corrección) y WBT falla
+        # SILENCIOSAMENTE (exit 0 sin archivo) sobre el DEM — verificado en el
+        # contenedor el 2026-11-17. El gemelo GLO-30 no lo necesita: su AOI
+        # viene cubierto y sin huecos.
+        if profile.get("nodata") is None and data.min() <= -9999:
+            profile["nodata"] = -9999.0
         with rasterio_module.open(output_path, "w", **profile) as dst:
             dst.write(src.read())
     Path(tmp_path).unlink(missing_ok=True)
