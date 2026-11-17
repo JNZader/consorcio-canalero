@@ -43,7 +43,7 @@ patrón de `generate_canal_catchments.py`).
 | T1 | S1 | ETL: descarga GEM-15 dtm del AOI como GeoTIFF aparte (asset `projects/climate-and-sustainability/assets/gem-15_v1`, banda `dtm`) + GLO-30 del mismo AOI, sin tocar `download_dem_impl` | hecho | 094238ac |
 | T2 | S2 | Grilla geoid EGM96→EGM2008: obtenerla y aplicarla al GEM-15 antes de cualquier comparación | hecho | edcb2eb3 |
 | T3 | S2 | Debias regional GEM-15 vs GLO-30 sobre terreno estable (máscara de pendiente; offset medido, no asumido) | hecho | 14ee33ca |
-| T4 | S1 | Correr pipeline WBT idéntico sobre ambos DEMs corregidos → flow_dir/flow_acc/streams/catchments con sufijos propios `_gem15` / `_glo30` | hecho | 1b1b0e55 |
+| T4 | S1 | Correr pipeline WBT idéntico sobre ambos DEMs corregidos → flow_dir/flow_acc/streams/catchments con sufijos propios `_gem15` / `_glo30` | hecho | 06b8cd33 |
 | T5 | S3 | Métricas vs verdad de terreno: % cruces correctamente derivados y desvío de líneas de flujo contra `canal_consorcio` relevados | pendiente | — |
 | T6 | S4 | Doc `docs/GEM15-FASE2-HIDROLOGIA.md` con los números y el veredicto para #724 | pendiente | — |
 
@@ -113,3 +113,5 @@ patrón de `generate_canal_catchments.py`).
   extract_streams_impl (umbral STREAM_THRESHOLD_CELLS=100, uint8 2=cauce/1=llanura).
   Salidas _gem15/_glo30 bajo fase2/, nunca en output/. 4/4 tests nuevos, 25/25
   del feature. Review 4R v3 de la rama (con fix 302ad811) sigue en vuelo.
+  Corrección: el commit de T4 es 06b8cd33 (una versión anterior de esta línea
+  citaba un hash escrito antes de crear el commit — nunca citar hashes futuros).
