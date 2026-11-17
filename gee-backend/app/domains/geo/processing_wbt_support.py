@@ -107,7 +107,15 @@ def compute_flow_direction_impl(*, run_wbt_tool, filled_dem_path: str, output_pa
 def compute_flow_accumulation_impl(*, run_wbt_tool, flow_dir_path: str, output_path: str) -> str:
     return run_wbt_tool(
         output_path,
-        lambda wbt, path: wbt.d8_flow_accumulation(flow_dir_path, path, out_type="cells"),
+        # pntr=True: el input SIEMPRE es un D8 pointer (todos los callers
+        # pasan flow_dir). WhiteboxTools 2.4.0 dejo de auto-detectarlo y sin
+        # el flag interpreta el pointer como DEM devolviendo acumulacion
+        # basura silenciosa (max ~34 celdas; con el flag reproduce el
+        # historico: max 487 848 — verificado contra el flow_acc productivo
+        # del volumen, 2026-11-17).
+        lambda wbt, path: wbt.d8_flow_accumulation(
+            flow_dir_path, path, out_type="cells", pntr=True
+        ),
     )
 
 
