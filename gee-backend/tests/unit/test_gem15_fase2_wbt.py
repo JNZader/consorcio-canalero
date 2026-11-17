@@ -60,7 +60,9 @@ class TestReprojectOntoReference:
             assert o.crs == r.crs
             assert o.transform == r.transform
             assert o.width == r.width and o.height == r.height
-            assert o.nodata == r.nodata or o.nodata == -9999.0
+            # el relleno de bordes SIEMPRE se declara: WBT falla en silencio
+            # sobre un -9999 sin metadata (bug real del 2026-11-17)
+            assert o.nodata == -9999.0
             values = o.read(1)
         # datos válidos en la zona cubierta, no una grilla vacía
         assert numpy.isfinite(values).sum() >= 5

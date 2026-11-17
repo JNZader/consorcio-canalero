@@ -61,8 +61,13 @@ def reproject_onto_reference_impl(
         src_data = src.read(1)
         src_nodata = src.nodata
     ref_profile.update(dtype="float32", compress="deflate", predictor=3)
-    if src_nodata is not None:
-        ref_profile["nodata"] = src_nodata
+    # Los bordes de la huerta src que no cubren la grilla del reference se
+    # rellenan con -9999 — y hay que DECLARARLO: WBT falla en silencio (exit 0
+    # sin archivo) sobre un sentinel sin metadata de nodata. Verificado en el
+    # contenedor 2026-11-17: 19 656 celdas de borde del GEM-15 sobre la grilla
+    # UTM del GLO-30.
+    fill_nodata = src_nodata if src_nodata is not None else -9999.0
+    ref_profile["nodata"] = fill_nodata
     dst_data = numpy_empty(rasterio_module, (height, width))
     rio_reproject(
         source=src_data,
@@ -73,7 +78,7 @@ def reproject_onto_reference_impl(
         dst_crs=dst_crs,
         resampling=Resampling.bilinear,
         src_nodata=src_nodata,
-        dst_nodata=src_nodata if src_nodata is not None else -9999.0,
+        dst_nodata=fill_nodata,
     )
     with rasterio_module.open(output_path, "w", **ref_profile) as dst:
         dst.write(dst_data.astype("float32"), 1)
