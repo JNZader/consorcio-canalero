@@ -472,13 +472,17 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     # SHA 1c21ddce) reporto unexpected vacio y missing exactamente esas dos
     # filas despues de instalar expat 2.10.0. CVE-2026-113351 y CVE-2026-76844
     # no aparecen. No se agrega ninguna fila.
-    assert len(backend_findings) == 53
-    assert sum(finding["count"] for finding in backend_findings) == 53
+    # 53 -> 55 el 2026-11-17: CVE-2026-119374 y CVE-2026-119379 sobre
+    # libsqlite3-0 3.46.1-7+deb13u2, HIGH affected, sin FixedVersion (drift
+    # de trixie visto en el build del PR #729). Multiset regenerado del
+    # reporte Trivy de ese run de CI y validado contra el antes del commit.
+    assert len(backend_findings) == 55
+    assert sum(finding["count"] for finding in backend_findings) == 55
     assert {finding["count"] for finding in backend_findings} == {1}
     assert {finding["target"] for finding in backend_findings} == {"<image> (debian 13.7)"}
-    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 52
+    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 54
     assert sum(finding["severity"] == "CRITICAL" for finding in backend_findings) == 1
-    assert sum(finding["status"] == "affected" for finding in backend_findings) == 52
+    assert sum(finding["status"] == "affected" for finding in backend_findings) == 54
     assert sum(finding["status"] == "fix_deferred" for finding in backend_findings) == 1
     assert all(finding["fixed"] == "" for finding in backend_findings)
     assert all("layer" not in finding for finding in backend_findings)
@@ -510,7 +514,11 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     sqlite = [
         finding for finding in backend_findings if finding["pkg_id"].startswith("libsqlite3-0@")
     ]
-    assert [finding["cve"] for finding in sqlite] == ["CVE-2026-119373"]
+    assert [finding["cve"] for finding in sqlite] == [
+        "CVE-2026-119373",
+        "CVE-2026-119374",
+        "CVE-2026-119379",
+    ]
     assert sqlite[0]["installed"] == "3.46.1-7+deb13u2"
     assert sqlite[0]["fixed"] == ""
     assert sqlite[0]["status"] == "affected"
@@ -536,6 +544,8 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     assert rows_by_cve == {
         "CVE-2025-69720": ncurses,
         "CVE-2026-119373": ["libsqlite3-0"],
+        "CVE-2026-119374": ["libsqlite3-0"],
+        "CVE-2026-119379": ["libsqlite3-0"],
         "CVE-2026-16742": ["libsystemd0", "libudev1"],
         "CVE-2026-54369": ["libacl1"],
         "CVE-2026-6653": ["libxml2"],
