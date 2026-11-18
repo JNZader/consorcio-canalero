@@ -22,6 +22,7 @@ from app.domains.geo.intelligence.calculations_hydrology_support import (
 from app.domains.geo.intelligence.calculations_network_support import (
     clasificar_terreno_dinamico_impl,
 )
+from app.domains.geo.wbt_version import assert_pinned_wbt_version
 
 _wbt = None
 
@@ -33,6 +34,9 @@ def _get_wbt():
 
         _wbt = WhiteboxTools()
         _wbt.set_verbose_mode(False)
+        # Issue #733: refuse to run on any binary other than the pinned one —
+        # a wrong build fails SILENTLY otherwise (#730).
+        assert_pinned_wbt_version(_wbt)
     return _wbt
 
 

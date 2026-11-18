@@ -74,7 +74,7 @@ rasterstats>=0.20.0
 numpy>=2.5.0
 rasterio>=1.5.0
 pyproj>=3.8.0
-whitebox>=2.3.5
+whitebox==2.3.6  # wrapper pinned exactly; the BINARY it fetches is SHA-pinned in Dockerfile/Dockerfile.geo (issue #733)
 
 # 3D Visualization
 pyvista>=0.43.0

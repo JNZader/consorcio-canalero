@@ -39,6 +39,35 @@ RUN pip install --no-cache-dir --no-deps --require-hashes -r requirements.lock \
     "setuptools==80.10.2" \
     "wheel==0.46.3"
 
+# --- WhiteboxTools binary: SHA-pinned bake (issue #733) ---
+# The whitebox pip wrapper only pins the wrapper, NOT the binary: on first
+# use it downloads an UNVERSIONED zip from whiteboxgeo.com (no checksum) —
+# WBT 2.4.0 broke d8_flow_accumulation in silence that way (#730). Placing
+# <pkg>/WBT by hand suppresses that download (wrapper v2.3.6 skips when the
+# dir exists). Values MUST mirror app/domains/geo/wbt_version.py — enforced
+# by tests/test_ci_workflow_contracts.py.
+ARG WBT_VERSION=2.4.0
+ARG WBT_SHA256=370493b569aaf84977fde95921f96d4a39c1820a2d36d907da9d53772295f440
+RUN set -eux; \
+    pkg_dir="$(python3 -c 'import whitebox, os; print(os.path.dirname(whitebox.__file__))')"; \
+    n=0; \
+    until python3 -c "import urllib.request; urllib.request.urlretrieve('https://www.whiteboxgeo.com/WBT_Linux/WhiteboxTools_linux_amd64.zip', '/tmp/wbt-pinned.zip')" \
+        && echo "${WBT_SHA256}  /tmp/wbt-pinned.zip" | sha256sum -c -; do \
+        n=$((n+1)); \
+        if [ "$n" -ge 5 ]; then echo "pinned WBT download failed after $n attempts" >&2; exit 1; fi; \
+        sleep $((n * 8)); \
+        rm -f /tmp/wbt-pinned.zip; \
+    done; \
+    python3 -m zipfile -e /tmp/wbt-pinned.zip /tmp/wbt-pinned; \
+    mv /tmp/wbt-pinned/WhiteboxTools_linux_amd64/WBT "${pkg_dir}/WBT"; \
+    cp -r "${pkg_dir}/WBT/img" "${pkg_dir}/img"; \
+    cp -r "${pkg_dir}/WBT/plugins" "${pkg_dir}/plugins"; \
+    cp "${pkg_dir}/WBT/whitebox_tools" "${pkg_dir}/whitebox_tools"; \
+    chmod 755 "${pkg_dir}/WBT/whitebox_tools" "${pkg_dir}/whitebox_tools"; \
+    "${pkg_dir}/WBT/whitebox_tools" --version | grep -F "v${WBT_VERSION}"; \
+    python3 -c "import whitebox; wbt = whitebox.WhiteboxTools(); v = wbt.version(); assert isinstance(v, str) and 'v' + '$WBT_VERSION' in v, repr(v); print('WBT ready:', v)"; \
+    rm -rf /tmp/wbt-pinned.zip /tmp/wbt-pinned
+
 # --- Development stage ---
 FROM build AS development
 
@@ -384,8 +413,12 @@ RUN mkdir -p credentials uploads /var/run/celery
 COPY app/ ./app/
 COPY alembic.ini ./
 
-# Set ownership for the app user
-RUN chown -R app:app /app /var/run/celery
+# Set ownership for the app user. The whitebox package dir must be writable
+# too: WhiteboxTools writes settings/logs next to its binary at runtime
+# (same precedent as Dockerfile.geo); the pinned binary is baked into
+# site-packages in the build stage (issue #733).
+RUN chown -R app:app /app /var/run/celery \
+    && chown -R app:app "$(python3 -c 'import whitebox, os; print(os.path.dirname(whitebox.__file__))')"
 
 # Expose port
 EXPOSE 8000
