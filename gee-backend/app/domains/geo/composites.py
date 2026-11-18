@@ -32,6 +32,7 @@ from app.domains.geo.composites_support import (
     merge_drainage_networks_impl,
     rasterize_drainage_impl,
 )
+from app.domains.geo.wbt_version import assert_pinned_wbt_version
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,9 @@ def _get_wbt():
 
         _wbt = WhiteboxTools()
         _wbt.set_verbose_mode(False)
+        # Issue #733: refuse to run on any binary other than the pinned one —
+        # a wrong build fails SILENTLY otherwise (#730).
+        assert_pinned_wbt_version(_wbt)
     return _wbt
 
 

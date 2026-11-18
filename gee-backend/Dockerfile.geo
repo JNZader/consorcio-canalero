@@ -132,12 +132,47 @@ RUN pip install --no-cache-dir --break-system-packages --ignore-installed \
         "wheel==0.46.3"
 
 
-# Pre-download WhiteboxTools while the temporary Python headers are available,
-# then remove the complete build-only dependency closure from the final image.
-# WhiteboxTools.__init__ fetches WhiteboxTools_linux_amd64.zip from
-# whiteboxgeo.com; that host 500s (CI #529). Retry before failing the image.
+# --- WhiteboxTools binary: SHA-pinned bake (issue #733) ---
+# The whitebox pip wrapper only pins the wrapper, NOT the binary: on first
+# use it downloads an UNVERSIONED zip from whiteboxgeo.com (no checksum) —
+# WBT 2.4.0 broke d8_flow_accumulation in silence that way (#730). Placing
+# <pkg>/WBT by hand suppresses that download (wrapper v2.3.6 skips when the
+# dir exists). Values MUST mirror app/domains/geo/wbt_version.py — enforced
+# by tests/test_ci_workflow_contracts.py. The until-retry covers the same
+# whiteboxgeo.com flakiness documented below.
+ARG WBT_VERSION=2.4.0
+ARG WBT_SHA256=370493b569aaf84977fde95921f96d4a39c1820a2d36d907da9d53772295f440
+RUN set -eux; \
+    pkg_dir="$(python3 -c 'import whitebox, os; print(os.path.dirname(whitebox.__file__))')"; \
+    n=0; \
+    until python3 -c "import urllib.request; urllib.request.urlretrieve('https://www.whiteboxgeo.com/WBT_Linux/WhiteboxTools_linux_amd64.zip', '/tmp/wbt-pinned.zip')" \
+        && echo "${WBT_SHA256}  /tmp/wbt-pinned.zip" | sha256sum -c -; do \
+        n=$((n+1)); \
+        if [ "$n" -ge 5 ]; then echo "pinned WBT download failed after $n attempts" >&2; exit 1; fi; \
+        sleep $((n * 8)); \
+        rm -f /tmp/wbt-pinned.zip; \
+    done; \
+    python3 -m zipfile -e /tmp/wbt-pinned.zip /tmp/wbt-pinned; \
+    mv /tmp/wbt-pinned/WhiteboxTools_linux_amd64/WBT "${pkg_dir}/WBT"; \
+    cp -r "${pkg_dir}/WBT/img" "${pkg_dir}/img"; \
+    cp -r "${pkg_dir}/WBT/plugins" "${pkg_dir}/plugins"; \
+    cp "${pkg_dir}/WBT/whitebox_tools" "${pkg_dir}/whitebox_tools"; \
+    chmod 755 "${pkg_dir}/WBT/whitebox_tools" "${pkg_dir}/whitebox_tools"; \
+    "${pkg_dir}/WBT/whitebox_tools" --version | grep -F "v${WBT_VERSION}"; \
+    python3 -c "import whitebox; wbt = whitebox.WhiteboxTools(); v = wbt.version(); assert isinstance(v, str) and 'v' + '$WBT_VERSION' in v, repr(v); print('WBT ready:', v)"; \
+    rm -rf /tmp/wbt-pinned.zip /tmp/wbt-pinned
+
+# Validate that the whitebox wrapper constructs against the pinned binary
+# above while the temporary Python headers are still available, then remove
+# the complete build-only dependency closure from the final image. The
+# wrapper skips its own download because <pkg>/WBT already exists. The
+# assert is NOT optional ceremony: the wrapper's version() RETURNS the
+# exception object instead of raising when the binary is unusable, so a
+# bare construct would exit 0 on a broken image. Keep the retry:
+# whiteboxgeo.com 500s in CI (#529) and constructing exercises the package
+# layout too.
 RUN n=0; \
-    until python3 -c "import whitebox; wbt = whitebox.WhiteboxTools(); print('WBT ready:', wbt.version())"; do \
+    until python3 -c "import whitebox; wbt = whitebox.WhiteboxTools(); v = wbt.version(); assert isinstance(v, str) and 'v' + '$WBT_VERSION' in v, repr(v); print('WBT ready:', v)"; do \
       n=$((n+1)); \
       if [ "$n" -ge 5 ]; then echo "WBT download failed after $n attempts" >&2; exit 1; fi; \
       sleep $((n * 8)); \

@@ -586,6 +586,54 @@ def test_geo_worker_purges_python_build_headers_after_whitebox_setup() -> None:
     assert "apt-get dist-upgrade" not in dockerfile
 
 
+def test_wbt_binary_is_sha_pinned_in_both_images() -> None:
+    """Issue #733: el binario WBT se hornea pineado por SHA en ambas imágenes.
+
+    El wrapper pip descarga un zip SIN versión al primer uso (modo de falla
+    #730), así que el pineo del binario vive en los Dockerfiles. La única
+    fuente de verdad de los valores es app.domains.geo.wbt_version y este
+    contrato exige que ambos Dockerfiles la espejen exactamente — si alguien
+    bumpéa un lado sin el otro, el CI rompe.
+    """
+    from app.domains.geo.wbt_version import PINNED_WBT_SHA256, PINNED_WBT_VERSION
+
+    for path in ("gee-backend/Dockerfile", "gee-backend/Dockerfile.geo"):
+        dockerfile = _read(path)
+        assert f"ARG WBT_VERSION={PINNED_WBT_VERSION}" in dockerfile
+        assert f"ARG WBT_SHA256={PINNED_WBT_SHA256}" in dockerfile
+        assert "sha256sum -c -" in dockerfile
+        # La verificación de versión corre contra el binario horneado.
+        assert '--version | grep -F "v${WBT_VERSION}"' in dockerfile
+        # La colocación pineada precede a la verificación de versión del
+        # binario dentro del mismo bloque.
+        assert dockerfile.index("ARG WBT_SHA256=") < dockerfile.index("--version | grep -F")
+        # S1-001 (verificador): el wrapper 2.3.6 ejecuta el binario desde la
+        # RAÍZ del paquete (os.chdir + ./whitebox_tools), no desde WBT/. Sin
+        # esta copia el bake suprime la descarga pero el pipeline queda muerto.
+        assert 'cp "${pkg_dir}/WBT/whitebox_tools" "${pkg_dir}/whitebox_tools"' in dockerfile
+        # S1-002: version() del wrapper DEVUELVE el objeto de excepción en vez
+        # de levantar — una validación de build que solo construye es vacía.
+        # Ambas imágenes deben construir el wrapper Y assertar el banner.
+        assert "assert isinstance(v, str) and 'v' + '$WBT_VERSION' in v" in dockerfile
+
+    # En la geo-worker el bloque pineado va entre el pip install y la
+    # construcción de validación del wrapper (el salto de descarga del
+    # wrapper exige que <pkg>/WBT ya exista cuando se construya).
+    geo = _read("gee-backend/Dockerfile.geo")
+    assert (
+        geo.index("pip install --no-cache-dir")
+        < geo.index("ARG WBT_SHA256=")
+        < geo.index("import whitebox; wbt = whitebox.WhiteboxTools()")
+    )
+
+
+def test_requirements_pin_the_whitebox_wrapper_exactly() -> None:
+    """Issue #733: el wrapper también queda pineado exacto (no rango)."""
+    requirements = _read("gee-backend/requirements.txt")
+    assert "whitebox==2.3.6" in requirements
+    assert "whitebox>=" not in requirements
+
+
 def test_frontend_pr_and_manual_runs_reach_applicable_quality_gates() -> None:
     frontend = _read(".github/workflows/frontend.yml")
     event_gate = "github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'"

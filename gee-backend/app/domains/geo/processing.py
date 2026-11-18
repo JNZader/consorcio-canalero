@@ -42,6 +42,7 @@ from app.domains.geo.processing_support import (
     write_feature_collection_impl,
     write_single_band_impl,
 )
+from app.domains.geo.wbt_version import assert_pinned_wbt_version
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,9 @@ def _get_wbt() -> Any:
 
         _wbt = WhiteboxTools()
         _wbt.set_verbose_mode(False)
+        # Issue #733: refuse to run on any binary other than the pinned one —
+        # a wrong build fails SILENTLY otherwise (#730).
+        assert_pinned_wbt_version(_wbt)
     return _wbt
 
 
