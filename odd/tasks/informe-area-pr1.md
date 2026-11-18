@@ -91,6 +91,16 @@ main `e1aa709f`.
 - T4 — Playwright (extender `ficha-territorial.spec.ts`: elegir dos
   subcuencas y ver desglose) + a11y + medición p95 (S6). Route: parent con
   writer. Nota: browsers locales 1248 ≠ 1255 (playwright 1.65.1) — instalar.
+  **DONE** — commit `02b36ed3` (+940/−14): spec nueva
+  `tests/e2e/informe-area.spec.ts` (4 tests: happy path con valores exactos,
+  aviso cap 35k, teclado completo, p95) + a11y view registration + 3 fixes
+  de runtime que el e2e cazó (feature-state en filter ilegal en MapLibre →
+  paint; closeButton sin nombre axe-critical; pluralización). Gatekeeper
+  PASS (4 e2e, 20/20 reducer, typecheck 0, a11y delta 0 tras fix). p95 UI
+  Revisar con 60 zonas: 381 ms (n=15, red mockeada, caja local) vs 1.500 ms
+  de presupuesto; backend ya medido 7,8 ms. Follow-ups fileados: #740
+  (wiring debt interino), #741 (primer dibujo lazy — preexistente), #742
+  (GIST faltante).
 
 ## Log
 
@@ -106,3 +116,6 @@ main `e1aa709f`.
   reportado como follow-up). T2+T3 DONE (gatekeeper PASS; 3.584 unit tests;
   S7 resuelto: BASINS GeoJSON sin promoteId → source dedicado). Desviaciones
   aceptadas por el parent — ver Tasks.
+- L4 (2026-11-18): T4 DONE. El e2e cazó 4 bugs de runtime (2 fixeados, 2
+  interinos → #740; 1 preexistente del dibujo → #741; GIST → #742). p95 UI
+  381 ms con 60 zonas (S6 ✓). PR listo: 6 commits (T1×3, T2, T3, T4) + doc.
