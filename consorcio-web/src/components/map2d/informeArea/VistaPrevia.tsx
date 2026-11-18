@@ -76,7 +76,8 @@ export function VistaPrevia({ cargando, error, datos, onReintentar }: VistaPrevi
       {/* S6 — totals announced to assistive tech as soon as they land. */}
       <div aria-live="polite">
         <Text size="sm" fw={600} data-testid="informe-area-preview-total">
-          {datos.subcuencas.length} subcuencas · {fmtHa(datos.area_total_ha)}
+          {datos.subcuencas.length} {datos.subcuencas.length === 1 ? 'subcuenca' : 'subcuencas'} ·{' '}
+          {fmtHa(datos.area_total_ha)}
         </Text>
         <Text size="xs" c="dimmed">
           Medición planimétrica EPSG:32720 · referencia geodésica WGS84:{' '}

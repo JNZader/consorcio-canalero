@@ -91,15 +91,20 @@ export function registrarPuenteInformeArea(params: {
 
 /**
  * Activate informe-area click ownership (the Elegir step). Fires the
- * mode-transition `enter` once so the previous ficha selection is discarded.
- * Returns the deactivation function.
+ * mode-transition `enter` once so the previous ficha selection is discarded —
+ * UNLESS `descartarSeleccionPrevia` is `false` (see the drawer: the wired
+ * `enter` resolves `parcela=null`, whose plain-click branch resets the ENTIRE
+ * ficha state to IDLE, which deactivates the host panel and unmounts this very
+ * drawer the instant it opens. Runtime evidence: the T4 e2e). Returns the
+ * deactivation function.
  */
 export function activarSeleccionDeZonas(
-  onZonaPicked: (zona: ZonaResuelta, additive: boolean) => void
+  onZonaPicked: (zona: ZonaResuelta, additive: boolean) => void,
+  { descartarSeleccionPrevia = true }: { descartarSeleccionPrevia?: boolean } = {}
 ): () => void {
   bridge.activo = true;
   bridge.onZonaPicked = onZonaPicked;
-  bridge.enter?.();
+  if (descartarSeleccionPrevia) bridge.enter?.();
   return () => {
     bridge.activo = false;
     bridge.onZonaPicked = null;
@@ -219,12 +224,16 @@ export function sincronizarFuenteZonas(
       type: 'line',
       source: INFORME_AREA_SOURCE,
       // Only the SELECTED zonas get an outline: the shared basins layer
-      // already draws every boundary, a second full outline is noise.
-      filter: ['boolean', ['feature-state', 'selected'], false],
+      // already draws every boundary, a second full outline is noise. The
+      // "selected only" rule lives in PAINT, NOT in `filter`: the MapLibre
+      // style spec rejects `feature-state` expressions inside filters
+      // ("feature-state data expressions are not supported with filters"),
+      // and an addLayer that throws takes the whole map subtree down with
+      // the app's error boundary.
       paint: {
         'line-color': mapColorTokens.h00897B,
         'line-width': 2,
-        'line-opacity': 0.95,
+        'line-opacity': ['case', ['boolean', ['feature-state', 'selected'], false], 0.95, 0],
       },
     });
   }

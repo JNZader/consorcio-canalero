@@ -184,7 +184,15 @@ export function InformeAreaDrawer({ opened, onClose }: InformeAreaDrawerProps) {
   const sumarMovilRef = useRef(sumarMovil);
   sumarMovilRef.current = sumarMovil;
 
-  useDrawerHistoryClose({ opened, onClose, enabled: opened && !esEscritorio });
+  // ⚠️ HISTORY-CLOSE DISABLED (T4 finding, reported): the shared
+  // `useDrawerHistoryClose` pushes a marker entry, and TanStack Router's own
+  // history bookkeeping (`__TSR_*`) reacts with a popstate that fires the
+  // marker's close handler — the drawer closes itself ~instantly on MOBILE
+  // (where `enabled` would be true; desktop never enables it). The burger
+  // drawer survives the same hook, so the trigger is specific to this mount
+  // context; fixing the shared hook is outside informeArea's surface. Until
+  // then the informe drawer keeps its ✕ / "Cerrar" affordances only.
+  useDrawerHistoryClose({ opened, onClose, enabled: false });
 
   // Highlight: the promoteId source + per-feature `selected` states.
   useEffect(() => {
@@ -194,12 +202,25 @@ export function InformeAreaDrawer({ opened, onClose }: InformeAreaDrawerProps) {
   }, [opened, map, basins, seleccion]);
 
   // Click ownership: ONLY the Elegir step routes map clicks to the selection.
+  //
+  // `descartarSeleccionPrevia: false` is a REPORTED DEVIATION, not a whim: the
+  // bridge's `enter` (useMapInteractionEffects) resolves `parcela=null`, whose
+  // plain-click branch resets the whole ficha state to IDLE — the host panel
+  // goes inactive and unmounts this drawer the moment it opens (runtime
+  // evidence: the T4 e2e). Until the enter hook narrows to parcel/canal clears
+  // (its file is outside informeArea's surface), the drawer does not fire it,
+  // so the ficha that opened the flow stays as context while zonas are picked.
   useEffect(() => {
     if (!opened || paso !== 0) return;
-    return activarSeleccionDeZonas((zona: ZonaResuelta, additive: boolean) => {
-      const sumar = additive || sumarMovilRef.current;
-      dispatch(sumar ? { type: 'alternar', id: zona.id } : { type: 'reemplazar', ids: [zona.id] });
-    });
+    return activarSeleccionDeZonas(
+      (zona: ZonaResuelta, additive: boolean) => {
+        const sumar = additive || sumarMovilRef.current;
+        dispatch(
+          sumar ? { type: 'alternar', id: zona.id } : { type: 'reemplazar', ids: [zona.id] }
+        );
+      },
+      { descartarSeleccionPrevia: false }
+    );
   }, [opened, paso]);
 
   const cantidad = contarSeleccion(seleccion);
@@ -282,6 +303,10 @@ export function InformeAreaDrawer({ opened, onClose }: InformeAreaDrawerProps) {
       zIndex={Math.max(Z_INDEX.drawer, MAP_Z.drawer)}
       trapFocus
       returnFocus
+      // Mantine's Drawer close button ships without an accessible name (axe
+      // `button-name`, critical) — name it here so the drawer's only exit for
+      // keyboard users is announced (T4 a11y run finding).
+      closeButtonProps={{ 'aria-label': 'Cerrar informe de área' }}
       data-testid="informe-area-drawer"
     >
       <Stepper
@@ -445,7 +470,8 @@ function InformeGenerado({
     <>
       <div aria-live="polite">
         <Text size="sm" fw={600} data-testid="informe-area-informe-total">
-          {desglose.length} subcuencas · {fmtHa(ficha.area_ha)}
+          {desglose.length} {desglose.length === 1 ? 'subcuenca' : 'subcuencas'} ·{' '}
+          {fmtHa(ficha.area_ha)}
         </Text>
       </div>
       <FichaResumen ficha={ficha} />
