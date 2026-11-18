@@ -22,8 +22,9 @@ Two things this module deliberately does NOT do:
 from __future__ import annotations
 
 from typing import Annotated, Any, Literal, Union
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.config import settings
 from app.domains.geo import ficha_errors
@@ -32,7 +33,7 @@ from app.domains.geo.gee_service_analytics_support import (
     CHIRPS_NORMAL_PERIOD,
 )
 
-TipoFicha = Literal["parcela", "parcelas", "poligono", "canal_buffer", "canal_cuenca"]
+TipoFicha = Literal["parcela", "parcelas", "poligono", "canal_buffer", "canal_cuenca", "zonas"]
 Cobertura = Literal["total", "parcial", "sin_cobertura"]
 VarianteCuenca = Literal["natural", "relevado"]
 
@@ -57,6 +58,21 @@ _GEOMETRIAS_ACEPTADAS = ("Polygon", "MultiPolygon")
 # few parcels — not a silent truncation.
 FICHA_PARCELAS_MIN = 2
 FICHA_PARCELAS_MAX = 30
+
+# ── multi-subcuenca selection caps (tipo=zonas, informe de área PR 1) ───────
+# The union is computed SERVER-SIDE from ``zonas_operativas`` (the BASINS the
+# map paints are simplified and are not analysis grade), exactly like
+# ``tipo=parcelas`` resolves from ``parcelas_catastro``. The bound is the plan's
+# "máximo 60 subcuencas por selección": it caps the LOOKUP + union cost and the
+# desglose length. The schema cap bounds ``zona_ids`` alone; a preview that
+# pulls whole cuencas can resolve MORE zonas than were listed, so
+# ``ficha_service._resolver_zonas`` re-checks the RESOLVED total against the
+# same 60 and answers 422 ``cap_excedido`` (``cap="subcuencas"``).
+#
+# Like ``parcelas``, neither bound is the area authority: ``assert_within_caps``
+# still runs over the RESOLVED union (35 000 ha for zonas — decision L2 — plus
+# envelope and vertex caps).
+FICHA_ZONAS_MAX = 60
 
 
 def _contar_vertices(coordinates: Any, geometry_type: str) -> int:
@@ -200,6 +216,34 @@ class FichaCanalCuencaRequest(_FichaRequestBase):
     variante: VarianteCuenca = "natural"
 
 
+class FichaZonasRequest(_FichaRequestBase):
+    """Union of several ``zonas_operativas`` subcuencas, resolved server-side.
+
+    Informe de área (PR 1). Same wire discipline as ``tipo=parcelas``: the ids
+    of a multi-selection, DUPLICATES REJECTED (the frontend accumulates into a
+    set, so a repeated id only ever arrives from a buggy caller), and the union
+    is rebuilt here from ``zonas_operativas`` — the analysis-grade table — not
+    from the map's simplified BASINS tiles. Whole-cuenca expansion is a PREVIEW
+    concern (``cuencas`` on ``/analisis-zona/preview``); this variant takes the
+    explicit ids only, which the Generate step already has from the basins it
+    rendered (S8: ``tipo="zonas"`` + ``zona_ids``).
+    """
+
+    tipo: Literal["zonas"]
+    zona_ids: list[UUID] = Field(min_length=1, max_length=FICHA_ZONAS_MAX)
+
+    @field_validator("zona_ids")
+    @classmethod
+    def _validar_zona_ids(cls, value: list[UUID]) -> list[UUID]:
+        vistas: set[str] = set()
+        for zona_id in value:
+            texto = str(zona_id)
+            if texto in vistas:
+                raise ficha_errors.geometria_invalida(f"zona repetida en la seleccion: {texto}")
+            vistas.add(texto)
+        return value
+
+
 FichaRequest = Annotated[
     Union[
         FichaParcelaRequest,
@@ -207,6 +251,7 @@ FichaRequest = Annotated[
         FichaPoligonoRequest,
         FichaCanalBufferRequest,
         FichaCanalCuencaRequest,
+        FichaZonasRequest,
     ],
     Field(discriminator="tipo"),
 ]
@@ -275,6 +320,28 @@ class PrecipitacionFicha(BaseModel):
     anual_mm: float | None = None
 
 
+class DesgloseSubcuenca(BaseModel):
+    """One row of the ``tipo=zonas`` per-subcuenca breakdown (informe de área).
+
+    Every number comes from STORED data (S8): ``ha`` from the same EPSG:32720
+    measurement the ficha reports, ``pct_alto_critico`` from the stored
+    ``composite_zonal_stats`` row, ``clase_suelo_dominante`` from the
+    ``suelos_catastro`` vector overlay and ``lluvia_anual_mm`` from the
+    registered CHIRPS annual normal. ``None`` (not 0, not fabricated) means
+    "no stored figure for this zone" — the caller renders a dash, never a lie.
+    """
+
+    zona_id: UUID
+    nombre: str
+    ha: float
+    # Share of the zone's own area under the stored high-risk figure; the
+    # threshold it was computed with travels separately as
+    # ``FichaResponse.umbral_alto_critico`` (one value for the whole desglose).
+    pct_alto_critico: float | None = None
+    clase_suelo_dominante: str | None = None
+    lluvia_anual_mm: float | None = None
+
+
 class FichaResponse(BaseModel):
     """Uniform across every ``tipo`` value.
 
@@ -303,6 +370,19 @@ class FichaResponse(BaseModel):
     # tipos — additive, so the datasets above stay byte-compatible across tipos.
     variante: VarianteCuenca | None = None
     geometria_cuenca: dict[str, Any] | None = None
+    # ── zonas-only additive fields (informe de área, PR 1) ──────────────────
+    # Per-subcuenca breakdown derived from STORED data only — ``composite_zonal_stats``
+    # rows, the suelos vector and the registered CHIRPS normals — never a raster
+    # recompute. ``None`` for every other tipo, same additive contract as
+    # ``variante`` / ``geometria_cuenca``.
+    desglose_por_subcuenca: list[DesgloseSubcuenca] | None = None
+    # Provenance of ``pct_alto_critico``: ``"legacy70"`` while the only stored
+    # figure is ``composite_zonal_stats.area_high_risk_ha`` (score > 70, a legacy
+    # threshold that does NOT match the ``class_breaks`` Alto edge of 55).
+    # Decision #738 moves the threshold to the class-breaks edge in PR 5; until
+    # then the response says which number it served, so the UI never renders a
+    # threshold it cannot name. ``None`` when there is no desglose.
+    umbral_alto_critico: Literal["legacy70"] | None = None
 
 
 # ── on-map overlay (A(b) slice 1: soils only) ───────────────────────────────
@@ -337,3 +417,88 @@ class FichaOverlayResponse(BaseModel):
     dataset: DatasetOverlay
     type: Literal["FeatureCollection"] = "FeatureCollection"
     features: list[FichaOverlayFeature] = Field(default_factory=list)
+
+
+# ── geometry-only preview (informe de área, PR 1) ────────────────────────────
+# ``POST /api/v2/geo/analisis-zona/preview`` answers the Revisar step: what the
+# selection measures BEFORE any dataset is computed. Geometry only — no rasters
+# are opened — so it can run on every selection change under the S6 p95 budget.
+class SubcuencaPreview(BaseModel):
+    """One selected subcuenca with its measured hectares (EPSG:32720)."""
+
+    id: UUID
+    nombre: str
+    cuenca: str
+    ha: float
+
+
+class FichaZonasPreviewRequest(_FichaRequestBase):
+    """Selection for the geometry-only preview.
+
+    ``zona_ids`` are the individually picked subcuencas; ``cuencas`` expands
+    server-side to every ``zonas_operativas`` row of those parent watersheds
+    (the "Toda la cuenca" checkbox), deduplicated against the explicit ids.
+    Either side may be empty, but not both — the ficha variant
+    (``FichaZonasRequest``) takes explicit ids only.
+    """
+
+    zona_ids: list[UUID] = Field(default_factory=list, max_length=FICHA_ZONAS_MAX)
+    cuencas: list[str] = Field(default_factory=list, max_length=10)
+
+    @field_validator("zona_ids")
+    @classmethod
+    def _validar_zona_ids(cls, value: list[UUID]) -> list[UUID]:
+        vistas: set[str] = set()
+        for zona_id in value:
+            texto = str(zona_id)
+            if texto in vistas:
+                raise ficha_errors.geometria_invalida(f"zona repetida en la seleccion: {texto}")
+            vistas.add(texto)
+        return value
+
+    @field_validator("cuencas")
+    @classmethod
+    def _validar_cuencas(cls, value: list[str]) -> list[str]:
+        limpias: list[str] = []
+        vistas: set[str] = set()
+        for cruda in value:
+            cuenca = cruda.strip()
+            if not cuenca:
+                raise ficha_errors.geometria_invalida("cuenca vacia en la seleccion")
+            if len(cuenca) > 100:  # ``zonas_operativas.cuenca`` is String(100)
+                raise ficha_errors.geometria_invalida(
+                    f"nombre de cuenca demasiado largo: {cuenca[:16]}..."
+                )
+            if cuenca in vistas:
+                raise ficha_errors.geometria_invalida(f"cuenca repetida en la seleccion: {cuenca}")
+            vistas.add(cuenca)
+            limpias.append(cuenca)
+        return limpias
+
+    @model_validator(mode="after")
+    def _al_menos_una_zona(self) -> "FichaZonasPreviewRequest":
+        if not self.zona_ids and not self.cuencas:
+            raise ficha_errors.geometria_invalida("la seleccion esta vacia")
+        return self
+
+
+class FichaZonasPreviewResponse(BaseModel):
+    """What the preview step shows: areas, cap state, nothing else.
+
+    ``modo`` is the L2 contract: ``"online"`` while the union is within the
+    zonas cap (``ficha_max_area_ha_zonas``, 35 000 ha), ``"trabajo"`` beyond it
+    — the UI then shows the "informe completo con el PR 2" notice instead of
+    the Generate button. ``aviso_cap`` is the same fact as a boolean for the
+    yellow Alert (S5). ``fuera_de_subcuencas_ha`` is structurally ~0 in PR 1
+    (see ``ficha_service.preview_zonas``).
+    """
+
+    area_total_ha: float
+    # Geodesic (WGS84) measurement of the same union: reference figure for the
+    # EPSG:32720 planimetric area the ficha reports, so the UI can state the
+    # projection it is quoting (S4 requires the two to agree within 0.2 %).
+    area_total_ha_geodesica: float
+    subcuencas: list[SubcuencaPreview]
+    fuera_de_subcuencas_ha: float
+    modo: Literal["online", "trabajo"]
+    aviso_cap: bool

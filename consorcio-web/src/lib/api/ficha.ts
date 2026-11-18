@@ -58,7 +58,21 @@ export interface FichaClase {
 }
 
 export type FichaCobertura = 'total' | 'parcial' | 'sin_cobertura';
-export type FichaTipo = 'parcela' | 'parcelas' | 'poligono' | 'canal_buffer' | 'canal_cuenca';
+/**
+ * Every `tipo` the backend ficha union accepts. `'zonas'` (informe de área,
+ * PR 1) is a RESPONSE-ONLY member for the existing panel wiring: the zonas
+ * REQUEST is a separate type ({@link FichaZonasRequest}) served by its own
+ * fetch ({@link fetchInformeZonas}), because the panel-side request union
+ * (`FichaRequest`) feeds an exhaustive `switch` in `useFichaTerritorial` that
+ * this change must not touch.
+ */
+export type FichaTipo =
+  | 'parcela'
+  | 'parcelas'
+  | 'poligono'
+  | 'canal_buffer'
+  | 'canal_cuenca'
+  | 'zonas';
 
 export interface FichaDataset {
   cobertura: FichaCobertura;
@@ -110,6 +124,19 @@ export interface FichaResponse {
   variante?: 'natural' | 'relevado' | null;
   /** `canal_cuenca` only: the catchment outline (GeoJSON geometry) to draw. `null` otherwise. */
   geometria_cuenca?: Record<string, unknown> | null;
+  /**
+   * `zonas` only (informe de área, PR 1): the per-subcuenca breakdown derived
+   * from STORED data (`composite_zonal_stats`, `suelos_catastro`, CHIRPS
+   * normals). `null` for every other tipo.
+   */
+  desglose_por_subcuenca?: FichaDesgloseSubcuenca[] | null;
+  /**
+   * `zonas` only: provenance of `pct_alto_critico`. `'legacy70'` while the only
+   * stored figure uses the legacy score > 70 threshold (decision #738 moves it
+   * to the class-breaks Alto edge in PR 5). The UI must render this note next
+   * to the column — it never shows a threshold it cannot name.
+   */
+  umbral_alto_critico?: 'legacy70' | null;
 }
 
 /** Server-resolved geometry from `parcelas_catastro`. */
@@ -292,4 +319,138 @@ export async function fetchFichaOverlay(
   }
 
   return (await response.json()) as FichaOverlayResponse;
+}
+
+// ── informe de área (PR 1): tipo=zonas + geometry-only preview ───────────────
+
+/**
+ * Union of several `zonas_operativas` subcuencas, resolved server-side.
+ *
+ * DELIBERATELY NOT a member of {@link FichaRequest}: that union feeds an
+ * exhaustive `switch` in `useFichaTerritorial.refKeyFor`, which the panel
+ * coordinator owns. The informe de área has its own fetch
+ * ({@link fetchInformeZonas}) and never goes through the parcel/canal
+ * coordinator, so the two wire contracts stay independent.
+ *
+ * Same discipline as `tipo=parcelas`: the ids of a multi-selection, NO
+ * duplicates (the server answers 422 rather than silently deduping) and the
+ * union is rebuilt server-side from the analysis-grade table — never from the
+ * map's simplified BASINS geometries. Whole-cuenca expansion is a PREVIEW
+ * concern (`cuencas` on {@link FichaZonasPreviewRequest}); this variant takes
+ * the explicit ids the Elegir step already accumulated (the reducer expands
+ * "toda la cuenca" into explicit ids, so the Generate step always has them).
+ */
+export interface FichaZonasRequest {
+  tipo: 'zonas';
+  zona_ids: readonly string[];
+}
+
+/** One row of the `tipo=zonas` per-subcuenca breakdown (stored data only). */
+export interface FichaDesgloseSubcuenca {
+  zona_id: string;
+  nombre: string;
+  ha: number;
+  /**
+   * Share of the zone's own area under the stored high-risk figure, or `null`
+   * when no stored figure exists — the UI renders a dash, never a fabricated 0.
+   */
+  pct_alto_critico: number | null;
+  clase_suelo_dominante: string | null;
+  lluvia_anual_mm: number | null;
+}
+
+/**
+ * Selection for the geometry-only preview (the Revisar step).
+ *
+ * `zona_ids` are the individually picked subcuencas; `cuencas` expands
+ * server-side to every `zonas_operativas` row of those parent watersheds,
+ * deduplicated against the explicit ids. Either side may be empty, but not
+ * both. The frontend reducer keeps whole cuencas as explicit ids, so the
+ * drawer always sends `zona_ids` only.
+ */
+export interface FichaZonasPreviewRequest {
+  zona_ids: readonly string[];
+  cuencas?: readonly string[];
+}
+
+/** One selected subcuenca with its measured hectares (EPSG:32720). */
+export interface FichaZonasPreviewSubcuenca {
+  id: string;
+  nombre: string;
+  cuenca: string;
+  ha: number;
+}
+
+/**
+ * What the Revisar step shows: areas, cap state, nothing else.
+ *
+ * `modo` is the L2 contract: `'online'` while the union is within the zonas
+ * cap (35 000 ha), `'trabajo'` beyond it — the UI then shows the "informe
+ * completo con el PR 2" notice instead of the Generate button.
+ */
+export interface FichaZonasPreviewResponse {
+  area_total_ha: number;
+  /** Geodesic (WGS84) reference of the same union (S4: agrees within 0.2 %). */
+  area_total_ha_geodesica: number;
+  subcuencas: FichaZonasPreviewSubcuenca[];
+  fuera_de_subcuencas_ha: number;
+  modo: 'online' | 'trabajo';
+  aviso_cap: boolean;
+}
+
+/**
+ * Request the `tipo=zonas` ficha (the Generar step).
+ *
+ * Same wire contract + error handling as {@link fetchAnalisisZona}: a
+ * non-2xx answer throws {@link FichaApiError} with `status` + `codigo`
+ * preserved (422 `cap_excedido` past 35 000 ha, 404 for unknown ids, 503
+ * `funcionalidad_no_disponible` while the ficha flag is off).
+ *
+ * @throws {FichaApiError} for any non-2xx response (status + codigo preserved).
+ * @throws {Error} for a network/parse failure with no HTTP response.
+ */
+export async function fetchInformeZonas(
+  zonaIds: readonly string[],
+  signal?: AbortSignal
+): Promise<FichaResponse> {
+  const response = await fetch(`${API_URL}${API_PREFIX}/geo/analisis-zona`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tipo: 'zonas', zona_ids: zonaIds } satisfies FichaZonasRequest),
+    signal,
+  });
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as FichaErrorBody | null;
+    throw toFichaApiError(response.status, body);
+  }
+
+  return (await response.json()) as FichaResponse;
+}
+
+/**
+ * Request the geometry-only preview of a subcuenca selection (the Revisar
+ * step). Runs on every selection change, so the endpoint opens no raster and
+ * costs rate-limit 1 (see the backend router docstring).
+ *
+ * @throws {FichaApiError} for any non-2xx response (status + codigo preserved).
+ * @throws {Error} for a network/parse failure with no HTTP response.
+ */
+export async function fetchZonasPreview(
+  request: FichaZonasPreviewRequest,
+  signal?: AbortSignal
+): Promise<FichaZonasPreviewResponse> {
+  const response = await fetch(`${API_URL}${API_PREFIX}/geo/analisis-zona/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+    signal,
+  });
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as FichaErrorBody | null;
+    throw toFichaApiError(response.status, body);
+  }
+
+  return (await response.json()) as FichaZonasPreviewResponse;
 }

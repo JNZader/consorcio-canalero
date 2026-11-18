@@ -16,18 +16,22 @@ parsed" and "a raster is opened" (design §2.1, §2.4, §2.5):
    call. This is the hard bound on simultaneous raster memory, independent of
    Redis.
 
-WHAT IS WIRED (A3b + A5 + A6): ``tipo=parcela``, ``tipo=poligono`` and
-``tipo=canal_buffer`` are all real compute. ``parcela`` resolves the catastro
+WHAT IS WIRED (A3b + A5 + A6 + informe de área PR 1): ``tipo=parcela``,
+``tipo=poligono`` and ``tipo=canal_buffer`` are all real compute.
+``parcela`` resolves the catastro
 geometry by ``nomenclatura``; ``poligono`` takes the geometry from the REQUEST
 and REPAIRS it in PostGIS (``ST_CollectionExtract(ST_MakeValid(...), 3)``) so a
-self-intersecting hand-drawn ring cannot reach ``ST_Intersection``/``rasterio_mask``
+self-intersecting hand-drawn ring cannot reach ``ST_Intersection``/`rasterio_mask`
 raw and yield a silently wrong area (§2.7, JDB-008); ``canal_buffer`` resolves a
 curated ``canal_consorcio`` trace by its string id and sweeps it with
 ``ST_Buffer`` in EPSG:32720 (§2.1, JDB-006); ``canal_cuenca`` reads the
 precomputed upstream catchment ``generate_canal_catchments`` stored for that
 canal (A7); ``parcelas`` (T4) resolves the SERVER-SIDE ``ST_Union`` of a
 multi-parcel selection, because the vector-tile geometries the map selects from
-are clipped/simplified and are not analysis grade. All of them then call
+are clipped/simplified and are not analysis grade; ``zonas`` (informe de área,
+PR 1) resolves the SERVER-SIDE ``ST_Union`` of a multi-subcuenca selection from
+``zonas_operativas`` for the same reason, and adds the stored-data desglose plus
+the geometry-only ``preview_zonas`` sibling. All of them then call
 ``assert_within_caps`` over the resolved
 EPSG:32720 shape — for ``poligono``/``canal_buffer`` the caps are the whole
 point, since the resolved AREA is not what the caller sent — commit the audit
@@ -41,10 +45,12 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, Literal, NamedTuple
 
+from pyproj import Geod
 from shapely.geometry import shape
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, OperationalError
@@ -62,14 +68,19 @@ from app.domains.geo.gee_service_analytics_support import (
 from app.domains.geo.models import GeoLayer
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.schemas_ficha import (
+    FICHA_ZONAS_MAX,
     ClaseFicha,
     DatasetFicha,
+    DesgloseSubcuenca,
     FichaOverlayFeature,
     FichaOverlayResponse,
     FichaRequest,
     FichaResponse,
+    FichaZonasPreviewRequest,
+    FichaZonasPreviewResponse,
     PrecipitacionFicha,
     PrecipMes,
+    SubcuencaPreview,
 )
 from app.shared.audit_log import write_audit_entry_sync
 
@@ -147,12 +158,17 @@ def area_cap_ha(tipo: str) -> float:
     hydrology, not runaway cost. Unlike ``poligono``/``parcela``/``canal_buffer``
     the shape is NOT caller-supplied: it is one of a fixed set of 60 basins
     generated server-side, and the envelope cap is what actually bounds the
-    raster window. Any unknown ``tipo`` falls back to the STRICT cap. Read by
+    raster window. ``zonas`` (informe de área, PR 1) buys the same 35 000 ha by
+    decision L2: the union is likewise resolved server-side from stored
+    ``zonas_operativas`` rows, and 35k covers every two-cuenca combination.
+    Any unknown ``tipo`` falls back to the STRICT cap. Read by
     ``assert_within_caps`` AND by the ETL's ``_read_path_cap_report`` mirror, so
     producer and consumer cannot drift.
     """
     if tipo == "canal_cuenca":
         return settings.ficha_max_area_ha_cuenca
+    if tipo == "zonas":
+        return settings.ficha_max_area_ha_zonas
     return settings.ficha_max_area_ha
 
 
@@ -161,13 +177,17 @@ def envelope_cap_ha(tipo: str) -> float:
 
     ``canal_cuenca`` gets a wider cap than every other ``tipo``: a precomputed
     upstream catchment is a dendritic, diagonal basin whose bbox is several
-    times its own area, and — unlike ``poligono``/``parcela``/``canal_buffer``
-    — its shape is NOT caller-supplied, it is one of a fixed set generated
-    server-side and already bounded by ``area_cap_ha``. Read by
+    times its own area, while a hand-drawn polygon of the same area is compact.
+    At 60 000 ha the envelope cap — not the area cap — was rejecting most of
+    the precomputed catchments (25 of 60 servible), which is a false positive:
+    the shape is NOT caller-supplied. It is one of a fixed set generated
+    server-side and already bounded by ``area_cap_ha``. ``zonas`` shares the
+    wider envelope for the same shape reason: the union of a cuenca's
+    sub-basins chains along the same dendritic network. Read by
     ``assert_within_caps`` AND by the ETL's ``_exceeds_read_path_caps`` mirror,
     so producer and consumer cannot drift.
     """
-    if tipo == "canal_cuenca":
+    if tipo in ("canal_cuenca", "zonas"):
         return settings.ficha_max_envelope_ha_cuenca
     return settings.ficha_max_envelope_ha
 
@@ -181,12 +201,17 @@ def vertices_cap(tipo: str) -> int:
     precomputed catchment is a dendritic basin whose vertex count is driven by
     its perimeter, not by its area, and — unlike
     ``poligono``/``parcela``/``canal_buffer`` — its shape is NOT caller-supplied.
-    Any unknown ``tipo`` falls back to the STRICT cap. Read by
-    ``assert_within_caps`` AND by the ETL's ``_read_path_cap_report`` mirror, so
-    producer and consumer cannot drift.
+    ``zonas`` gets the widest cap because the union carries the SUM of up to 60
+    sub-basin perimeters and no geometry is echoed on the wire (the payload
+    rationale of the catchment cap does not apply — see
+    ``ficha_max_vertices_zonas``). Any unknown ``tipo`` falls back to the
+    STRICT cap. Read by ``assert_within_caps`` AND by the ETL's
+    ``_read_path_cap_report`` mirror, so producer and consumer cannot drift.
     """
     if tipo == "canal_cuenca":
         return settings.ficha_max_vertices_cuenca
+    if tipo == "zonas":
+        return settings.ficha_max_vertices_zonas
     return settings.ficha_max_vertices
 
 
@@ -195,7 +220,7 @@ def assert_within_caps(geom: Any, *, tipo: str, buffer_m: float | None = None) -
 
     ``geom`` is a shapely geometry in a METRIC CRS (EPSG:32720 — the same
     projection ``area_ha`` is computed in, so there is no second projection).
-    Pure computation: no DB, no file, no network. Valid for the five ``tipo``
+    Pure computation: no DB, no file, no network. Valid for the six ``tipo``
     values; ``buffer_m`` is only passed by ``canal_buffer``. The buffer cap is the
     same for every ``tipo``; the AREA, ENVELOPE and VERTEX caps are per-``tipo``
     (see ``area_cap_ha``, ``envelope_cap_ha`` and ``vertices_cap``).
@@ -263,6 +288,23 @@ def _referencia_parcelas(nomenclaturas: list[str]) -> str:
     return f"tipo=parcelas,n={len(ordenadas)},ref={unidas}"
 
 
+def _referencia_zonas(zona_ids: list[uuid.UUID]) -> str:
+    """Bounded, order-independent audit reference for a multi-zona selection.
+
+    Same shape and the same 300-char threshold as :func:`_referencia_parcelas`:
+    60 UUIDs joined with ``+`` is over 3 500 chars — far past ``audit_log``'s
+    ``String(512)`` — so a real selection almost always degrades to
+    ``count + sha256``, which stays deterministic for the same SET of zonas
+    (the list is sorted first) and never gets silently truncated mid-uuid.
+    """
+    ordenadas = sorted(str(zona_id) for zona_id in zona_ids)
+    unidas = "+".join(ordenadas)
+    if len(unidas) > _REF_PARCELAS_MAX_CHARS:
+        digest = hashlib.sha256(unidas.encode("utf-8")).hexdigest()[:16]
+        unidas = f"sha256:{digest}"
+    return f"tipo=zonas,n={len(ordenadas)},ref={unidas}"
+
+
 def referencia_auditable(payload: FichaRequest) -> str:
     """``resource`` value for the audit row — never a person, never a geometry."""
     tipo = payload.tipo
@@ -274,6 +316,8 @@ def referencia_auditable(payload: FichaRequest) -> str:
         return f"tipo=poligono,ref=geom:{_huella_geometria(payload.geometry)}"
     if tipo == "canal_buffer":
         return f"tipo=canal_buffer,ref={payload.canal_ref},buffer_m={payload.buffer_m}"
+    if tipo == "zonas":
+        return _referencia_zonas(payload.zona_ids)
     return f"tipo=canal_cuenca,ref={payload.canal_ref},variante={payload.variante}"
 
 
@@ -628,6 +672,163 @@ def _resolver_canal_cuenca(db: Session, canal_ref: str, variante: str) -> tuple[
     if fila.oversized or fila.geom_null or fila.area_m2 is None:
         raise ficha_errors.cuenca_demasiado_grande(canal_ref)
     return fila.g4326, fila.g32720, float(fila.area_m2)
+
+
+# ── zonas_operativas resolution (tipo=zonas, informe de área PR 1) ──────────
+
+
+class ZonaResuelta(NamedTuple):
+    """One selected subcuenca with everything the preview and the desglose need.
+
+    ``ha`` is the zone's OWN EPSG:32720 area (not its contribution to the union),
+    ``g4326`` feeds the per-zone suelos clip and the per-zone CHIRPS annual read.
+    """
+
+    zona_id: uuid.UUID
+    nombre: str
+    cuenca: str
+    ha: float
+    g4326: str
+
+
+def zonas_no_encontradas(faltantes: list[uuid.UUID]) -> ficha_errors.FichaError:
+    """404 when any explicitly requested ``zona_id`` is not a stored subcuenca.
+
+    Same all-or-nothing contract as ``parcelas_no_encontradas``: no partial
+    analysis of the zonas that happened to resolve. Constructed directly on the
+    public ``FichaError`` (flat §2.6 body) rather than through a factory in
+    ``ficha_errors`` — the module is the catalog of the ORIGINAL five tipos and
+    this change keeps it untouched.
+    """
+    listado = ", ".join(str(zona_id) for zona_id in faltantes)
+    return ficha_errors.FichaError(
+        status_code=404,
+        codigo="zona_no_encontrada",
+        detail=f"No existen subcuencas con id {listado}",
+        zonas=[str(zona_id) for zona_id in faltantes],
+    )
+
+
+def cuenca_sin_zonas(cuenca: str) -> ficha_errors.FichaError:
+    """404 when a whole-cuenca expansion matches no ``zonas_operativas`` row.
+
+    A free-text cuenca name that resolves to nothing would otherwise silently
+    shrink the selection: the preview would answer the areas of the OTHER
+    cuencas as if the request were complete. Constructed like
+    :func:`zonas_no_encontradas`.
+    """
+    return ficha_errors.FichaError(
+        status_code=404,
+        codigo="cuenca_no_encontrada",
+        detail=f"No existe ninguna subcuenca de la cuenca {cuenca}",
+        cuenca=cuenca,
+    )
+
+
+# Per-zone rows of the selection: id, name, parent cuenca, OWN EPSG:32720
+# hectares and the 4326 geometry the desglose clips against. The selection is
+# the UNION of ``id = ANY(:ids)`` (the explicit picks) and ``cuenca =
+# ANY(:cuencas)`` (whole-cuenca expansion) — a row matched by both is selected
+# ONCE, so an id that also belongs to an expanded cuenca is not double-counted
+# in the desglose. Ordering by (cuenca, nombre) gives a stable response.
+_ZONAS_SQL = text(
+    """
+    SELECT z.id AS zona_id, z.nombre AS nombre, z.cuenca AS cuenca,
+           ST_AsGeoJSON(z.geometria) AS g4326,
+           ST_Area(ST_Transform(z.geometria, 32720)) / 10000.0 AS ha
+    FROM zonas_operativas z
+    WHERE z.id = ANY(CAST(:ids AS uuid[]))
+       OR z.cuenca = ANY(CAST(:cuencas AS text[]))
+    ORDER BY z.cuenca, z.nombre
+    """
+)
+
+# The dissolved union of the same selection, mirroring ``_PARCELAS_SQL``:
+# ``ST_Union`` dissolves overlaps, ``ST_MakeValid`` + ``ST_CollectionExtract(…, 3)``
+# runs AFTER the union (that is where a topology defect in any single source
+# polygon would surface — S7 notes zonas with invalid geometries exist), and the
+# 32720 side is unioned independently so the caps measure a repaired metric
+# shape. There is no stored ``geometria_32720`` column here, so each row is
+# transformed on the fly (≤ 60 rows — bounded by the same selection cap).
+_ZONAS_UNION_SQL = text(
+    """
+    WITH seleccion AS (
+        SELECT z.geometria AS geometria,
+               ST_Transform(z.geometria, 32720) AS geom_32720
+        FROM zonas_operativas z
+        WHERE z.id = ANY(CAST(:ids AS uuid[]))
+           OR z.cuenca = ANY(CAST(:cuencas AS text[]))
+    ), unida AS (
+        SELECT ST_CollectionExtract(ST_MakeValid(ST_Union(geometria)), 3) AS g4326,
+               ST_CollectionExtract(ST_MakeValid(ST_Union(geom_32720)), 3) AS g32720
+        FROM seleccion
+    )
+    SELECT ST_AsGeoJSON(g4326) AS g4326,
+           ST_AsGeoJSON(g32720) AS g32720,
+           ST_Area(g32720) AS area_m2
+    FROM unida
+    """
+)
+
+
+def _resolver_zonas(
+    db: Session, zona_ids: list[uuid.UUID], cuencas: list[str]
+) -> tuple[str, str, float, list[ZonaResuelta]]:
+    """Resolve a subcuenca selection to its union plus one row per zone.
+
+    Returns ``(geojson_4326, geojson_32720, area_m2, zonas)`` — the first three
+    are the same contract as every other resolver (the compute tail is shared
+    verbatim), ``zonas`` carries the per-zone rows the preview lists and the
+    ficha desglose aggregates.
+
+    Failures, in the order they are checked:
+
+    * any explicit ``zona_id`` not stored → 404 ``zona_no_encontrada``
+      (all-or-nothing, like ``tipo=parcelas``);
+    * any ``cuenca`` name matching zero zonas → 404 ``cuenca_no_encontrada``
+      (a silent shrink would publish areas for a selection the caller did not
+      make);
+    * the RESOLVED selection over ``FICHA_ZONAS_MAX`` (60) zonas → 422
+      ``cap_excedido`` with ``cap="subcuencas"`` — whole-cuenca expansion can
+      resolve more rows than were listed, so the schema cap on ``zona_ids``
+      alone is not the bound;
+    * a union that repairs to nothing polygonal → 422 ``geometria_invalida``
+      (degenerate source rows, same as ``_resolver_parcelas``).
+    """
+    parametros = {"ids": [str(zona_id) for zona_id in zona_ids], "cuencas": cuencas}
+    with _traducir_fallas_db():
+        filas = db.execute(_ZONAS_SQL, parametros).all()
+        unida = db.execute(_ZONAS_UNION_SQL, parametros).one()
+
+    resueltas = [
+        ZonaResuelta(
+            zona_id=fila.zona_id,
+            nombre=fila.nombre,
+            cuenca=fila.cuenca,
+            ha=float(fila.ha or 0.0),
+            g4326=fila.g4326,
+        )
+        for fila in filas
+    ]
+
+    encontradas = {zona.zona_id for zona in resueltas}
+    faltantes = [zona_id for zona_id in zona_ids if zona_id not in encontradas]
+    if faltantes:
+        raise zonas_no_encontradas(faltantes)
+
+    cuencas_resueltas = {zona.cuenca for zona in resueltas}
+    sin_zonas = [cuenca for cuenca in cuencas if cuenca not in cuencas_resueltas]
+    if sin_zonas:
+        raise cuenca_sin_zonas(sin_zonas[0])
+
+    if len(resueltas) > FICHA_ZONAS_MAX:
+        raise ficha_errors.cap_excedido("subcuencas", float(FICHA_ZONAS_MAX), float(len(resueltas)))
+
+    if unida.area_m2 is None or float(unida.area_m2) <= 0.0:
+        raise ficha_errors.geometria_invalida(
+            "la union de las zonas quedo vacia o sin area tras repararla"
+        )
+    return unida.g4326, unida.g32720, float(unida.area_m2), resueltas
 
 
 # ── soils overlay (PostGIS ST_Intersection, parameterized geometry; §3) ─────
@@ -1065,6 +1266,136 @@ def _anual_mm(layer: GeoLayer | None, geom4326: dict[str, Any], area_m2: float) 
     return perfil["mean"]
 
 
+# ── per-subcuenca desglose (tipo=zonas, informe de área PR 1) ───────────────
+#
+# S8 is explicit: the desglose is derived from STORED data — the
+# ``composite_zonal_stats`` rows the DEM pipeline already wrote, the
+# ``suelos_catastro`` vector and the registered CHIRPS normals — and NO raster
+# is recomputed. The S6 latency budget depends on it: recomputing a composite
+# per zone would multiply the ficha's cost by the number of zonas.
+#
+# The ONLY raster touched is the annual CHIRPS normal, READ (one masked mean
+# per zone over a ~5 km raster), which is the same read the ficha's own
+# ``precipitacion_mensual`` already performs — reading a stored product is not
+# recomputing it.
+
+# Stored high-risk hectares per zone. ``area_high_risk_ha`` counts pixels with
+# score > 70 — the LEGACY threshold, which does not match the ``class_breaks``
+# flood_risk "Alto" edge of 55. Decision #738 moves it to the class-breaks edge
+# in PR 5; until then the response carries ``umbral_alto_critico="legacy70"``
+# so no consumer mistakes the figure for the Alto+Crítico class share.
+_ALTO_CRITICO_SQL = text(
+    """
+    SELECT zona_id, area_high_risk_ha
+    FROM composite_zonal_stats
+    WHERE tipo = 'flood_risk' AND zona_id = ANY(CAST(:ids AS uuid[]))
+    """
+)
+
+# Per-(zone, cap) intersection area over the stored soils vector — the same
+# clip ``_SUELOS_SQL`` runs for the whole ficha, restricted to the selected
+# zonas. Grouping by the roman prefix and picking the largest slice happens in
+# Python, reusing ``_normalizar_cap`` so the wire label matches the soils panel.
+_DOMINANTE_SQL = text(
+    """
+    WITH zonas AS (
+        SELECT id AS zona_id, geometria FROM zonas_operativas
+        WHERE id = ANY(CAST(:ids AS uuid[]))
+    )
+    SELECT z.zona_id AS zona_id, s.cap AS cap,
+           ST_Area(ST_Transform(
+               ST_CollectionExtract(ST_Intersection(s.geometria, z.geometria), 3), 32720
+           )) AS area_m2
+    FROM zonas z
+    JOIN suelos_catastro s ON ST_Intersects(s.geometria, z.geometria)
+    """
+)
+
+
+def _clase_dominante(db: Session, zonas: list[ZonaResuelta]) -> dict[uuid.UUID, str]:
+    """Dominant (largest-area) capability class per zone, roman-normalized.
+
+    ``IVws``/``IVsc`` polygons pool under ``IV`` exactly like the soils panel
+    groups them, a NULL ``cap`` pools under ``"sin clasificar"`` — the same
+    vocabulary, so the desglose and the panel can never disagree about a label.
+    Ties break toward the more capable class (lower roman rank), then
+    alphabetically, so the pick is deterministic. A zone with no intersecting
+    soil polygon is simply absent from the dict (``clase_suelo_dominante=None``).
+    """
+    ids = [str(zona.zona_id) for zona in zonas]
+    with _traducir_fallas_db():
+        filas = db.execute(_DOMINANTE_SQL, {"ids": ids}).all()
+
+    areas: dict[uuid.UUID, dict[str, float]] = {}
+    for fila in filas:
+        if fila.area_m2 is None or float(fila.area_m2) <= 0.0:
+            continue  # defensive: WHERE Intersects can still yield slivers
+        prefijo = _normalizar_cap(fila.cap)
+        clase = prefijo if prefijo else _SIN_CLASIFICAR
+        por_zona = areas.setdefault(fila.zona_id, {})
+        por_zona[clase] = por_zona.get(clase, 0.0) + float(fila.area_m2)
+
+    dominantes: dict[uuid.UUID, str] = {}
+    for zona_id, por_clase in areas.items():
+        clase = min(por_clase, key=lambda c: (-por_clase[c], _rango_clase(c), c))
+        dominantes[zona_id] = clase
+    return dominantes
+
+
+def _desglose_zonas(
+    db: Session, zonas: list[ZonaResuelta]
+) -> tuple[list[DesgloseSubcuenca], Literal["legacy70"]]:
+    """Assemble the per-zone rows from stored figures. Never invents a number.
+
+    ``pct_alto_critico`` is the stored ``area_high_risk_ha`` over the zone's own
+    measured ha, clamped to [0, 100] (the stored figure was measured when the
+    zone row was written; a stale/larger figure must not publish 103 %).
+    Missing stored figures stay ``None`` — the desglose reports what EXISTS,
+    which is the whole point of deriving it from stored data.
+    """
+    ids = [str(zona.zona_id) for zona in zonas]
+    with _traducir_fallas_db():
+        alto = {
+            fila.zona_id: float(fila.area_high_risk_ha)
+            for fila in db.execute(_ALTO_CRITICO_SQL, {"ids": ids}).all()
+        }
+    dominantes = _clase_dominante(db, zonas)
+
+    # One masked read of the STORED annual normal per zone (~5 km raster — the
+    # same read ``precipitacion_mensual`` performs for the union). Resolved
+    # ONCE for the whole desglose: a missing annual raster or a zone outside
+    # its extent yields ``None`` per zone, never an error and never a zero.
+    with _traducir_fallas_db():
+        layers = _repo.get_latest_precip_normals_by_month(db, settings.ficha_precip_area_id)
+    ruta_anual = None
+    layer_anual = layers.get("anual")
+    if layer_anual is not None:
+        ruta_anual = _precip_raster_path(layer_anual)
+    lluvia: dict[uuid.UUID, float] = {}
+    if ruta_anual is not None:
+        for zona in zonas:
+            perfil = _perfil_precip(ruta_anual, json.loads(zona.g4326), zona.ha * M2_POR_HA)
+            if perfil["coverage"] != "none" and perfil["mean"] is not None:
+                lluvia[zona.zona_id] = round(float(perfil["mean"]), 1)
+
+    filas: list[DesgloseSubcuenca] = []
+    for zona in zonas:
+        pct: float | None = None
+        if zona.zona_id in alto and zona.ha > 0.0:
+            pct = round(min(100.0, max(0.0, alto[zona.zona_id] / zona.ha * 100.0)), 2)
+        filas.append(
+            DesgloseSubcuenca(
+                zona_id=zona.zona_id,
+                nombre=zona.nombre,
+                ha=round(zona.ha, 4),
+                pct_alto_critico=pct,
+                clase_suelo_dominante=dominantes.get(zona.zona_id),
+                lluvia_anual_mm=lluvia.get(zona.zona_id),
+            )
+        )
+    return filas, "legacy70"
+
+
 # ── orchestration ───────────────────────────────────────────────────────────
 
 
@@ -1076,10 +1407,11 @@ def _ficha_de_geometria(
     area_m2: float,
     variante: str | None = None,
     geometria_cuenca: dict[str, Any] | None = None,
+    zonas: list[ZonaResuelta] | None = None,
 ) -> FichaResponse:
     """Shared compute tail: soils overlay + raster loop under the semaphore.
 
-    All five tipos reduce to the same computation once the geometry is resolved
+    All six tipos reduce to the same computation once the geometry is resolved
     and the caps have passed — the design's "N rasters × 1 geometry (rasterio) + 1
     vector overlay × 1 geometry (PostGIS)". Keeping it in one place is what makes
     the datasets byte-compatible across tipos (the spec's "uniform response
@@ -1087,7 +1419,10 @@ def _ficha_de_geometria(
 
     ``variante`` / ``geometria_cuenca`` are the ``canal_cuenca``-only additive
     fields (echoed back so the frontend can draw the catchment outline); they stay
-    ``None`` for the other three tipos.
+    ``None`` for the other tipos. ``zonas`` is the ``tipo=zonas``-only additive
+    input: the resolved per-zone rows the desglose aggregates INSIDE the
+    semaphore, because one of its inputs is a rasterio read (the CHIRPS annual
+    per zone) and the semaphore exists to bound exactly that.
 
     The caller has ALREADY committed the audit row, so the LOCAL statement_timeout
     set before that commit is gone; it is re-applied here so the soils overlay +
@@ -1097,6 +1432,10 @@ def _ficha_de_geometria(
         _aplicar_statement_timeout(db)
         area_ha = area_m2 / M2_POR_HA
         geom4326 = json.loads(geojson_4326)
+        desglose: list[DesgloseSubcuenca] | None = None
+        umbral: Literal["legacy70"] | None = None
+        if zonas is not None:
+            desglose, umbral = _desglose_zonas(db, zonas)
         return FichaResponse(
             tipo=tipo,
             area_ha=round(area_ha, 4),
@@ -1106,6 +1445,8 @@ def _ficha_de_geometria(
             precipitacion_mensual=_precipitacion_dataset(db, geom4326, area_m2),
             variante=variante,
             geometria_cuenca=geometria_cuenca,
+            desglose_por_subcuenca=desglose,
+            umbral_alto_critico=umbral,
         )
 
 
@@ -1224,16 +1565,43 @@ def _analizar_canal_cuenca(db: Session, payload: Any, *, client_ip: str | None) 
     )
 
 
+def _analizar_zonas(db: Session, payload: Any, *, client_ip: str | None) -> FichaResponse:
+    """Real compute for ``tipo=zonas`` — the informe de área selection (PR 1).
+
+    Same §2.5 order as every other tipo: resolve the union (404 if any zona id
+    is missing, 404 if an expanded cuenca has no zonas, 422 if the resolved
+    selection exceeds 60 subcuencas) → ``assert_within_caps`` over the UNION in
+    EPSG:32720 (422 — the zonas area cap is 35 000 ha, decision L2, NOT the
+    20 000 inherited from parcelas) → audit COMMITTED → semaphore → the shared
+    compute tail plus the per-zone desglose from stored figures. The resolved
+    rows ride along so the desglose never re-resolves them.
+    """
+    _aplicar_statement_timeout(db)  # bounds the ST_Union/ST_Transform resolver queries
+    geojson_4326, geojson_32720, area_m2, zonas = _resolver_zonas(db, payload.zona_ids, [])
+    geom_metrico = shape(json.loads(geojson_32720))
+    assert_within_caps(geom_metrico, tipo="zonas")
+
+    escribir_auditoria(db, payload, client_ip=client_ip)
+    return _ficha_de_geometria(
+        db,
+        tipo="zonas",
+        geojson_4326=geojson_4326,
+        area_m2=area_m2,
+        zonas=zonas,
+    )
+
+
 def analizar_zona(db: Session, payload: FichaRequest, *, client_ip: str | None) -> FichaResponse:
     """Enforcement order (design §2.5): resolve → caps → audit → semaphore → compute.
 
     Rate limit and the body-size guard already ran as router dependencies, and
     the cheap ``poligono`` validators ran in the schema.
 
-    All five tipos are real compute now: ``parcela``/``poligono`` resolve a parcel
-    or a drawn ring, ``canal_buffer`` sweeps a curated canal, and ``canal_cuenca``
-    reads its precomputed catchment (A7). The route stays gated by
-    ``settings.ficha_enabled``.
+    All six tipos are real compute now: ``parcela``/``poligono`` resolve a parcel
+    or a drawn ring, ``canal_buffer`` sweeps a curated canal, ``canal_cuenca``
+    reads its precomputed catchment (A7), and ``zonas`` unions a multi-subcuenca
+    selection with its per-zone desglose (informe de área, PR 1). The route stays
+    gated by ``settings.ficha_enabled``.
     """
     if payload.tipo == "parcela":
         return _analizar_parcela(db, payload, client_ip=client_ip)
@@ -1243,6 +1611,8 @@ def analizar_zona(db: Session, payload: FichaRequest, *, client_ip: str | None) 
         return _analizar_poligono(db, payload, client_ip=client_ip)
     if payload.tipo == "canal_buffer":
         return _analizar_canal_buffer(db, payload, client_ip=client_ip)
+    if payload.tipo == "zonas":
+        return _analizar_zonas(db, payload, client_ip=client_ip)
     return _analizar_canal_cuenca(db, payload, client_ip=client_ip)
 
 
@@ -1274,6 +1644,12 @@ def _resolver_geometria_overlay(db: Session, payload: FichaRequest) -> tuple[str
         geojson_4326, geojson_32720, _area_m2 = _resolver_canal_buffer(
             db, payload.canal_ref, payload.buffer_m
         )
+        return geojson_4326, geojson_32720
+    if tipo == "zonas":
+        # The overlay clips to the SAME server-side union the ficha analyzes
+        # (and the SAME 404/422 failure codes), so a painted class boundary can
+        # never disagree with the panel's hectares for an informe selection.
+        geojson_4326, geojson_32720, _area_m2, _zonas = _resolver_zonas(db, payload.zona_ids, [])
         return geojson_4326, geojson_32720
     geojson_4326, geojson_32720, _area_m2 = _resolver_canal_cuenca(
         db, payload.canal_ref, payload.variante
@@ -1414,3 +1790,90 @@ def overlay_zona(
     if dataset == "suelos":
         return _overlay_suelos(db, payload, client_ip=client_ip)
     return _overlay_raster(db, payload, dataset, client_ip=client_ip)
+
+
+# ── geometry-only preview (informe de área, PR 1) ────────────────────────────
+
+# Constructed once: ``Geod`` parses its ellipsoid at construction time, and the
+# preview runs on every selection change.
+_GEOD_WGS84 = Geod(ellps="WGS84")
+
+
+def _area_geodesica_ha(geojson_4326: str) -> float:
+    """Geodesic (on the WGS84 ellipsoid) area of the union, in hectares.
+
+    The ficha's ``area_ha`` is planimetric EPSG:32720 — the projection the caps
+    and every dataset measure in. The preview additionally exposes this geodesic
+    figure as the projection-free reference (S4: the two must agree within
+    0.2 %, which UTM zone 20S satisfies over the consorcio by a wide margin).
+    ``geometry_area_perimeter`` signs by ring orientation, hence ``abs``.
+    """
+    area_m2 = abs(_GEOD_WGS84.geometry_area_perimeter(shape(json.loads(geojson_4326)))[0])
+    return area_m2 / M2_POR_HA
+
+
+def preview_zonas(
+    db: Session, payload: FichaZonasPreviewRequest, *, client_ip: str | None
+) -> FichaZonasPreviewResponse:
+    """Geometry-only measurement of a subcuenca selection — the Revisar step.
+
+    Sibling of ``analizar_zona`` on the same guarded router (feature gate, body
+    limit, rate limit — all enforced as route dependencies), but deliberately
+    LIGHTER than the ficha chain:
+
+    * NO raster is opened and NO semaphore is taken — the response is pure
+      PostGIS geometry work (two queries: the per-zone rows and the dissolved
+      union), which is what keeps it inside the S6 p95 budget on every
+      selection change;
+    * NO ``assert_within_caps`` rejection: the whole point of the preview is to
+      ANSWER an over-cap selection with ``modo="trabajo"`` (the "informe
+      completo con el PR 2" notice, S2/L2) instead of a 422. The ficha compute
+      itself still rejects through ``assert_within_caps``.
+    * The audit row is still COMMITTED before the response — same Ley 25.326
+      trace as every accepted request on this router, under its own action so
+      preview traffic is distinguishable from ficha compute in the log.
+
+    ``fuera_de_subcuencas_ha`` is structurally ~0 in PR 1 and exists for the
+    contract: a "cuenca entera" resolves to the union of its
+    ``zonas_operativas`` rows (there is no cuenca-polygon table to diff
+    against), so by construction every hectare of the union belongs to a
+    subcuenca. It is computed as ``max(0, total − Σ zonas.ha)`` — honestly
+    clamped, since overlapping zonas make the per-zone sum EXCEED the union
+    (each zone reports its own full area, S4's "unión y no la suma" applies to
+    the total, not to the desglose rows).
+    """
+    _aplicar_statement_timeout(db)  # bounds the ST_Union/ST_Transform resolver queries
+    geojson_4326, _geojson_32720, area_m2, zonas = _resolver_zonas(
+        db, payload.zona_ids, payload.cuencas
+    )
+
+    area_total_ha = area_m2 / M2_POR_HA
+    cap_ha = area_cap_ha("zonas")
+    modo: Literal["online", "trabajo"] = "trabajo" if area_total_ha > cap_ha else "online"
+    fuera_de_subcuencas_ha = max(0.0, area_total_ha - sum(zona.ha for zona in zonas))
+
+    write_audit_entry_sync(
+        db,
+        user_id=None,
+        action="zona.preview",
+        resource=(
+            f"{_referencia_zonas(payload.zona_ids)},"
+            f"cuencas={'+'.join(sorted(payload.cuencas)) or '-'}"
+        ),
+        client_ip=client_ip,
+    )
+    db.commit()
+
+    return FichaZonasPreviewResponse(
+        area_total_ha=round(area_total_ha, 4),
+        area_total_ha_geodesica=round(_area_geodesica_ha(geojson_4326), 4),
+        subcuencas=[
+            SubcuencaPreview(
+                id=zona.zona_id, nombre=zona.nombre, cuenca=zona.cuenca, ha=round(zona.ha, 4)
+            )
+            for zona in zonas
+        ],
+        fuera_de_subcuencas_ha=round(fuera_de_subcuencas_ha, 4),
+        modo=modo,
+        aviso_cap=modo == "trabajo",
+    )
