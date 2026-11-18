@@ -35,6 +35,36 @@ draws flat terrain. The health probe is `python -m app.healthcheck` inside
 `consorcio-backend`. A curl to `127.0.0.1:8000/health` returns `400` because
 the host header is rejected.
 
+## Map stack
+
+One map engine, one tile stack, no proprietary mapping platforms. The reasons
+are part of the rule; a ban without them rots.
+
+- **MapLibre GL only** for every map. No Leaflet, no OpenLayers. The app leans
+  on the style spec's data-driven expressions, `setFeatureState` (selection
+  highlighting), and the 3D terrain built from our own terrain-RGB tiles
+  (`tile_service_support.py`). A second engine would duplicate interaction
+  logic and double the bug surface; client-side reprojection (OpenLayers'
+  strength) is useless here because measurement runs server-side in
+  EPSG:32720.
+- **Martin (PostGIS MVT via the `vt_*` views) + PMTiles on the CDN + the
+  geo-worker raster tile service.** No self-hosted GeoServer: a JVM on a
+  single compose box adds ops burden and attack surface with zero capability
+  this stack lacks.
+- **No ArcGIS platform or SDK.** Per-credit licensing and data lock-in are
+  disqualifying for a public consortium.
+- **Esri basemap imagery is allowed ONLY as the interactive map's basemap,
+  with attribution** (`TILE_LAYERS.satellite` in
+  `consorcio-web/src/constants/mapStyles.ts` — Maxar/Earthstar aerial,
+  sub-meter). This is a deliberate, documented exception: sub-meter aerial
+  beats a 10 m Sentinel-2 basemap for parcel-level orientation, and no
+  provincial replacement is verified yet.
+- **Esri imagery is banned in derived products** (report PDFs, KMZ exports,
+  offline field packages). Esri terms restrict bulk caching/redistribution,
+  and the reports' contract is dated provenance — a 2025-09-05 water mask
+  cannot sit on an aerial mosaic of unknown date. Derived products use our
+  own dated Sentinel-2/Landsat imagery via GEE.
+
 ## Flags
 
 `conocimiento_normas_enabled` defaults to false in `gee-backend/app/config.py`.
