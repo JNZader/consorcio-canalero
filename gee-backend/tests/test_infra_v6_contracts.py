@@ -303,8 +303,10 @@ def test_mantine_patch_matches_the_installed_version() -> None:
     lock = json.loads(_read("consorcio-web/package-lock.json"))
     version = lock["packages"]["node_modules/@mantine/core"]["version"]
     patches = list((REPO_ROOT / "consorcio-web" / "patches").glob("@mantine+core+*.patch"))
-    assert version == "9.7.5"
-    assert [path.name for path in patches] == ["@mantine+core+9.7.5.patch"]
+    # CI-03: el patch se nombra como la versión instalada, derivado del
+    # lockfile — un bump de Mantine sin regenerar/renombrar el patch rompe
+    # aquí, no hardcodeamos la versión.
+    assert [path.name for path in patches] == [f"@mantine+core+{version}.patch"]
     body = patches[0].read_text(encoding="utf-8")
     assert "Transition.mjs" in body
     assert "get-env.mjs" in body

@@ -404,7 +404,7 @@ jobs:
     # camino crítico. El tag debe seguir la versión de @playwright/test del
     # package-lock, igual que en el job visual.
     container:
-      image: mcr.microsoft.com/playwright:v1.65.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
       options: --ipc=host
     timeout-minutes: 20
     needs: [changes, typecheck, smoke]
@@ -446,7 +446,7 @@ jobs:
     # hay que subir el tag y regenerar las capturas. Ver
     # consorcio-web/docs/visual-regression.md.
     container:
-      image: mcr.microsoft.com/playwright:v1.65.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
       options: --ipc=host
     timeout-minutes: 30
     needs: [changes, typecheck, smoke]
