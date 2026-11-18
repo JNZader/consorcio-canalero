@@ -47,13 +47,13 @@ def build_tramite_pdf(tramite: Any, branding: BrandingInfo) -> io.BytesIO:
 
     # Info table
     info_data = [
-        ("Titulo", getattr(tramite, "titulo", "")),
+        ("Título", getattr(tramite, "titulo", "")),
         ("Tipo", getattr(tramite, "tipo", "")),
         ("Estado", getattr(tramite, "estado", "")),
         ("Prioridad", getattr(tramite, "prioridad", "")),
         ("Solicitante", getattr(tramite, "solicitante", "")),
         ("Fecha Ingreso", fmt_date(getattr(tramite, "fecha_ingreso", None))),
-        ("Fecha Resolucion", fmt_date(getattr(tramite, "fecha_resolucion", None))),
+        ("Fecha Resolución", fmt_date(getattr(tramite, "fecha_resolucion", None))),
     ]
     story.append(build_info_table(info_data, branding))
     story.append(Spacer(1, 4 * mm))
@@ -61,14 +61,14 @@ def build_tramite_pdf(tramite: Any, branding: BrandingInfo) -> io.BytesIO:
     # Descripcion
     descripcion = getattr(tramite, "descripcion", None)
     if descripcion:
-        story.append(Paragraph("Descripcion", styles["subtitle"]))
+        story.append(Paragraph("Descripción", styles["subtitle"]))
         story.append(Paragraph(str(descripcion), styles["body"]))
         story.append(Spacer(1, 3 * mm))
 
     # Resolucion
     resolucion = getattr(tramite, "resolucion", None)
     if resolucion:
-        story.append(Paragraph("Resolucion", styles["subtitle"]))
+        story.append(Paragraph("Resolución", styles["subtitle"]))
         story.append(Paragraph(str(resolucion), styles["body"]))
         story.append(Spacer(1, 3 * mm))
 
@@ -108,7 +108,7 @@ def build_reunion_pdf(reunion: Any, branding: BrandingInfo) -> io.BytesIO:
 
     # Info table
     info_data = [
-        ("Titulo", getattr(reunion, "titulo", "")),
+        ("Título", getattr(reunion, "titulo", "")),
         ("Fecha", fmt_datetime(getattr(reunion, "fecha_reunion", None))),
         ("Lugar", getattr(reunion, "lugar", "")),
         ("Tipo", getattr(reunion, "tipo", "")),
@@ -120,7 +120,7 @@ def build_reunion_pdf(reunion: Any, branding: BrandingInfo) -> io.BytesIO:
     # Descripcion
     descripcion = getattr(reunion, "descripcion", None)
     if descripcion:
-        story.append(Paragraph("Descripcion", styles["subtitle"]))
+        story.append(Paragraph("Descripción", styles["subtitle"]))
         story.append(Paragraph(str(descripcion), styles["body"]))
         story.append(Spacer(1, 3 * mm))
 
@@ -144,7 +144,7 @@ def build_reunion_pdf(reunion: Any, branding: BrandingInfo) -> io.BytesIO:
     agenda_items = getattr(reunion, "agenda_items", None) or []
     if agenda_items:
         story.append(Paragraph("Items de Agenda", styles["subtitle"]))
-        headers = ["#", "Titulo", "Descripcion", "Completado"]
+        headers = ["#", "Título", "Descripción", "Completado"]
         rows = []
         for item in agenda_items:
             completado = "Si" if getattr(item, "completado", False) else "No"

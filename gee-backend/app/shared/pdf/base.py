@@ -11,6 +11,7 @@ from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm, mm
+from reportlab.pdfgen import canvas as pdfgen_canvas
 from reportlab.platypus import (
     Paragraph,
     SimpleDocTemplate,
@@ -25,6 +26,45 @@ from app.domains.settings.service import SettingsService
 
 _FONT_REGISTERED = False
 _FONT_NAME = "Helvetica"  # fallback
+
+
+class NumberedCanvas(pdfgen_canvas.Canvas):
+    """Two-pass canvas: stamps "Página n de N" once N is known.
+
+    The canonical ReportLab pattern: ``showPage`` buffers each page state
+    instead of emitting it; ``save`` replays every page knowing the total
+    and draws the folio then. Without this the footer cannot carry "de N"
+    because page count is unknown while pages are being drawn.
+    """
+
+    def __init__(self, *args, footer_font: str = "Helvetica", **kwargs):
+        super().__init__(*args, **kwargs)
+        self._footer_font = footer_font
+        self._saved_page_states: list[dict] = []
+
+    def showPage(self):  # noqa: N802 (ReportLab API spelling)
+        self._saved_page_states.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        total = len(self._saved_page_states)
+        for state in self._saved_page_states:
+            self.__dict__.update(state)
+            self._draw_folio(total)
+            pdfgen_canvas.Canvas.showPage(self)
+        pdfgen_canvas.Canvas.save(self)
+
+    def _draw_folio(self, total: int) -> None:
+        self.saveState()
+        self.setFont(self._footer_font, 7)
+        self.setFillColor(colors.grey)
+        width, _height = A4
+        self.drawRightString(
+            width - 1.5 * cm,
+            1 * cm,
+            f"Página {self._pageNumber} de {total}",
+        )
+        self.restoreState()
 
 
 def _register_fonts() -> str:
@@ -317,13 +357,10 @@ class BrandedPDF:
         canvas.drawString(
             1.5 * cm,
             1 * cm,
-            "Generado por Sistema de Gestion - Consorcio Canalero",
+            "Generado por Sistema de Gestión - Consorcio Canalero",
         )
-        canvas.drawRightString(
-            width - 1.5 * cm,
-            1 * cm,
-            f"Pagina {doc.page}",
-        )
+        # El folio "Página n de N" lo estampa NumberedCanvas en save():
+        # el total de páginas solo se conoce al terminar el documento.
 
         # Footer line
         canvas.setStrokeColor(colors.Color(0.8, 0.8, 0.8))
@@ -344,6 +381,11 @@ class BrandedPDF:
             leftMargin=1.5 * cm,
             rightMargin=1.5 * cm,
         )
-        doc.build(flowables, onFirstPage=self._header_footer, onLaterPages=self._header_footer)
+        doc.build(
+            flowables,
+            onFirstPage=self._header_footer,
+            onLaterPages=self._header_footer,
+            canvasmaker=lambda *a, **k: NumberedCanvas(*a, footer_font=self._font, **k),
+        )
         buffer.seek(0)
         return buffer

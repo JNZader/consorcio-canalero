@@ -21,6 +21,7 @@ from app.shared.pdf.builders_common import (
     fmt_datetime,
     read_map_image,
 )
+from app.shared.pdf.format_es import fmt_ha
 
 # A4 width (210mm) minus BrandedPDF's left+right margins (1.5cm each) →
 # 180mm of usable content width. Kept as a module constant so the canales
@@ -182,22 +183,22 @@ def build_approved_zoning_pdf(
     styles = get_pdf_styles(branding)
     story: list = []
 
-    story.append(Paragraph("Informe de Zonificacion Aprobada", styles["title"]))
+    story.append(Paragraph("Informe de Zonificación aprobada", styles["title"]))
     story.append(Spacer(1, 2 * mm))
     story.append(
         Paragraph(
-            "Documento de referencia para la zonificacion operativa vigente del consorcio.",
+            "Documento de referencia para la zonificación operativa vigente del consorcio.",
             styles["body"],
         )
     )
     story.append(Spacer(1, 3 * mm))
 
     info_data = [
-        ("Nombre", getattr(zoning, "nombre", "") or "Zonificacion aprobada"),
-        ("Version", str(getattr(zoning, "version", "—") or "—")),
+        ("Nombre", getattr(zoning, "nombre", "") or "Zonificación aprobada"),
+        ("Versión", str(getattr(zoning, "version", "—") or "—")),
         ("Cuenca", getattr(zoning, "cuenca", None) or "General"),
-        ("Fecha de aprobacion", fmt_datetime(getattr(zoning, "approved_at", None))),
-        ("Aprobo", approved_by_name or "—"),
+        ("Fecha de aprobación", fmt_datetime(getattr(zoning, "approved_at", None))),
+        ("Aprobó", approved_by_name or "—"),
     ]
     story.append(build_info_table(info_data, branding))
     story.append(Spacer(1, 4 * mm))
@@ -232,7 +233,7 @@ def build_approved_zoning_pdf(
                 [
                     ("Cantidad de zonas", str(len(features))),
                     ("Total de subcuencas", str(total_subcuencas)),
-                    ("Superficie total (ha)", f"{total_area:,.1f}"),
+                    ("Superficie total (ha)", fmt_ha(total_area)),
                 ],
                 branding,
             )
@@ -253,13 +254,13 @@ def build_approved_zoning_pdf(
                 [
                     str(props.get("nombre", "Zona")),
                     str(props.get("basin_count", "—")),
-                    f"{area_value:,.1f}",
+                    fmt_ha(area_value),
                 ]
             )
-        rows.append(["TOTAL", "", f"{total_area:,.1f}"])
+        rows.append(["TOTAL", "", fmt_ha(total_area)])
         story.append(build_data_table(headers, rows, branding))
 
-    return pdf.build(story, title=f"Zonificacion - {getattr(zoning, 'nombre', '')}")
+    return pdf.build(story, title=f"Zonificación - {getattr(zoning, 'nombre', '')}")
 
 
 def build_approved_zoning_map_pdf(

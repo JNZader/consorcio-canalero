@@ -46,7 +46,7 @@ def build_corridor_routing_pdf(
     story.append(Spacer(1, 2 * mm))
     story.append(
         Paragraph(
-            "Documento de referencia para analisis, comparacion y aprobacion de trazados propuestos.",
+            "Documento de referencia para análisis, comparación y aprobacion de trazados propuestos.",
             styles["body"],
         )
     )
@@ -54,7 +54,7 @@ def build_corridor_routing_pdf(
 
     info_data = [
         ("Nombre", getattr(scenario, "name", "") or "Escenario corredor"),
-        ("Version", str(getattr(scenario, "version", 1) or 1)),
+        ("Versión", str(getattr(scenario, "version", 1) or 1)),
         ("Modo", str(summary.get("mode", request_payload.get("mode", "network")))),
         (
             "Perfil",
