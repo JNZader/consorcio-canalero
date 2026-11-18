@@ -2,7 +2,6 @@
 
 import base64
 import io
-from decimal import Decimal
 from typing import Any
 
 from reportlab.lib import colors
@@ -10,6 +9,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, Table, TableStyle
 
 from app.shared.pdf.base import BrandingInfo, get_pdf_styles
+from app.shared.pdf.format_es import fmt_monto
 
 
 def fmt_date(d: Any) -> str:
@@ -31,13 +31,12 @@ def fmt_datetime(d: Any) -> str:
 
 
 def fmt_money(amount: Any) -> str:
-    """Format a numeric amount as currency."""
-    if amount is None:
-        return "—"
-    try:
-        return f"$ {Decimal(str(amount)):,.2f}"
-    except Exception:
-        return str(amount)
+    """Format a numeric amount as currency, es-AR ("$ 1.234,56").
+
+    Delegates to ``format_es.fmt_monto``; kept as ``fmt_money`` because
+    builders and tests import this name.
+    """
+    return fmt_monto(amount)
 
 
 class ImagenInvalida(ValueError):
