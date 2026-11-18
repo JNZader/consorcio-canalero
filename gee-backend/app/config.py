@@ -313,15 +313,33 @@ class Settings(BaseSettings):
     # ``ficha_service.area_cap_ha`` is the single source of truth and the ETL
     # mirrors it, so "stored implies servable" holds.
     ficha_max_area_ha_cuenca: float = 35_000.0
+    # Area cap for ``tipo=zonas`` ONLY (informe de área, PR 1). 35 000 ha, not
+    # the 20 000 inherited from parcelas/polígono: decision L2 (2026-11-18)
+    # accepted that 20k is the parcel-drawing default, that the config already
+    # runs synchronous compute at 35k for ``canal_cuenca`` (same raster cost
+    # class), and that 35k covers 100 % of the two-cuenca combinations — the
+    # real use case of the informe de área. Selections beyond it are not
+    # rejected outright by the preview: the preview answers ``modo=trabajo``
+    # ("informe completo con el PR 2"); only the ficha compute itself 422s via
+    # ``assert_within_caps``. Same trust class as ``canal_cuenca``: the union is
+    # resolved server-side from stored ``zonas_operativas`` rows, never
+    # caller-drawn geometry. T1 measures local p95 at 20k/35k/59k as the
+    # acceptance condition — the value is revisable with a number in hand.
+    ficha_max_area_ha_zonas: float = 35_000.0
     # Envelope cap: blocks a thin diagonal sliver whose bbox window would blow
     # up ``rasterio_mask(crop=True)`` even though its own area is small. Applies
     # to every CALLER-SUPPLIED or caller-selected shape (poligono, parcela,
     # parcelas, canal_buffer) — the surface an attacker controls — and stays at
     # its original value.
     ficha_max_envelope_ha: float = 60_000.0
-    # Envelope cap for ``tipo=canal_cuenca`` ONLY. An upstream catchment is a
-    # dendritic basin: long, branched and diagonal, so its bbox is routinely
-    # 4-7x its own area, while a hand-drawn polygon of the same area is compact.
+    # Envelope cap for ``tipo=canal_cuenca`` AND ``tipo=zonas`` (informe de
+    # área). An upstream catchment is a dendritic basin: long, branched and
+    # diagonal, so its bbox is routinely 4-7x its own area, while a hand-drawn
+    # polygon of the same area is compact. The union of several
+    # ``zonas_operativas`` is the same shape class — the sub-basins of one
+    # cuenca chain along a dendritic network — and is likewise resolved
+    # server-side from stored rows, never caller-drawn, so it buys the same
+    # relaxation the catchments did.
     # At 60 000 ha the envelope cap — not the area cap — was rejecting most of
     # the precomputed catchments (25 of 60 servible), which is a false positive:
     # the shape is NOT caller-supplied. It is one of a fixed set of basins the
@@ -361,6 +379,17 @@ class Settings(BaseSettings):
     # fixed set of basins. ``ficha_service.vertices_cap`` is the single source of
     # truth and the ETL mirrors it, so "stored implies servable" holds.
     ficha_max_vertices_cuenca: int = 2_200
+    # Vertex cap for ``tipo=zonas`` ONLY (informe de área). The union of up to
+    # 60 ``zonas_operativas`` polygons carries the SUM of their perimeters, so
+    # the 1 000-vertex caller cap and even the 2 200 catchment cap would reject
+    # a legitimate maximum selection. 12 000 is an order-of-magnitude bound
+    # (60 sub-basins x ~200 vertices each for a delineated watershed polygon),
+    # not a measured ceiling: unlike ``canal_cuenca`` this tipo echoes NO
+    # geometry on the wire (the frontend unions its own BASINS source), so the
+    # response-payload rationale of the catchment cap does not apply, and the
+    # per-request ``statement_timeout`` bounds the suelos ``ST_Intersection``
+    # cost. Revisable with a measurement, same as the zonas area cap.
+    ficha_max_vertices_zonas: int = 12_000
     # 2 km each side of a canal is already a generous influence zone. Without
     # this cap ``buffer_m`` is an unbounded amplification knob (JDB-006); the
     # area cap remains the backstop.
