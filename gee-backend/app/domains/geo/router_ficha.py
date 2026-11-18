@@ -36,13 +36,28 @@ from app.core.logging import get_logger
 from app.core.rate_limit import DistributedRateLimiter
 from app.db.session import get_db
 from app.domains.geo import ficha_errors, ficha_service
-from app.domains.geo.schemas_ficha import FichaOverlayResponse, FichaRequest, FichaResponse
+from app.domains.geo.schemas_ficha import (
+    FichaOverlayResponse,
+    FichaRequest,
+    FichaResponse,
+    FichaZonasPreviewRequest,
+    FichaZonasPreviewResponse,
+)
 
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["Ficha Territorial"])
 
+# ``tipo=zonas`` (informe de área, PR 1) joins the discriminated union. The
+# base tuple lives in ``ficha_errors`` (the §2.6 catalog of the original five
+# tipos, kept untouched by this change), so the union is extended HERE — the
+# router is where the body is parsed and where a ``tipo`` becomes accepted.
+# Both body parsers below read this tuple, never the base one, so the ficha and
+# the overlay cannot drift about which tipos exist.
+TIPOS_VALIDOS_FICHA: tuple[str, ...] = (*ficha_errors.TIPOS_VALIDOS, "zonas")
+
 _ficha_adapter: TypeAdapter[Any] = TypeAdapter(FichaRequest)
+_preview_adapter: TypeAdapter[FichaZonasPreviewRequest] = TypeAdapter(FichaZonasPreviewRequest)
 
 # ── OpenAPI: the request body is described by hand, so its $refs are ours ──
 # The body is validated inside ``parse_ficha_body`` instead of through a
@@ -61,6 +76,15 @@ _ficha_json_schema: dict[str, Any] = _ficha_adapter.json_schema(
 )
 _FICHA_DEFS: dict[str, Any] = _ficha_json_schema.pop("$defs", {})
 
+# The preview body is a FLAT model (uuid/string lists, no nested models), so
+# ``json_schema()`` emits no ``$defs`` and the schema splices into
+# ``openapi_extra`` directly — same pattern as the ficha body above, minus the
+# ref-hoisting problem that made ``install_ficha_openapi_schemas`` necessary.
+_preview_json_schema: dict[str, Any] = _preview_adapter.json_schema(
+    ref_template="#/components/schemas/{model}"
+)
+_PREVIEW_DEFS: dict[str, Any] = _preview_json_schema.pop("$defs", {})
+
 
 def install_ficha_openapi_schemas(app: FastAPI) -> None:
     """Hoist the ficha request models into ``components.schemas``.
@@ -77,7 +101,7 @@ def install_ficha_openapi_schemas(app: FastAPI) -> None:
     def openapi_con_ficha() -> dict[str, Any]:
         esquema = generar_original()
         componentes = esquema.setdefault("components", {}).setdefault("schemas", {})
-        for nombre, definicion in _FICHA_DEFS.items():
+        for nombre, definicion in {**_FICHA_DEFS, **_PREVIEW_DEFS}.items():
             componentes.setdefault(nombre, definicion)
         return esquema
 
@@ -90,13 +114,16 @@ def install_ficha_openapi_schemas(app: FastAPI) -> None:
 # selection is one lookup PER parcel plus a server-side ``ST_Union``, and the
 # raster/vector work then runs over an area that is a multiple of a single
 # parcel's. Charging it 1 would make the cheap tipo the way to buy the expensive
-# work.
+# work. ``zonas`` (informe de área, PR 1) for the same reason: a 60-zona union
+# is the largest area any tipo can resolve, and the desglose adds one stored-data
+# aggregation on top.
 COSTO_POR_TIPO: dict[str, int] = {
     "parcela": 1,
     "parcelas": 5,
     "poligono": 5,
     "canal_buffer": 5,
     "canal_cuenca": 5,
+    "zonas": 5,
 }
 
 _limiter: DistributedRateLimiter | None = None
@@ -217,6 +244,19 @@ async def enforce_ficha_rate_limit(request: Request) -> None:
         raise ficha_errors.limite_de_tasa(max(1, int(reset)))
 
 
+def _tipo_desconocido(recibido: Any) -> ficha_errors.FichaError:
+    """``tipo_desconocido`` listing the tipos THIS router accepts.
+
+    Built on the ``ficha_errors`` factory, then the ``tipos_validos`` extra is
+    corrected to include ``zonas`` — the factory's list is the base five-tuple
+    (the catalog module is untouched by this change) and a 422 body advertising
+    a stale acceptance list would lie about the contract.
+    """
+    error = ficha_errors.tipo_desconocido(recibido)
+    error.extra["tipos_validos"] = list(TIPOS_VALIDOS_FICHA)
+    return error
+
+
 async def parse_ficha_body(request: Request) -> Any:
     """422 with the §2.6 codes instead of FastAPI's generic envelope.
 
@@ -230,8 +270,8 @@ async def parse_ficha_body(request: Request) -> Any:
     if not isinstance(crudo, dict):
         raise ficha_errors.geometria_invalida("el cuerpo debe ser un objeto JSON")
     tipo = crudo.get("tipo")
-    if tipo not in ficha_errors.TIPOS_VALIDOS:
-        raise ficha_errors.tipo_desconocido(tipo)
+    if tipo not in TIPOS_VALIDOS_FICHA:
+        raise _tipo_desconocido(tipo)
     try:
         return _ficha_adapter.validate_python(crudo)
     except ValidationError as exc:
@@ -263,8 +303,8 @@ async def parse_overlay_body(request: Request) -> tuple[Any, str]:
         raise ficha_errors.dataset_no_soportado(dataset, _OVERLAY_DATASETS)
     cuerpo_ficha = {clave: valor for clave, valor in crudo.items() if clave != "dataset"}
     tipo = cuerpo_ficha.get("tipo")
-    if tipo not in ficha_errors.TIPOS_VALIDOS:
-        raise ficha_errors.tipo_desconocido(tipo)
+    if tipo not in TIPOS_VALIDOS_FICHA:
+        raise _tipo_desconocido(tipo)
     try:
         payload = _ficha_adapter.validate_python(cuerpo_ficha)
     except ValidationError as exc:
@@ -338,3 +378,55 @@ def analizar_zona(
 ) -> FichaResponse:
     """Public. No auth dependency — by design, and asserted by a route-table test."""
     return ficha_service.analizar_zona(db, payload, client_ip=_client_ip(request))
+
+
+async def parse_preview_body(request: Request) -> FichaZonasPreviewRequest:
+    """Validate the preview body with the same §2.6 codes as the ficha body.
+
+    Mirrors ``parse_ficha_body`` (no declared body parameter, so a malformed
+    selection answers ``geometria_invalida`` instead of FastAPI's envelope).
+    There is no ``tipo`` to switch on here — the preview is zonas-only by
+    construction, which is why it gets its own parser instead of joining the
+    ficha discriminated union.
+    """
+    crudo = await _cuerpo_crudo(request)
+    if not isinstance(crudo, dict):
+        raise ficha_errors.geometria_invalida("el cuerpo debe ser un objeto JSON")
+    try:
+        return _preview_adapter.validate_python(crudo)
+    except ValidationError as exc:
+        primero = exc.errors()[0]
+        campo = ".".join(str(parte) for parte in primero.get("loc", ()))
+        raise ficha_errors.geometria_invalida(f"{campo or 'cuerpo'}: {primero.get('msg', '')}")
+
+
+@router.post(
+    "/analisis-zona/preview",
+    response_model=FichaZonasPreviewResponse,
+    summary="Vista previa geometrica de una seleccion de subcuencas (publico)",
+    dependencies=[
+        Depends(enforce_ficha_enabled),
+        Depends(enforce_body_limit),
+        Depends(enforce_ficha_rate_limit),
+    ],
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {"application/json": {"schema": _preview_json_schema}},
+        }
+    },
+)
+def preview_zona(
+    request: Request,
+    payload: FichaZonasPreviewRequest = Depends(parse_preview_body),
+    db: Session = Depends(get_db),
+) -> FichaZonasPreviewResponse:
+    """Public, geometry-only: areas and cap state of a selection, no rasters.
+
+    The Revisar step of the informe de área (S1/S8): runs on every selection
+    change, so it opens no raster and takes no compute slot — see
+    ``ficha_service.preview_zonas``. Same guard chain as its siblings (feature
+    gate → body limit → rate limit), and the rate-limit cost of a preview is 1:
+    it prices two indexed PostGIS queries, not raster work.
+    """
+    return ficha_service.preview_zonas(db, payload, client_ip=_client_ip(request))
