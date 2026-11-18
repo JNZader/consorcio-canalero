@@ -2,6 +2,13 @@ import type { Feature } from 'geojson';
 import type * as maplibregl from 'maplibre-gl';
 import { useEffect, useRef } from 'react';
 import { identifyHitBbox, identifyHitRadiusPx, pointerIsCoarse } from './identifyHit';
+import {
+  INFORME_AREA_FILL_LAYER,
+  informeAreaPicked,
+  puenteInformeAreaActivo,
+  registrarPuenteInformeArea,
+  resolverZona,
+} from './informeArea/informeAreaLayers';
 import { SOURCE_IDS } from './map2dConfig';
 import { isMeasurementIdentifyBlocked } from './measurement/measurementIdentifyGuard';
 import type { MapInteractionMode, MeasurementMode } from './measurement/useMeasurement';
@@ -258,6 +265,33 @@ export function buildClickableLayers(mode: MapInteractionMode = 'idle'): string[
   ];
 }
 
+/**
+ * Informe de área Elegir step (PR 1): when its bridge is active, this click
+ * resolves the informeArea highlight layer ONLY (its own `promoteId` source
+ * over `/geo/basins`) — never a parcel, canal or InfoPanel feature. A plain
+ * click REPLACES the selection; ctrl/⌘ toggles, mirroring the parcel
+ * accumulation gesture. A click that misses a subcuenca keeps the selection.
+ *
+ * Returns whether the click was consumed (the caller then skips every other
+ * branch). Kept as a module-level helper so the already-complex click handler
+ * only grows by one early return.
+ */
+function manejarClickInformeArea(map: maplibregl.Map, event: maplibregl.MapMouseEvent): boolean {
+  if (!puenteInformeAreaActivo()) return false;
+  if (map.getLayer(INFORME_AREA_FILL_LAYER)) {
+    const zonas = map.queryRenderedFeatures(event.point, {
+      layers: [INFORME_AREA_FILL_LAYER],
+    }) as unknown as Feature[];
+    const zona = resolverZona(zonas);
+    if (zona) {
+      const original = event.originalEvent as MouseEvent | undefined;
+      const additive = !!original && (original.ctrlKey || original.metaKey);
+      informeAreaPicked(zona, additive);
+    }
+  }
+  return true;
+}
+
 export function useMapInteractionEffects({
   mapRef,
   mapReady,
@@ -297,11 +331,32 @@ export function useMapInteractionEffects({
     // canal-only in 'ficha-canal', the full ordered list otherwise.
     const clickableLayers = buildClickableLayers(measurementMode);
 
+    // Informe de área (PR 1): this hook is the ONE owner of map clicks, so it
+    // also exposes the map to the informeArea module (whose entry point,
+    // FichaTerritorialPanel, receives no map prop) and hands it the
+    // mode-transition clear. No new `MapInteractionMode` member exists — the
+    // bridge flag below is checked at EVENT time, before every other branch.
+    const desregistrarPuente = registrarPuenteInformeArea({
+      getMap: () => mapRef.current,
+      enter: () => {
+        // Entering the informe de área discards the previous selection, same
+        // as every other ficha mode transition (design §6.5) — including with
+        // the sticky touch mode on.
+        setSelectedFeatures([]);
+        onParcelaResolvedRef.current?.(null);
+        onClearParcelasRef.current?.();
+        onCanalResolvedRef.current?.(null);
+      },
+    });
+
     const handleClick = (event: maplibregl.MapMouseEvent) => {
       const detail = event.originalEvent?.detail;
       if (isMeasurementIdentifyBlocked() || (typeof detail === 'number' && detail > 1)) {
         return;
       }
+      // Informe de área Elegir step owns the click BEFORE every other branch
+      // (see manejarClickInformeArea). A miss keeps the current selection.
+      if (manejarClickInformeArea(map, event)) return;
       if (measurementMode === 'placing-poi') {
         onPoiPlaceRef.current?.({ lng: event.lngLat.lng, lat: event.lngLat.lat });
         return;
@@ -317,7 +372,9 @@ export function useMapInteractionEffects({
         });
         setSelectedFeatures([]);
         onParcelaResolvedRef.current?.(null);
-        onCanalResolvedRef.current?.(resolveCanalRef(canalFeatures as unknown as FeatureWithLayer[]));
+        onCanalResolvedRef.current?.(
+          resolveCanalRef(canalFeatures as unknown as FeatureWithLayer[])
+        );
         return;
       }
 
@@ -387,10 +444,10 @@ export function useMapInteractionEffects({
             : expandCanalGroup(
                 roadGroup[0] ?? tramo,
                 canalRelevadosRef.current,
-                canalPropuestasRef.current,
+                canalPropuestasRef.current
               );
         setSelectedFeatures(
-          additive ? mergeAdditiveFeatures([...selectedFeaturesRef.current], group) : group,
+          additive ? mergeAdditiveFeatures([...selectedFeaturesRef.current], group) : group
         );
       } else if (additive) {
         setSelectedFeatures([...selectedFeaturesRef.current]);
@@ -417,11 +474,7 @@ export function useMapInteractionEffects({
     map.on('click', handleClick);
     return () => {
       map.off('click', handleClick);
+      desregistrarPuente();
     };
-  }, [
-    mapReady,
-    mapRef,
-    measurementMode,
-    setSelectedFeatures,
-  ]);
+  }, [mapReady, mapRef, measurementMode, setSelectedFeatures]);
 }

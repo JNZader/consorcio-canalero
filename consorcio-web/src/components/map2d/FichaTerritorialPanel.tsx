@@ -37,6 +37,7 @@ import {
   Text,
   Title,
 } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import { Fragment, lazy, memo, type ReactNode, Suspense, useEffect, useState } from 'react';
 
 import type { FichaOverlayDataset, FichaResponse, FichaTipo } from '../../lib/api/ficha';
@@ -48,6 +49,7 @@ import { CollapsibleSection } from '../ui/CollapsibleSection';
 import { CanalBufferControl } from './CanalBufferControl';
 import { FichaResumen } from './FichaResumen';
 import { fmtHa } from './fichaShared';
+import { InformeAreaDrawer } from './informeArea/InformeAreaDrawer';
 import { MapPanelShell } from './MapPanelShell';
 import { PilarVerdeBadges } from './PilarVerdeBadges';
 import type { CanalAnalysisMode } from './useFichaInteraction';
@@ -203,6 +205,9 @@ const TIPO_PILL_LABELS: Record<FichaTipo, string> = {
   poligono: 'Polígono',
   canal_buffer: 'Canal',
   canal_cuenca: 'Cuenca',
+  // The informe de área owns its own drawer (below); the pill label only
+  // exists to satisfy the Record over the wire union.
+  zonas: 'Zonas',
 };
 
 /**
@@ -704,6 +709,11 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
   // Keep the auth-layout hint above `active`'s early return. Calling the hook
   // lower would change this component's hook count when the panel activates.
   const staff = useCanAccess(['admin', 'operador']);
+  // Informe de área (PR 1, S5): the entry button in the ficha panel header.
+  // The drawer renders as a SIBLING of MapPanelShell (not inside it) because
+  // the shell unmounts its children when minimized — and a map drag (part of
+  // choosing subcuencas) auto-minimizes every panel.
+  const [informeAbierto, { open: abrirInforme, close: cerrarInforme }] = useDisclosure(false);
   if (!active) return null;
 
   // The overlay toggle only makes sense once there is a result to clip on the
@@ -774,8 +784,16 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
 
   const panelContext = (
     <Fragment key="panel-context">
-      <Group justify="space-between" mb="xs">
+      <Group justify="space-between" mb="xs" wrap="nowrap">
         <Title order={5}>Ficha territorial</Title>
+        <Button
+          size="compact-xs"
+          variant="light"
+          onClick={abrirInforme}
+          data-testid="informe-area-abrir"
+        >
+          Informe de área
+        </Button>
       </Group>
       <Divider mb="xs" />
       {isCanalTipo &&
@@ -842,29 +860,36 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
   const panelContent = prioritizeRainfall ? [panelBody, panelContext] : [panelContext, panelBody];
 
   return (
-    <MapPanelShell
-      initialStage="medio"
-      sheet={sheet}
-      floatingClassName={
-        compact ? `${styles.fichaPanel} ${styles.fichaPanelCompact}` : styles.fichaPanel
-      }
-      testId="ficha-territorial-panel"
-      sheetLabel="ficha territorial"
-      onClose={onClose}
-      closeLabel="Cerrar ficha territorial"
-      minimized={minimized}
-      onToggleMinimize={onToggleMinimize}
-      pillLabel={fichaPillLabel({
-        tipo,
-        canalNombre,
-        areaHa: data?.area_ha ?? null,
-        parcelasCount,
-      })}
-      pillClassName={styles.fichaPanelPill}
-      resetKey={resetKey}
-      scrollResetKey={`${tab}:${resetKey ?? ''}:${prioritizeRainfall ? 'priority' : 'standard'}`}
-    >
-      {panelContent}
-    </MapPanelShell>
+    <>
+      <MapPanelShell
+        initialStage="medio"
+        sheet={sheet}
+        floatingClassName={
+          compact ? `${styles.fichaPanel} ${styles.fichaPanelCompact}` : styles.fichaPanel
+        }
+        testId="ficha-territorial-panel"
+        sheetLabel="ficha territorial"
+        onClose={onClose}
+        closeLabel="Cerrar ficha territorial"
+        minimized={minimized}
+        onToggleMinimize={onToggleMinimize}
+        pillLabel={fichaPillLabel({
+          tipo,
+          canalNombre,
+          areaHa: data?.area_ha ?? null,
+          parcelasCount,
+        })}
+        pillClassName={styles.fichaPanelPill}
+        resetKey={resetKey}
+        scrollResetKey={`${tab}:${resetKey ?? ''}:${prioritizeRainfall ? 'priority' : 'standard'}`}
+      >
+        {panelContent}
+      </MapPanelShell>
+      {/* Sibling of the shell ON PURPOSE (see useDisclosure above): survives
+          the shell's minimize-to-pill so map panning keeps the flow alive.
+          Mounted ONLY while open so its queries/bridge stay dormant — and so
+          panel tests without a QueryClient wrapper keep passing. */}
+      {informeAbierto && <InformeAreaDrawer opened={informeAbierto} onClose={cerrarInforme} />}
+    </>
   );
 });
