@@ -68,10 +68,11 @@ export function DesgloseTabla({ filas, umbral }: DesgloseTablaProps) {
       if (va === null && vb === null) return 0;
       if (va === null) return 1;
       if (vb === null) return -1;
-      if (typeof va === 'number' && typeof vb === 'number') return va - vb;
-      return String(va).localeCompare(String(vb), 'es');
+      if (typeof va === 'number' && typeof vb === 'number')
+        return direccion === 'asc' ? va - vb : vb - va;
+      const cmp = String(va).localeCompare(String(vb), 'es');
+      return direccion === 'asc' ? cmp : -cmp;
     });
-    if (direccion === 'desc') ordenadas.reverse();
     return ordenadas;
   }, [filas, clave, direccion]);
 
