@@ -28,6 +28,7 @@ anybody else gets the same 404 as for a missing id.
 
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 import uuid
@@ -856,3 +857,152 @@ def cobertura_por_zona(
         logger.warning("informe_area.cobertura_zonas_fallo", exc_info=True)
         return {}
     return resultado
+
+
+# ── Canales (PR 4, S5) ───────────────────────────────────────────────────────
+
+#: Kilómetros of curated canals INSIDE the selection, by estado. The clip
+#: is measured in EPSG:32720 (the informe/ficha length standard) and
+#: collection-extracted to lines so a boundary-touching polygon can never
+#: contribute a point/line artifact. Source: ``canal_consorcio`` — the
+#: curated base the system loads (60 canales: 41 relevados + 19
+#: propuestos) — NOT ``canal_network``: that table is the pgRouting edge
+#: topology the DEM burn reads, it carries no ``estado`` and nothing in
+#: this codebase populates it.
+_CANALES_KM_SQL = text(
+    """
+    WITH sel AS (
+        SELECT ST_MakeValid(ST_GeomFromGeoJSON(:geojson)) AS g4326,
+               ST_Transform(ST_MakeValid(ST_GeomFromGeoJSON(:geojson)), 32720) AS g32720
+    )
+    SELECT c.estado AS estado,
+           sum(ST_Length(ST_CollectionExtract(
+               ST_Intersection(ST_Transform(c.geom, 32720), sel.g32720), 2))) / 1000.0 AS km
+    FROM canal_consorcio c, sel
+    WHERE ST_Intersects(c.geom, sel.g4326)
+    GROUP BY c.estado
+    """
+)
+
+#: Road crossings inside the selection, split by the table's own tipo
+#: (``canal`` = canal/road crossing, ``flujo_natural`` = drainage/road).
+_CRUCES_SQL = text(
+    """
+    SELECT tipo, count(*) AS n
+    FROM cruce_camino, (SELECT ST_MakeValid(ST_GeomFromGeoJSON(:geojson)) AS g) sel
+    WHERE ST_Intersects(geometria, sel.g)
+    GROUP BY tipo
+    """
+)
+
+#: Detected conflict points inside the selection, by severidad.
+_CONFLICTOS_SQL = text(
+    """
+    SELECT severidad, count(*) AS n
+    FROM puntos_conflicto, (SELECT ST_MakeValid(ST_GeomFromGeoJSON(:geojson)) AS g) sel
+    WHERE ST_Intersects(geometria, sel.g)
+    GROUP BY severidad
+    """
+)
+
+#: Same clip per zone — the per-subcuenca km breakdown (S10) in one query.
+_CANALES_ZONAS_SQL = text(
+    """
+    WITH z AS (
+        SELECT id AS zona_id,
+               geometria AS g4326,
+               ST_Transform(ST_MakeValid(geometria), 32720) AS g32720
+        FROM zonas_operativas
+        WHERE id = ANY(CAST(:ids AS uuid[]))
+    )
+    SELECT z.zona_id AS zona_id, c.estado AS estado,
+           sum(ST_Length(ST_CollectionExtract(
+               ST_Intersection(ST_Transform(c.geom, 32720), z.g32720), 2))) / 1000.0 AS km
+    FROM canal_consorcio c, z
+    WHERE ST_Intersects(c.geom, z.g4326)
+    GROUP BY z.zona_id, c.estado
+    """
+)
+
+
+def canales_dataset(db: Session, geojson_4326: str, area_ha: float) -> dict[str, Any] | None:
+    """Section 7's dataset: km relevados/propuestos, cruces, conflictos.
+
+    ``None`` → «sin datos» (S7) when the canal tables cannot be read. An
+    EMPTY system (no canals near the selection) is REAL data: km 0,0 with
+    the honest zero rows, never a None.
+    """
+    try:
+        with db.begin_nested():
+            km_filas = db.execute(_CANALES_KM_SQL, {"geojson": geojson_4326}).all()
+    except SQLAlchemyError:
+        logger.warning("informe_area.canales_no_disponible", exc_info=True)
+        return None
+    km_por_estado = {str(f.estado): round(float(f.km or 0.0), 2) for f in km_filas}
+    km_relevados = km_por_estado.get("relevado", 0.0)
+    km_propuestos = km_por_estado.get("propuesto", 0.0)
+    km_total = km_relevados + km_propuestos
+
+    cruces: dict[str, int] = {}
+    conflictos: dict[str, int] = {}
+    try:
+        with db.begin_nested():
+            for fila in db.execute(_CRUCES_SQL, {"geojson": geojson_4326}).all():
+                cruces[str(fila.tipo)] = int(fila.n)
+    except SQLAlchemyError:
+        cruces = {}
+    try:
+        with db.begin_nested():
+            for fila in db.execute(_CONFLICTOS_SQL, {"geojson": geojson_4326}).all():
+                conflictos[str(fila.severidad)] = int(fila.n)
+    except SQLAlchemyError:
+        conflictos = {}
+
+    return {
+        "km_relevados": km_relevados,
+        "km_propuestos": km_propuestos,
+        "km_total": round(km_total, 2),
+        "km_por_mil_ha": round(km_total / (area_ha / 1000.0), 2) if area_ha > 0 else None,
+        "cruces_camino": cruces,
+        "puntos_conflicto": conflictos,
+        "sin_datos": km_total <= 0.0 and not cruces and not conflictos,
+    }
+
+
+def canales_por_zona(
+    db: Session, zonas: list[tuple[uuid.UUID, str, float]]
+) -> dict[str, dict[str, Any]]:
+    """Per-zone km by estado + km per 1.000 ha (S10). Absent = no canal."""
+    ids = [str(zona_id) for zona_id, _n, _ha in zonas]
+    try:
+        with db.begin_nested():
+            filas = db.execute(_CANALES_ZONAS_SQL, {"ids": ids}).all()
+    except SQLAlchemyError:
+        logger.warning("informe_area.canales_zonas_no_disponible", exc_info=True)
+        return {}
+    ha_por_id = {str(zona_id): ha for zona_id, _n, ha in zonas}
+    acumulado: dict[str, dict[str, float]] = {}
+    for fila in filas:
+        clave = str(fila.zona_id)
+        zona = acumulado.setdefault(clave, {"km_relevados": 0.0, "km_propuestos": 0.0})
+        if str(fila.estado) == "relevado":
+            zona["km_relevados"] += float(fila.km or 0.0)
+        elif str(fila.estado) == "propuesto":
+            zona["km_propuestos"] += float(fila.km or 0.0)
+    return {
+        clave: {
+            "km_relevados": round(valores["km_relevados"], 2),
+            "km_propuestos": round(valores["km_propuestos"], 2),
+            "km_total": round(valores["km_relevados"] + valores["km_propuestos"], 2),
+            "km_por_mil_ha": (
+                round(
+                    (valores["km_relevados"] + valores["km_propuestos"])
+                    / (ha_por_id[clave] / 1000.0),
+                    2,
+                )
+                if ha_por_id.get(clave, 0.0) > 0
+                else None
+            ),
+        }
+        for clave, valores in acumulado.items()
+    }

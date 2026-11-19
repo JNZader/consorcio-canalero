@@ -256,6 +256,50 @@ def test_suelos_dataset_tabla_ausente_degrada_a_none(db):
 
 
 @pytest.fixture
+def tablas_canales(factory):
+    """Committed canal_consorcio/red_vial/cruce_camino DDL (the migrations'
+    own constants, guarded with to_regclass — these tables have no ORM
+    model, so ``create_all`` never made them). Dropped at teardown.
+
+    The migrations' ``ADD_ENUM_VALUE`` statements are deliberately NOT
+    applied: the test enum already has every value the seed uses.
+    """
+    import importlib
+
+    m20 = importlib.import_module("app.db.migrations.versions.0020_add_canal_consorcio")
+    m21 = importlib.import_module("app.db.migrations.versions.0021_add_red_vial")
+    m22 = importlib.import_module("app.db.migrations.versions.0022_add_cruce_camino")
+    tablas = ("canal_consorcio", "red_vial", "cruce_camino")
+    # Per-table guard: other suites leave red_vial/cruce_camino behind in
+    # the shared test database while canal_consorcio is absent — an
+    # all-or-nothing check would skip creating what is actually missing.
+    creadas: dict[str, bool] = {}
+    with factory() as db:
+        existentes = {
+            t: db.execute(text("SELECT to_regclass(:t)"), {"t": t}).scalar_one_or_none()
+            for t in tablas
+        }
+        for tabla, statement in (
+            ("canal_consorcio", m20.CREATE_CANAL_CONSORCIO),
+            ("red_vial", m21.CREATE_RED_VIAL),
+            ("cruce_camino", m22.CREATE_CRUCE_CAMINO),
+        ):
+            if existentes.get(tabla) is None:
+                db.execute(text(statement))
+                creadas[tabla] = True
+        if existentes.get("canal_consorcio") is None:
+            db.execute(text(m20.CREATE_CANAL_CONSORCIO_GEOM_INDEX))
+        db.commit()
+    yield
+    # Deliberately NO teardown DROP: the ``db`` fixture's rollback
+    # transaction still holds locks on these tables when this fixture
+    # finalizes (fixture teardown order), and a DROP would block on it
+    # forever. The tables stay EMPTY and committed — every reader treats
+    # an empty canal table as honest zeros, and each run's guard only
+    # creates what is missing.
+
+
+@pytest.fixture
 def tabla_coberturas(factory):
     """Committed ``idecor_cobertura_raster`` DDL; dropped at teardown."""
     from app.db.migrations.versions import zz_idecor_cobertura_raster as migracion
@@ -520,3 +564,181 @@ def test_cobertura_dataset_tabla_ausente_degrada_a_none(db):
         )
         is None
     )
+
+
+# ── S5: canales ─────────────────────────────────────────────────────────────
+
+
+def _longitud_esperada_km(x0: float, x1: float, lat: float) -> float:
+    """Length in EPSG:32720 of the E-W segment clipped to [LON0, LON0+LADO]."""
+    from pyproj import Geod
+
+    dentro = max(x0, LON0), min(x1, LON0 + LADO)
+    if dentro[0] >= dentro[1]:
+        return 0.0
+    geod = Geod(ellps="WGS84")
+    _az, _az2, metros = geod.inv(dentro[0], lat, dentro[1], lat)
+    return metros / 1000.0
+
+
+def _seed_canal_cruces(db) -> None:
+    """Two canals + one road with two crossings + two conflict points.
+
+    * canal ``C-R`` (relevado) crosses the zona E-W through its middle;
+    * canal ``C-P`` (propuesto) only clips the zona's west edge;
+    * cruce tipo ``canal`` and tipo ``flujo_natural`` both land INSIDE the
+      zona (a third canal-crucing lands outside, and must not be counted);
+    * puntos_conflicto: one alta + one baja inside.
+    """
+    lat_medio = LAT0 + LADO / 2
+    wkt_relevado = f"LINESTRING({LON0 - 0.01} {lat_medio}, {LON0 + LADO + 0.01} {lat_medio})"
+    wkt_propuesto = f"LINESTRING({LON0 - 0.01} {LAT0 + 0.005}, {LON0 + LADO * 0.25} {LAT0 + 0.005})"
+    db.execute(
+        text(
+            "INSERT INTO canal_consorcio (id, nombre, estado, prioridad, longitud_m, geom) "
+            "VALUES ('C-R', 'Canal relevado pr4', 'relevado', 'alta', 1000, "
+            "        ST_GeomFromText(:wkt, 4326)), "
+            "       ('C-P', 'Canal propuesto pr4', 'propuesto', 'media', 500, "
+            "        ST_GeomFromText(:wkt2, 4326))"
+        ),
+        {"wkt": wkt_relevado, "wkt2": wkt_propuesto},
+    )
+    # red_vial + geo_jobs exist only to satisfy cruce_camino's FK/CHECKs.
+    db.execute(
+        text(
+            "INSERT INTO red_vial (id, source_id, geom, geom_hash) "
+            "VALUES ('RV-1', 'pr4', ST_GeomFromText(:wkt, 4326), "
+            "        encode(sha256(ST_AsBinary(ST_GeomFromText(:wkt, 4326))), 'hex'))"
+        ),
+        {"wkt": f"LINESTRING({LON0} {lat_medio - 0.01}, {LON0 + LADO} {lat_medio - 0.01})"},
+    )
+    db.execute(
+        text(
+            "INSERT INTO geo_jobs (id, tipo, estado, progreso) "
+            "VALUES (gen_random_uuid(), 'dem_pipeline', 'completed', 100)"
+        )
+    )
+    geo_job_id = db.execute(
+        text("SELECT id FROM geo_jobs WHERE tipo = 'dem_pipeline' ORDER BY created_at DESC LIMIT 1")
+    ).scalar_one()
+    db.execute(
+        text(
+            "INSERT INTO cruce_camino (id, area_id, tramo_ref, tipo, geometria, canal_ref, geo_job_id) "
+            "VALUES (gen_random_uuid(), 'pr4', 'RV-1', 'canal', "
+            "        ST_SetSRID(ST_MakePoint(:cx, :cy), 4326), 'C-R', :job), "
+            "       (gen_random_uuid(), 'pr4', 'RV-1', 'canal', "
+            "        ST_SetSRID(ST_MakePoint(:fx, :fy), 4326), 'C-R', :job)"
+        ),
+        {
+            "cx": LON0 + LADO / 2,
+            "cy": lat_medio,
+            "fx": LON0 + LADO + 0.02,
+            "fy": lat_medio,
+            "job": str(geo_job_id),
+        },
+    )
+    # flujo_natural needs its complete CHECK payload.
+    db.execute(
+        text(
+            "INSERT INTO cruce_camino (id, area_id, tramo_ref, tipo, geometria, "
+            " direccion_flujo_deg, rumbo_camino_deg, lado_cruce, area_aporte_ha, "
+            " orden_ranking, confianza, geo_job_id) "
+            "VALUES (gen_random_uuid(), 'pr4', 'RV-1', 'flujo_natural', "
+            "        ST_SetSRID(ST_MakePoint(:px, :py), 4326), 90.0, 45.0, 'N', 12.5, 1, 'alta', :job)"
+        ),
+        {"px": LON0 + LADO / 2, "py": lat_medio + 0.005, "job": str(geo_job_id)},
+    )
+    db.execute(
+        text(
+            "INSERT INTO puntos_conflicto (id, tipo, severidad, descripcion, acumulacion_valor, pendiente_valor, geometria) "
+            "VALUES (gen_random_uuid(), 'canal_camino', 'alta', 'pr4 alta', 5000.0, 0.2, ST_SetSRID(ST_MakePoint(:ax, :ay), 4326)), "
+            "       (gen_random_uuid(), 'canal_camino', 'baja', 'pr4 baja', 100.0, 1.5, ST_SetSRID(ST_MakePoint(:bx, :by), 4326))"
+        ),
+        {"ax": LON0 + 0.005, "ay": LAT0 + 0.005, "bx": LON0 + 0.01, "by": LAT0 + 0.01},
+    )
+
+
+def _limpiar_canal_cruces(db) -> None:
+    db.execute(text("DELETE FROM cruce_camino WHERE area_id = 'pr4'"))
+    db.execute(
+        text(
+            "DELETE FROM geo_jobs WHERE id IN (SELECT geo_job_id FROM cruce_camino WHERE area_id = 'pr4')"
+        )
+    )
+    db.execute(text("DELETE FROM red_vial WHERE id = 'RV-1'"))
+    db.execute(text("DELETE FROM canal_consorcio WHERE id IN ('C-R', 'C-P')"))
+    db.execute(text("DELETE FROM puntos_conflicto WHERE descripcion LIKE 'pr4 %'"))
+
+
+def test_canales_dataset_km_clip_cruces_y_conflictos(factory, db, tablas_canales):
+    """S5: km clip por el área (relevado E-W completo, propuesto parcial),
+    cruces con caminos por tipo y puntos de conflicto por severidad."""
+    with factory() as db_seed:
+        zona_id = _seed_zona(db_seed, "pr4-canales", "cuenca-pr4", LON0, LAT0)
+        _seed_canal_cruces(db_seed)
+        db_seed.commit()
+    try:
+        with factory() as db_z:
+            geojson = db_z.execute(
+                text("SELECT ST_AsGeoJSON(geometria) FROM zonas_operativas WHERE id = :id"),
+                {"id": str(zona_id)},
+            ).scalar_one()
+            area_ha = db_z.execute(
+                text(
+                    "SELECT ST_Area(ST_Transform(geometria, 32720)) / 10000.0 "
+                    "FROM zonas_operativas WHERE id = :id"
+                ),
+                {"id": str(zona_id)},
+            ).scalar_one()
+
+        dataset = service.canales_dataset(db, geojson, float(area_ha))
+        assert dataset is not None
+        # The relevado canal spans the whole zona E-W: its clipped km is
+        # the zona's own width at that latitude (geodesic reference).
+        esperado = _longitud_esperada_km(LON0 - 0.01, LON0 + LADO + 0.01, LAT0 + LADO / 2)
+        assert dataset["km_relevados"] == pytest.approx(esperado, rel=0.01)
+        # The propuesto canal only enters a quarter of the zona.
+        esperado_p = _longitud_esperada_km(LON0 - 0.01, LON0 + LADO * 0.25, LAT0 + 0.005)
+        assert dataset["km_propuestos"] == pytest.approx(esperado_p, rel=0.01)
+        assert dataset["km_total"] == pytest.approx(esperado + esperado_p, rel=0.01)
+        assert dataset["km_por_mil_ha"] is not None and dataset["km_por_mil_ha"] > 0
+        # Cruces: 1 canal (the second one lands OUTSIDE and must not count)
+        # + 1 flujo_natural. Conflictos: alta 1, baja 1.
+        assert dataset["cruces_camino"] == {"canal": 1, "flujo_natural": 1}
+        assert dataset["puntos_conflicto"] == {"alta": 1, "baja": 1}
+        assert dataset["sin_datos"] is False
+
+        por_zona = service.canales_por_zona(db, [(zona_id, "pr4-canales", float(area_ha))])
+        assert por_zona[str(zona_id)]["km_relevados"] == pytest.approx(esperado, rel=0.01)
+        assert por_zona[str(zona_id)]["km_propuestos"] == pytest.approx(esperado_p, rel=0.01)
+    finally:
+        with factory() as db_limpieza:
+            _limpiar_canal_cruces(db_limpieza)
+            db_limpieza.execute(
+                text("DELETE FROM zonas_operativas WHERE id = :id"), {"id": str(zona_id)}
+            )
+            db_limpieza.commit()
+
+
+def test_canales_dataset_vacio_es_cero_real_no_error(factory, db, tablas_canales):
+    """S5/S7: an area with no canals reports honest zeros, not sin datos."""
+    with factory() as db_seed:
+        zona_id = _seed_zona(db_seed, "pr4-sincanal", "cuenca-pr4", LON0 + 0.3, LAT0)
+        db_seed.commit()
+    try:
+        with factory() as db_z:
+            geojson = db_z.execute(
+                text("SELECT ST_AsGeoJSON(geometria) FROM zonas_operativas WHERE id = :id"),
+                {"id": str(zona_id)},
+            ).scalar_one()
+        dataset = service.canales_dataset(db, geojson, 1000.0)
+        assert dataset is not None
+        assert dataset["km_total"] == 0.0
+        assert dataset["cruces_camino"] == {}
+        assert dataset["sin_datos"] is True
+    finally:
+        with factory() as db_limpieza:
+            db_limpieza.execute(
+                text("DELETE FROM zonas_operativas WHERE id = :id"), {"id": str(zona_id)}
+            )
+            db_limpieza.commit()

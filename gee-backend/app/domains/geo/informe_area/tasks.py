@@ -309,6 +309,13 @@ def generar_informe_area(informe_id: str) -> dict:
                 cobertura["por_zona"] = service.cobertura_por_zona(
                     db, [(z.zona_id, z.nombre, z.g4326) for z in zonas]
                 )
+            # Canales (S5): km relevados/propuestos clip por el área +
+            # cruces y conflictos. None → «sin datos»; ceros son reales.
+            canales = service.canales_dataset(db, seleccion.geojson, seleccion.area_ha)
+            if canales is not None:
+                canales["por_zona"] = service.canales_por_zona(
+                    db, [(z.zona_id, z.nombre, z.ha) for z in zonas]
+                )
             lluvia = ficha_service._precipitacion_dataset(  # noqa: SLF001
                 db, union_geom, area_m2
             ).model_dump()
@@ -366,6 +373,7 @@ def generar_informe_area(informe_id: str) -> dict:
                 "drenaje": drenaje,
                 "suelos": suelos,
                 "cobertura": cobertura,
+                "canales": canales,
                 "lluvia": lluvia,
                 "desglose": desglose,
                 "umbral_alto_critico": umbral,
@@ -416,6 +424,18 @@ def generar_informe_area(informe_id: str) -> dict:
                         "recurrencia": cobertura.get("recurrencia"),
                     }
                     if cobertura
+                    else None
+                ),
+                "canales_resumen": (
+                    {
+                        "km_relevados": canales.get("km_relevados"),
+                        "km_propuestos": canales.get("km_propuestos"),
+                        "km_total": canales.get("km_total"),
+                        "km_por_mil_ha": canales.get("km_por_mil_ha"),
+                        "cruces_camino": canales.get("cruces_camino"),
+                        "puntos_conflicto": canales.get("puntos_conflicto"),
+                    }
+                    if canales
                     else None
                 ),
                 # GEE-dependent pieces (Sentinel-2 miniature) land later;

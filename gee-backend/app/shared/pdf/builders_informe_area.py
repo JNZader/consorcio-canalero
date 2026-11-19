@@ -16,8 +16,9 @@ Section order is FIXED (S6) and the tests assert it in extracted text:
 4. Suelos (carta IDECOR 1:50.000 — PR 4: unidades, series, IP, agua útil)
 5. Cobertura y cultivos (IDECOR uso 2024/2025 + estivales — PR 4, S4)
 6. Lluvia (normales mensuales en barras — ReportLab primitives, no chart lib)
-7. Consideraciones (cobertura por capa, límites, descargo)
-8. Fuentes (capa · fecha · resolución · origen)
+7. Canales (km relevados/propuestos clip por el área, cruces, conflictos — PR 4, S5)
+8. Consideraciones (cobertura por capa, límites, descargo)
+9. Fuentes (capa · fecha · resolución · origen)
 
 Per-subcuenca tables (S6): inline and complete when there are ≤ 8 subcuencas;
 beyond that each section shows a resumen line and the complete table at the
@@ -894,12 +895,126 @@ def _seccion_lluvia(
     return flowables
 
 
+def _seccion_canales(
+    datos: dict[str, Any],
+    branding: BrandingInfo,
+    estilos: dict[str, Any],
+) -> list[Flowable]:
+    flowables: list[Flowable] = [Paragraph("7. Canales", estilos["subtitle"])]
+
+    dataset = datos.get("canales")
+    if not dataset:
+        flowables.append(
+            Paragraph(
+                "Los datos de canales no están disponibles en este despliegue.",
+                estilos["body"],
+            )
+        )
+        flowables.append(PageBreak())
+        return flowables
+
+    km_mil = dataset.get("km_por_mil_ha")
+    filas_kpi = [
+        ("Canales relevados en el área", f"{fmt_num(dataset.get('km_relevados'), 2)} km"),
+        ("Canales propuestos en el área", f"{fmt_num(dataset.get('km_propuestos'), 2)} km"),
+        ("Total de canales", f"{fmt_num(dataset.get('km_total'), 2)} km"),
+        (
+            "Densidad de canales",
+            f"{fmt_num(km_mil, 2)} km cada 1.000 ha" if km_mil is not None else "—",
+        ),
+    ]
+    flowables.append(build_info_table(filas_kpi, branding, col_widths=(8.5 * cm, 8.5 * cm)))
+    flowables.append(Spacer(1, 3 * mm))
+
+    cruces = dataset.get("cruces_camino") or {}
+    conflictos = dataset.get("puntos_conflicto") or {}
+    if cruces or conflictos:
+        flowables.append(Paragraph("Cruces y conflictos en el área", estilos["body"]))
+        flowables.append(Spacer(1, 1 * mm))
+        filas_cruces = [
+            ("Cruces canal / camino", str(cruces.get("canal", 0))),
+            ("Cruces drenaje natural / camino", str(cruces.get("flujo_natural", 0))),
+            ("Puntos de conflicto (severidad alta)", str(conflictos.get("alta", 0))),
+            ("Puntos de conflicto (severidad media)", str(conflictos.get("media", 0))),
+            ("Puntos de conflicto (severidad baja)", str(conflictos.get("baja", 0))),
+        ]
+        flowables.append(build_info_table(filas_cruces, branding, col_widths=(11 * cm, 6 * cm)))
+    else:
+        flowables.append(
+            Paragraph(
+                "Sin cruces con caminos ni puntos de conflicto registrados dentro del área.",
+                estilos["body"],
+            )
+        )
+    flowables.append(Spacer(1, 3 * mm))
+
+    if dataset.get("sin_datos"):
+        flowables.append(
+            Paragraph(
+                "El área no intersecta canales relevados ni propuestos del "
+                "consorcio; las cifras anteriores son ceros reales, no falta de datos.",
+                estilos["small"],
+            )
+        )
+        flowables.append(Spacer(1, 2 * mm))
+    flowables.append(
+        Paragraph(
+            "Longitudes medidas sobre el trazado clip por el área (EPSG:32720). "
+            "Fuente: relevamiento del consorcio (canal_consorcio) y cruce_camino / "
+            "puntos_conflicto del pipeline.",
+            estilos["small"],
+        )
+    )
+    flowables.append(Spacer(1, 3 * mm))
+
+    por_zona = dataset.get("por_zona") or {}
+    desglose = datos.get("desglose")
+    if desglose and por_zona:
+        nota = _nota_resumen_zonas(desglose, estilos)
+        if nota is not None:
+            flowables.append(nota)
+            flowables.append(Spacer(1, 1 * mm))
+        flowables.append(Paragraph("Desglose por subcuenca", estilos["body"]))
+        flowables.append(Spacer(1, 1 * mm))
+        filas_zonas: list[list[str]] = []
+        for fila in _top_zonas(desglose):
+            extra = por_zona.get(str(fila.get("zona_id")) or "")
+            if not extra:
+                continue
+            filas_zonas.append(
+                [
+                    str(fila.get("nombre") or "—"),
+                    fmt_num(extra.get("km_relevados"), 2),
+                    fmt_num(extra.get("km_propuestos"), 2),
+                    fmt_num(extra.get("km_total"), 2),
+                    fmt_num(extra.get("km_por_mil_ha"), 2)
+                    if extra.get("km_por_mil_ha") is not None
+                    else "—",
+                ]
+            )
+        flowables.append(
+            build_data_table(
+                [
+                    "Subcuenca",
+                    "Relevados (km)",
+                    "Propuestos (km)",
+                    "Total (km)",
+                    "km cada 1.000 ha",
+                ],
+                filas_zonas,
+                branding,
+            )
+        )
+    flowables.append(PageBreak())
+    return flowables
+
+
 def _seccion_consideraciones(
     datos: dict[str, Any],
     branding: BrandingInfo,
     estilos: dict[str, Any],
 ) -> list[Flowable]:
-    flowables: list[Flowable] = [Paragraph("7. Consideraciones", estilos["subtitle"])]
+    flowables: list[Flowable] = [Paragraph("8. Consideraciones", estilos["subtitle"])]
 
     cobertura_labels = [
         ("Riesgo hídrico", datos.get("riesgo")),
@@ -961,7 +1076,7 @@ def _seccion_fuentes(
     branding: BrandingInfo,
     estilos: dict[str, Any],
 ) -> list[Flowable]:
-    flowables: list[Flowable] = [Paragraph("8. Fuentes", estilos["subtitle"])]
+    flowables: list[Flowable] = [Paragraph("9. Fuentes", estilos["subtitle"])]
     fuentes = datos.get("fuentes") or []
     if not fuentes:
         flowables.append(Paragraph("Sin capas registradas para este informe.", estilos["body"]))
@@ -1052,6 +1167,7 @@ def build_informe_area_pdf(
     story.extend(_seccion_suelos(datos, branding, estilos))
     story.extend(_seccion_cobertura(datos, branding, estilos))
     story.extend(_seccion_lluvia(datos, branding, estilos))
+    story.extend(_seccion_canales(datos, branding, estilos))
     story.extend(_seccion_consideraciones(datos, branding, estilos))
     story.extend(_seccion_fuentes(datos, branding, estilos))
 
