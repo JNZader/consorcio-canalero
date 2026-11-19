@@ -92,3 +92,22 @@ pytest `tests/new/` (PostGIS real), Vitest, Playwright. Base: PR 1 mergeado
 - L1 (2026-11-18, Javier): "mergeado...prosigue" — PR 2 tras #743.
 - L2 (2026-11-18, Javier): "dale" — aprueba informes privados por usuario
   (admin ve todos) y vencimiento 90 días con limpieza diaria.
+- L3 (2026-11-19): T1 DONE (f9d227ea/e0697b7c/76da291f/127e879a + parche
+  parent b7fe001c celery include+beat). Suite 4.946 (+10 exactos). Caché
+  sha256 en PostgreSQL puro; suelos_catastro sin señal de versión → fuera
+  de la clave, documentado. Deviation aceptada: enum drift fix en
+  service.py+test_geo_bugfixes (precedente 0022/0023).
+- L4 (2026-11-19): T2 DONE (5bbc2125/068871bc) — mapas Pillow + 7 secciones,
+  PDF bytea deferred (99 KiB vs 5MB; sweep atómico), task 0,22-0,47 s,
+  cache-hit 25 ms. KPIs compartidos task/PDF (calcular_kpis) para que no
+  diverjan. 13/13 gatekeeper re-run.
+- L5 (2026-11-19): T3 DONE (c01280e6) — informesArea.ts separado (rutas
+  autenticadas), backoff 5/15/30 s, MisInformes preserva el flujo.
+  129/129; cobertura sobre los 4 pisos (78,81/73,62/77,41/80,39).
+- L6 (2026-11-19): T4 DONE (6541520b) — e2e 7 escenarios (descarga real con
+  filename RFC 5987, desde_cache sin sondeo probado por conteo de GETs,
+  failed+reintento, Mis informes) + a11y 3 estados. Parent re-run 7/7 con
+  E2E_APP_URL + dev server (los skips previos eran el modo blind del
+  strictGate). Specs enrolados en tsconfig.tests.json (LI3A-004) por el
+  parent. Stack docker local no viable (imágenes 4 meses) → S9 de caja
+  queda para el deploy; citados números T2. PR listo.

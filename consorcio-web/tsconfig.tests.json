@@ -98,6 +98,13 @@
     "tests/unit/conocimientoApi.test.ts",
     "tests/hooks/useConocimientoQA.test.tsx",
     "tests/unit/ConocimientoPanel.test.tsx",
-    "tests/components/conocimientoRouteWiring.test.tsx"
+    "tests/components/conocimientoRouteWiring.test.tsx",
+    // Informe de área (PR 1/PR 2): both Playwright specs build the SAME wire
+    // shapes as the informesArea/ficha clients and Playwright's transform
+    // never type-checks them — enrolling per the rule above (the writer
+    // verified them type-clean via an equivalent strict project, which caught
+    // 3 real errors the runner never sees).
+    "tests/e2e/informe-area.spec.ts",
+    "tests/accessibility/informe-area-a11y.spec.ts"
   ]
 }
