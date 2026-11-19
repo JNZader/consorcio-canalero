@@ -59,6 +59,10 @@ class TestTipoGeoJobEnum:
             # with the same permanent enum residue: the candidate table is keyed
             # by the run that produced it, so the run needs its own job type.
             "tramo_classification",
+            # Informe de área PR 2 (T1). Added by ``zz_informes_area``; nothing
+            # writes it to ``geo_jobs`` — the informe tracks itself in
+            # ``informes_area`` — but the value names the runs on the geo queue.
+            "informe_area",
         }
         actual = {member.value for member in TipoGeoJob}
         assert expected == actual

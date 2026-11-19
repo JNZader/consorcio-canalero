@@ -54,6 +54,12 @@ def _get_task_key_map() -> Mapping[TipoGeoJob, CeleryTaskKey]:
         TipoGeoJob.COMPOSITE_ANALYSIS: CeleryTaskKey.COMPOSITE_ANALYSIS,
         TipoGeoJob.ROAD_FLOW_CROSSINGS: CeleryTaskKey.COMPUTE_ROAD_FLOW_CROSSINGS,
         TipoGeoJob.TRAMO_CLASSIFICATION: CeleryTaskKey.CLASSIFY_ROAD_SEGMENTS,
+        # Informe de área PR 2: dispatched by its OWN service
+        # (``informe_area.service.crear_informe`` — the informe tracks itself in
+        # ``informes_area``, not ``geo_jobs``), so nothing routes through
+        # ``dispatch_job`` with this tipo today; the entry exists to keep the
+        # every-tipo-resolves-to-an-allowlisted-key invariant true.
+        TipoGeoJob.INFORME_AREA: CeleryTaskKey.INFORME_AREA,
     }
 
 
