@@ -101,6 +101,13 @@ class TipoGeoJob(str, enum.Enum):
     # the run that produced it, so the run needs a job row of its own, and a
     # classification labelled ``dem_pipeline`` would misname what actually ran.
     TRAMO_CLASSIFICATION = "tramo_classification"
+    # Informe de área PR 2 (T1): the background report tracks its own rows in
+    # ``informes_area`` (private per user, S11), so nothing writes this value
+    # into ``geo_jobs`` yet — the enum value exists so a future operator-facing
+    # job listing can name the informe runs that DID execute on the geo queue.
+    # Added to the PostgreSQL type by ``zz_informes_area`` with the same
+    # permanent, harmless ``IF NOT EXISTS`` residue as its two predecessors.
+    INFORME_AREA = "informe_area"
 
 
 class TipoAnalisisGee(str, enum.Enum):

@@ -79,6 +79,7 @@ class CeleryTaskKey(str, Enum):
     COMPUTE_ROAD_FLOW_CROSSINGS = "geo.intelligence.compute_road_flow_crossings"
     CLASSIFY_ROAD_SEGMENTS = "geo.relevamiento.classify_road_segments"
     NOTIFY_DENUNCIA_STATUS = "denuncias.notify_status"
+    INFORME_AREA = "geo.informe_area.generar"
 
 
 class CeleryTask(Protocol):
@@ -211,6 +212,7 @@ def get_celery_task_registry() -> TaskRegistry:
     )
     from app.domains.geo.intelligence.tasks import compute_road_flow_crossings
     from app.domains.denuncias.tasks import notify_denuncia_status
+    from app.domains.geo.informe_area.tasks import generar_informe_area
     from app.domains.geo.relevamiento.tasks import classify_road_segments
     from app.domains.geo.tasks import (
         classify_terrain,
@@ -246,6 +248,7 @@ def get_celery_task_registry() -> TaskRegistry:
         CeleryTaskKey.COMPUTE_ROAD_FLOW_CROSSINGS: compute_road_flow_crossings,
         CeleryTaskKey.CLASSIFY_ROAD_SEGMENTS: classify_road_segments,
         CeleryTaskKey.NOTIFY_DENUNCIA_STATUS: notify_denuncia_status,
+        CeleryTaskKey.INFORME_AREA: generar_informe_area,
     }
     for task_key, task in registry.items():
         if task.name != task_key.value:

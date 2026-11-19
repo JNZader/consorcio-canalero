@@ -108,9 +108,9 @@ describe('VistaPrevia — avisos', () => {
     });
 
     const alerta = screen.getByTestId('informe-area-preview-cap');
-    expect(alerta).toHaveTextContent('Selección muy grande');
+    expect(alerta).toHaveTextContent('Selección grande');
     expect(alerta).toHaveTextContent('35.000 ha');
-    expect(alerta).toHaveTextContent('el informe completo llega con el PR 2');
+    expect(alerta).toHaveTextContent('se genera en segundo plano');
   });
 
   it('modo trabajo muestra la misma alerta aunque aviso_cap llegue en false', () => {

@@ -450,6 +450,42 @@ class Settings(BaseSettings):
     # one value.
     ficha_precip_area_id: str = "consorcio"
 
+    # ── Informe de área (POST /api/v2/geo/informes-area, PR 2) ────────────
+    # Private-per-user background report (S11). Unlike the ficha, the compute
+    # runs on the geo worker, so these caps bound WORKER cost, not request
+    # latency — they are the S5 values, documented for the PR.
+    # 150 000 ha = the whole ~88 000 ha consorcio with headroom (the plan's
+    # "el doble de las 4 cuencas"). The synchronous ficha caps zonas at 35 000
+    # precisely because a request thread pays that cost; a queued job can
+    # afford the full territory, which is S1's whole point.
+    informe_area_max_ha: float = 150_000.0
+    # 120 subcuencas: double PR 1's 60-zona synchronous bound. The stored
+    # catalogue runs ~60 zonas across 4 cuencas, so 120 admits every
+    # whole-consorcio selection without making the union query unbounded.
+    informe_area_max_zonas: int = 120
+    # 20 000 vertices AFTER the 20 m simplify (S5: "después de simplificar").
+    # The dissolved union of 120 dendritic sub-basins carries the SUM of their
+    # perimeters; PR 1 allowed 12 000 raw for the synchronous path, and the
+    # background job doubles it for the full-territory selection T2 renders.
+    informe_area_max_vertices: int = 20_000
+    # Máx 3 trabajos en curso por usuario (S5). A user with 3 queued/running
+    # informes gets a 429 until one finishes — the bound that keeps one
+    # operator from filling the single-concurrency geo worker's queue.
+    informe_area_max_en_curso: int = 3
+    # Rate limit on CREATION only (polling reads stay free), keyed per USER —
+    # the route is authenticated. 10/hour: a legitimate operator preparing a
+    # report re-runs a handful of selections; each run is a queued geo job.
+    informe_area_rate_limit_requests: int = 10
+    informe_area_rate_limit_window: int = 3600
+    # Template version (S4): part of the cache key. Bump it when the PDF
+    # layout/sections change (T2+) so completed informes regenerate instead
+    # of serving a stale layout — same mechanism a layer refresh gets for
+    # free through geo_layers.created_at.
+    informe_area_version_plantilla: str = "1"
+    # Retention (S11, decision L2): an informe expires 90 days after creation;
+    # the daily beat sweep deletes rows past their ``vence_at``.
+    informe_area_retencion_dias: int = 90
+
     # Error tracking (Sentry) — wired in app/main.py only when sentry_dsn
     # is non-empty. Leaving it empty silently disables the integration
     # (zero overhead, no network), which is the right default for dev

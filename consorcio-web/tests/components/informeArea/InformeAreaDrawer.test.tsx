@@ -1,14 +1,14 @@
 /**
  * InformeAreaDrawer.test.tsx — the three-step informe de área flow.
  *
- * The api module, the basins hook, the history-close hook and the workspace
+ * The api modules, the basins hook, the history-close hook and the workspace
  * breakpoint are mocked at module level; everything else (reducer, layer
- * helpers, reused ficha components) runs for real. Behavior-first: stepper
- * gating, the map-click bridge through the real wiring, the Elegir list, the
- * cap alert at 60 zonas, the Revisar preview (online vs trabajo), the Generar
- * happy path through the reused dataset components, and the error surface
- * (503 disabled copy, retryable 429 with Reintentar, terminal statuses
- * without retry).
+ * helpers) runs for real. Behavior-first: stepper gating, the map-click
+ * bridge through the real wiring, the Elegir list, the cap alert at 60 zonas,
+ * the Revisar preview (online vs trabajo — PR 2: trabajo no longer blocks),
+ * and the PR 2 Generar step (nombre + nivel de detalle + create mutation,
+ * inline progress, desde_cache instant download, cap/ceiling error surfaces)
+ * plus the «Mis informes» panel reachable from the title.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -32,6 +32,24 @@ const elevado = vi.hoisted(() => {
     ) {
       super(detail);
       this.name = 'FichaApiError';
+      this.status = status;
+      this.codigo = codigo;
+      this.extra = extra;
+    }
+  }
+
+  class InformesAreaApiError extends Error {
+    readonly status: number;
+    readonly codigo: string;
+    readonly extra: Record<string, unknown>;
+    constructor(
+      status: number,
+      codigo: string,
+      detail: string,
+      extra: Record<string, unknown> = {}
+    ) {
+      super(detail);
+      this.name = 'InformesAreaApiError';
       this.status = status;
       this.codigo = codigo;
       this.extra = extra;
@@ -69,8 +87,12 @@ const elevado = vi.hoisted(() => {
 
   return {
     FichaApiError,
+    InformesAreaApiError,
     fetchZonasPreview: vi.fn(),
     fetchInformeZonas: vi.fn(),
+    crearInformeArea: vi.fn(),
+    listarInformesArea: vi.fn(),
+    descargarInformeAreaPdf: vi.fn(),
     useMapWorkspaceDesktop: vi.fn(() => true),
     basins,
   };
@@ -80,6 +102,29 @@ vi.mock('../../../src/lib/api/ficha', () => ({
   FichaApiError: elevado.FichaApiError,
   fetchZonasPreview: elevado.fetchZonasPreview,
   fetchInformeZonas: elevado.fetchInformeZonas,
+}));
+
+vi.mock('../../../src/lib/api/informesArea', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../src/lib/api/informesArea')>();
+  return {
+    ...actual,
+    InformesAreaApiError: elevado.InformesAreaApiError,
+    crearInformeArea: elevado.crearInformeArea,
+    listarInformesArea: elevado.listarInformesArea,
+    descargarInformeAreaPdf: elevado.descargarInformeAreaPdf,
+  };
+});
+
+const notificaciones = vi.hoisted(() => ({
+  showInfo: vi.fn(),
+  showSuccess: vi.fn(),
+  showError: vi.fn(),
+}));
+
+vi.mock('../../../src/lib/notifications', () => ({
+  showInfo: notificaciones.showInfo,
+  showSuccess: notificaciones.showSuccess,
+  showError: notificaciones.showError,
 }));
 
 vi.mock('../../../src/hooks/useBasins', () => ({
@@ -98,15 +143,18 @@ import { informeAreaPicked } from '../../../src/components/map2d/informeArea/inf
 import { InformeAreaDrawer } from '../../../src/components/map2d/informeArea/InformeAreaDrawer';
 import { LIMITE_ZONAS } from '../../../src/components/map2d/informeArea/useSeleccionArea';
 
-function wrapper({ children }: { children: ReactNode }) {
+function renderDrawer(abierto = true) {
+  const onClose = vi.fn();
   const cliente = new QueryClient({
-    defaultOptions: { queries: { retryDelay: 0 } },
+    defaultOptions: { queries: { retry: false, retryDelay: 0 } },
   });
-  return (
+  const envoltura = ({ children }: { children: ReactNode }) => (
     <MantineProvider env="test">
       <QueryClientProvider client={cliente}>{children}</QueryClientProvider>
     </MantineProvider>
   );
+  render(<InformeAreaDrawer opened={abierto} onClose={onClose} />, { wrapper: envoltura });
+  return { onClose, cliente };
 }
 
 const PREVIEW_ONLINE = {
@@ -118,61 +166,22 @@ const PREVIEW_ONLINE = {
   aviso_cap: false,
 } as const;
 
-const FICHA = {
-  tipo: 'zonas',
-  area_ha: 600,
-  suelos: {
-    cobertura: 'total',
-    clases: [{ clase: 'II', ha: 600, pct: 100 }],
-    pixel_count: 6000,
-    low_confidence: false,
-    cobertura_ratio: 1,
-  },
-  flood_risk: {
-    cobertura: 'total',
-    clases: [{ clase: 'alto', ha: 600, pct: 100 }],
-    pixel_count: 6000,
-    low_confidence: false,
-    cobertura_ratio: 1,
-  },
-  drainage_need: {
-    cobertura: 'total',
-    clases: [{ clase: 'medio', ha: 600, pct: 100 }],
-    pixel_count: 6000,
-    low_confidence: false,
-    cobertura_ratio: 1,
-  },
-  precipitacion_mensual: {
-    cobertura: 'total',
-    low_confidence: false,
-    pixel_count: 6000,
-    cobertura_ratio: 1,
-    unidad: 'mm',
-    fuente: 'CHIRPS',
-    periodo: '1991-2020',
-    serie: [
-      { mes: 1, mm: 120 },
-      { mes: 2, mm: 95 },
-    ],
-    anual_mm: 900,
-  },
-  desglose_por_subcuenca: [
-    {
-      zona_id: 'z-a1',
-      nombre: 'Alta 1',
-      ha: 600,
-      pct_alto_critico: 12.5,
-      clase_suelo_dominante: 'IIe',
-      lluvia_anual_mm: 850,
-    },
-  ],
-  umbral_alto_critico: 'legacy70',
-} as const;
-
-function renderDrawer(abierto = true) {
-  const onClose = vi.fn();
-  render(<InformeAreaDrawer opened={abierto} onClose={onClose} />, { wrapper });
-  return { onClose };
+/** Un informe row del wire (InformesAreaItem) con overrides por test. */
+function filaInforme(parciales: Partial<import('../../../src/lib/api/informesArea').InformeAreaItem> = {}) {
+  return {
+    id: 'inf-1',
+    nombre: 'Cuenca norte',
+    estado: 'pending' as const,
+    progreso: 0,
+    desde_cache: false,
+    area_ha: null,
+    cantidad_zonas: 0,
+    error: null,
+    vence_at: '2027-02-17T12:00:00Z',
+    created_at: '2026-11-18T12:00:00Z',
+    updated_at: '2026-11-18T12:00:00Z',
+    ...parciales,
+  };
 }
 
 /** Un pick de mapa pasado por el puente real del módulo. */
@@ -188,6 +197,12 @@ beforeEach(() => {
   elevado.fetchZonasPreview.mockReset();
   elevado.fetchInformeZonas.mockReset();
   elevado.useMapWorkspaceDesktop.mockReset().mockReturnValue(true);
+  elevado.crearInformeArea.mockReset();
+  elevado.descargarInformeAreaPdf.mockReset().mockResolvedValue(undefined);
+  elevado.listarInformesArea.mockReset().mockResolvedValue({ items: [], total: 0 });
+  notificaciones.showInfo.mockReset();
+  notificaciones.showSuccess.mockReset();
+  notificaciones.showError.mockReset();
 });
 
 afterEach(() => {
@@ -313,7 +328,7 @@ describe('InformeAreaDrawer — paso Revisar', () => {
     expect(screen.getByRole('button', { name: 'Generar informe' })).toBeEnabled();
   });
 
-  it('modo trabajo bloquea Generar con el aviso del tope de 35.000 ha', async () => {
+  it('modo trabajo ya no bloquea: el aviso anuncia el camino en segundo plano (PR 2)', async () => {
     const user = userEvent.setup();
     elevado.fetchZonasPreview.mockResolvedValue({
       ...PREVIEW_ONLINE,
@@ -326,8 +341,10 @@ describe('InformeAreaDrawer — paso Revisar', () => {
     await user.click(screen.getByRole('button', { name: 'Revisar selección' }));
 
     expect(await screen.findByTestId('informe-area-preview-cap')).toHaveTextContent('35.000 ha');
-    expect(screen.getByRole('button', { name: 'Generar informe' })).toBeDisabled();
-    expect(elevado.fetchInformeZonas).not.toHaveBeenCalled();
+    expect(screen.getByTestId('informe-area-preview-cap')).toHaveTextContent(
+      'se genera en segundo plano'
+    );
+    expect(screen.getByRole('button', { name: 'Generar informe' })).toBeEnabled();
   });
 
   it('un 503 funcionalidad_no_disponible muestra la copia de entorno deshabilitado', async () => {
@@ -348,7 +365,7 @@ describe('InformeAreaDrawer — paso Revisar', () => {
   });
 });
 
-describe('InformeAreaDrawer — paso Generar', () => {
+describe('InformeAreaDrawer — paso Generar (PR 2: lanzar el informe en segundo plano)', () => {
   async function llegarAGenerar(user: ReturnType<typeof userEvent.setup>) {
     elevado.fetchZonasPreview.mockResolvedValue({ ...PREVIEW_ONLINE });
     renderDrawer();
@@ -356,99 +373,243 @@ describe('InformeAreaDrawer — paso Generar', () => {
     await user.click(screen.getByRole('button', { name: 'Revisar selección' }));
     await screen.findByTestId('informe-area-preview');
     await user.click(screen.getByRole('button', { name: 'Generar informe' }));
+    await screen.findByTestId('informe-area-nombre');
   }
 
-  it('genera el informe con los componentes de ficha reutilizados y el desglose', async () => {
+  it('requiere nombre: crear queda deshabilitado hasta escribirlo', async () => {
     const user = userEvent.setup();
-    elevado.fetchInformeZonas.mockResolvedValue({ ...FICHA });
     await llegarAGenerar(user);
 
-    expect(await screen.findByTestId('informe-area-informe-total')).toHaveTextContent(
-      '1 subcuenca · 600.0 ha'
+    expect(screen.getByTestId('informe-area-crear')).toBeDisabled();
+
+    await user.type(screen.getByTestId('informe-area-nombre'), 'Cuenca norte');
+    expect(screen.getByTestId('informe-area-crear')).toBeEnabled();
+    expect(elevado.crearInformeArea).not.toHaveBeenCalled();
+  });
+
+  it('crea con nombre, selección y desglose por defecto; 202 pendiente muestra el progreso inline', async () => {
+    const user = userEvent.setup();
+    elevado.crearInformeArea.mockResolvedValue(filaInforme({ estado: 'pending', progreso: 0 }));
+    elevado.listarInformesArea.mockResolvedValue({
+      items: [filaInforme({ estado: 'running', progreso: 40 })],
+      total: 1,
+    });
+    await llegarAGenerar(user);
+
+    await user.type(screen.getByTestId('informe-area-nombre'), 'Cuenca norte');
+    await user.click(screen.getByTestId('informe-area-crear'));
+
+    await waitFor(() =>
+      expect(elevado.crearInformeArea).toHaveBeenCalledWith({
+        nombre: 'Cuenca norte',
+        zona_ids: ['z-a1'],
+        desglose: true,
+      })
     );
-    expect(elevado.fetchInformeZonas.mock.calls[0][0]).toEqual(['z-a1']);
-
-    // FichaResumen (reutilizado) + coberturas por capa + tabs de dataset.
-    expect(screen.getByText(/Superficie analizada:/)).toBeInTheDocument();
-    expect(screen.getByText('Riesgo de inundación')).toBeInTheDocument();
-    expect(screen.getByText('Necesidad de drenaje')).toBeInTheDocument();
-    expect(screen.getAllByText('100.0%').length).toBeGreaterThanOrEqual(3);
-
-    // Desglose por subcuenca con la nota del umbral legacy70.
-    const desglose = screen.getByTestId('informe-area-desglose');
-    expect(within(desglose).getByText('Alta 1')).toBeInTheDocument();
-    expect(within(desglose).getByText(/usa el umbral histórico guardado/)).toBeInTheDocument();
-
-    // Cambiar de pestaña de dataset renderiza los bins de riesgo.
-    await user.click(screen.getByRole('radio', { name: 'Riesgo' }));
-    expect(screen.getByTestId('informe-area-flood-risk')).toBeInTheDocument();
+    // The list row (polled) wins over the create snapshot → 40 % inline.
+    const progreso = await screen.findByTestId('informe-area-progreso-inline');
+    expect(progreso).toHaveTextContent('Generando «Cuenca norte»');
+    await waitFor(() => expect(progreso).toHaveTextContent('40%'));
+    expect(notificaciones.showInfo).toHaveBeenCalledWith(
+      'Generando «Cuenca norte»',
+      'Te avisamos cuando esté.'
+    );
   });
 
-  it('la pestaña Lluvia carga el gráfico diferido con el total anual', async () => {
+  it('el nivel "Solo total" envía desglose false', async () => {
     const user = userEvent.setup();
-    elevado.fetchInformeZonas.mockResolvedValue({ ...FICHA });
-    await llegarAGenerar(user);
-    await screen.findByTestId('informe-area-informe-total');
-
-    await user.click(screen.getByRole('radio', { name: 'Lluvia' }));
-    expect(await screen.findByTestId('precip-anual')).toBeInTheDocument();
-  });
-
-  it('un 429 reintenable muestra Reintentar y el clic recupera el informe', async () => {
-    const user = userEvent.setup();
-    const error = new elevado.FichaApiError(429, 'limite_de_pedidos', 'Demasiados pedidos');
-    elevado.fetchInformeZonas
-      .mockRejectedValueOnce(error)
-      .mockRejectedValueOnce(error) // el retry interno de la query
-      .mockResolvedValueOnce({ ...FICHA });
+    elevado.crearInformeArea.mockResolvedValue(filaInforme());
     await llegarAGenerar(user);
 
-    expect(await screen.findByText('No se pudo generar el informe')).toBeInTheDocument();
-    expect(screen.getByText('Demasiados pedidos')).toBeInTheDocument();
-    const reintentar = screen.getByTestId('informe-area-reintentar');
+    await user.click(screen.getByRole('radio', { name: 'Solo total' }));
+    await user.type(screen.getByTestId('informe-area-nombre'), 'Solo total');
+    await user.click(screen.getByTestId('informe-area-crear'));
 
-    await user.click(reintentar);
-    expect(await screen.findByTestId('informe-area-informe-total')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(elevado.crearInformeArea).toHaveBeenCalledWith(
+        expect.objectContaining({ desglose: false })
+      )
+    );
   });
 
-  it.each([404, 413, 422])(
-    'un error terminal %i no ofrece Reintentar',
-    async (status) => {
-      const user = userEvent.setup();
-      elevado.fetchInformeZonas.mockRejectedValue(
-        new elevado.FichaApiError(status, 'error_x', `detalle ${status}`)
-      );
-      await llegarAGenerar(user);
-
-      expect(await screen.findByText(`detalle ${status}`)).toBeInTheDocument();
-      expect(screen.queryByTestId('informe-area-reintentar')).not.toBeInTheDocument();
-    }
-  );
-
-  it('el 503 de la ficha muestra la copia de entorno deshabilitado sin reintento', async () => {
+  it('desde_cache: descarga inmediata del PDF y panel listo', async () => {
     const user = userEvent.setup();
-    elevado.fetchInformeZonas.mockRejectedValue(
-      new elevado.FichaApiError(503, 'funcionalidad_no_disponible', 'detalle del servidor')
+    elevado.crearInformeArea.mockResolvedValue(
+      filaInforme({
+        estado: 'completed',
+        progreso: 100,
+        desde_cache: true,
+        area_ha: 600,
+        cantidad_zonas: 1,
+      })
+    );
+    elevado.listarInformesArea.mockResolvedValue({
+      items: [
+        filaInforme({ estado: 'completed', progreso: 100, desde_cache: true, area_ha: 600, cantidad_zonas: 1 }),
+      ],
+      total: 1,
+    });
+    await llegarAGenerar(user);
+
+    await user.type(screen.getByTestId('informe-area-nombre'), 'Cuenca norte');
+    await user.click(screen.getByTestId('informe-area-crear'));
+
+    expect(await screen.findByTestId('informe-area-listo-inline')).toHaveTextContent('600.0 ha');
+    await waitFor(() =>
+      expect(elevado.descargarInformeAreaPdf).toHaveBeenCalledWith('inf-1', 'Cuenca norte')
+    );
+    expect(notificaciones.showSuccess).toHaveBeenCalledTimes(1);
+    expect(notificaciones.showInfo).not.toHaveBeenCalled();
+  });
+
+  it('la descarga desde el panel listo pide el PDF de ese informe', async () => {
+    const user = userEvent.setup();
+    elevado.crearInformeArea.mockResolvedValue(
+      filaInforme({ estado: 'completed', progreso: 100, desde_cache: true })
+    );
+    await llegarAGenerar(user);
+    await user.type(screen.getByTestId('informe-area-nombre'), 'Cuenca norte');
+    await user.click(screen.getByTestId('informe-area-crear'));
+    const listo = await screen.findByTestId('informe-area-listo-inline');
+
+    await user.click(within(listo).getByRole('button', { name: 'Descargar PDF' }));
+    await waitFor(() => expect(elevado.descargarInformeAreaPdf).toHaveBeenCalled());
+  });
+
+  it('un 422 cap_excedido muestra la copia del tope y no ofrece reintentar', async () => {
+    const user = userEvent.setup();
+    elevado.crearInformeArea.mockRejectedValue(
+      new elevado.InformesAreaApiError(422, 'cap_excedido', 'Se supero el limite de area_ha', {
+        cap: 'area_ha',
+        limite: 150000,
+        valor: 168000,
+      })
     );
     await llegarAGenerar(user);
 
-    expect(
-      await screen.findByText('El informe de área no está habilitado en este entorno.')
-    ).toBeInTheDocument();
-    expect(screen.queryByTestId('informe-area-reintentar')).not.toBeInTheDocument();
+    await user.type(screen.getByTestId('informe-area-nombre'), 'Demasiado grande');
+    await user.click(screen.getByTestId('informe-area-crear'));
+
+    expect(await screen.findByTestId('informe-area-crear-error')).toHaveTextContent(
+      'supera el tope de 150000.0 ha'
+    );
+    expect(screen.queryByTestId('informe-area-crear-reintentar')).not.toBeInTheDocument();
+  });
+
+  it('un 429 de límite en curso muestra el detalle y ofrece reintentar', async () => {
+    const user = userEvent.setup();
+    elevado.crearInformeArea
+      .mockRejectedValueOnce(
+        new elevado.InformesAreaApiError(
+          429,
+          'limite_informes_en_curso',
+          'Ya tenés 3 informes en curso.'
+        )
+      )
+      .mockResolvedValueOnce(filaInforme());
+    await llegarAGenerar(user);
+
+    await user.type(screen.getByTestId('informe-area-nombre'), 'El cuarto');
+    await user.click(screen.getByTestId('informe-area-crear'));
+
+    expect(await screen.findByTestId('informe-area-crear-error')).toHaveTextContent(
+      'Ya tenés 3 informes en curso.'
+    );
+    await user.click(screen.getByTestId('informe-area-crear-reintentar'));
+    await waitFor(() => expect(elevado.crearInformeArea).toHaveBeenCalledTimes(2));
+  });
+
+  it('la preview sobre 150.000 ha deshabilita crear con el aviso del tope', async () => {
+    const user = userEvent.setup();
+    elevado.fetchZonasPreview.mockResolvedValue({
+      ...PREVIEW_ONLINE,
+      area_total_ha: 150_001,
+      modo: 'trabajo',
+      aviso_cap: true,
+    });
+    renderDrawer();
+    pickEnMapa('z-a1', 'Alta 1');
+    await user.click(screen.getByRole('button', { name: 'Revisar selección' }));
+    await screen.findByTestId('informe-area-preview');
+    await user.click(screen.getByRole('button', { name: 'Generar informe' }));
+
+    expect(await screen.findByTestId('informe-area-tope')).toHaveTextContent('150000.0 ha');
+    await user.type(screen.getByTestId('informe-area-nombre'), 'Grande');
+    expect(screen.getByTestId('informe-area-crear')).toBeDisabled();
+    expect(elevado.crearInformeArea).not.toHaveBeenCalled();
+  });
+
+  it('un informe que falla muestra el motivo guardado y Volver a intentar re-crea', async () => {
+    const user = userEvent.setup();
+    elevado.fetchZonasPreview.mockResolvedValue({ ...PREVIEW_ONLINE });
+    elevado.crearInformeArea.mockResolvedValue(filaInforme({ estado: 'pending' }));
+    elevado.listarInformesArea.mockResolvedValue({
+      items: [filaInforme({ estado: 'pending' })],
+      total: 1,
+    });
+    const { cliente } = renderDrawer();
+    pickEnMapa('z-a1', 'Alta 1');
+    await user.click(screen.getByRole('button', { name: 'Revisar selección' }));
+    await screen.findByTestId('informe-area-preview');
+    await user.click(screen.getByRole('button', { name: 'Generar informe' }));
+    await user.type(screen.getByTestId('informe-area-nombre'), 'Cuenca norte');
+    await user.click(screen.getByTestId('informe-area-crear'));
+    expect(await screen.findByTestId('informe-area-progreso-inline')).toBeInTheDocument();
+
+    // The polled list turns the row failed → the panel flips to the error.
+    elevado.listarInformesArea.mockResolvedValue({
+      items: [filaInforme({ estado: 'failed', error: 'GEE no disponible' })],
+      total: 1,
+    });
+    await act(async () => {
+      await cliente.invalidateQueries({ queryKey: ['informes-area'] });
+    });
+
+    const fallo = await screen.findByTestId('informe-area-fallo-inline');
+    expect(fallo).toHaveTextContent('GEE no disponible');
+    await user.click(within(fallo).getByRole('button', { name: 'Volver a intentar' }));
+    await waitFor(() => expect(elevado.crearInformeArea).toHaveBeenCalledTimes(2));
   });
 
   it('volver a Revisar y a Elegir no pierde el cierre limpio del flujo', async () => {
     const user = userEvent.setup();
-    elevado.fetchInformeZonas.mockResolvedValue({ ...FICHA });
     await llegarAGenerar(user);
-    await screen.findByTestId('informe-area-informe-total');
 
     await user.click(screen.getByRole('button', { name: 'Volver a revisar' }));
     expect(screen.getByTestId('informe-area-preview')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Volver' }));
     expect(screen.getByTestId('informe-area-elegir')).toBeInTheDocument();
+  });
+});
+
+describe('InformeAreaDrawer — Mis informes', () => {
+  it('el botón del título cambia a la tabla y vuelve al flujo donde estaba', async () => {
+    const user = userEvent.setup();
+    // Set BEFORE mounting: the drawer mounts the list query on open, and its
+    // 30 s staleTime means the panel reads that first answer, not a refetch.
+    elevado.fetchZonasPreview.mockResolvedValue({ ...PREVIEW_ONLINE });
+    elevado.listarInformesArea.mockResolvedValue({
+      items: [filaInforme({ estado: 'completed', nombre: 'Viejo confiable' })],
+      total: 1,
+    });
+    renderDrawer();
+    pickEnMapa('z-a1', 'Alta 1');
+    await user.click(screen.getByRole('button', { name: 'Revisar selección' }));
+    await screen.findByTestId('informe-area-preview');
+
+    await user.click(screen.getByTestId('informe-area-abrir-mis-informes'));
+
+    const panel = await screen.findByTestId('informe-area-panel-mis-informes');
+    expect(screen.queryByTestId('informe-area-stepper')).not.toBeInTheDocument();
+    expect(await within(panel).findByText('Viejo confiable')).toBeInTheDocument();
+    expect(within(panel).getByText('Listo')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('informe-area-mis-informes-volver'));
+    expect(screen.getByTestId('informe-area-stepper')).toBeInTheDocument();
+    // El flujo sobrevivió: sigue en Revisar con la selección intacta.
+    expect(screen.getByTestId('informe-area-preview')).toBeInTheDocument();
+    expect(contador()).toBe('1/60 subcuencas');
   });
 });
 

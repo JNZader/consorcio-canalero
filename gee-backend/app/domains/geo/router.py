@@ -33,6 +33,7 @@ from app.domains.geo.router_core import (
     router as core_router,
 )
 from app.domains.geo.router_ficha import router as ficha_router
+from app.domains.geo.informe_area.router import router as informe_area_router
 from app.domains.geo.router_gee_support import (
     compare_flood_dates_impl,
     export_qgis_project_impl,
@@ -85,6 +86,10 @@ for subrouter in (
     # Public + rate limited, and a router of its own so neither property leaks
     # onto the operator routes above (design §2, JDB-003).
     ficha_router,
+    # Informe de área (PR 2): authenticated + private-per-user (S11), with its
+    # own per-user rate limiter — same isolation argument as the ficha router,
+    # so neither the limiter nor the auth guard leaks onto the siblings.
+    informe_area_router,
 ):
     router.include_router(subrouter)
 

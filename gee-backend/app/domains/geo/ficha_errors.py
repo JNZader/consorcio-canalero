@@ -315,8 +315,11 @@ def base_de_datos_no_disponible(retry_after: int = 2) -> FichaError:
     )
 
 
-async def ficha_error_handler(_request: Any, exc: FichaError) -> JSONResponse:
+async def ficha_error_handler(_request: Any, exc: Exception) -> JSONResponse:
     """Render the flat body and leave ONE structured line per failure (R4-005).
+
+    Starlette types handlers as (Request, Exception); the FichaError narrowing
+    happens inside (assert) so add_exception_handler type-checks.
 
     Without ``codigo`` in the log there is no way to answer the two questions
     that actually get asked in an incident: which validation is rejecting real
@@ -334,6 +337,7 @@ async def ficha_error_handler(_request: Any, exc: FichaError) -> JSONResponse:
     information — WARNING keeps it visible without handing anyone an error-log
     amplifier.
     """
+    assert isinstance(exc, FichaError)
     ruta = getattr(getattr(_request, "url", None), "path", None)
     es_falla = exc.status_code >= 500 and exc.codigo not in _ESTADOS_DELIBERADOS
     registrar = logger.error if es_falla else logger.warning
