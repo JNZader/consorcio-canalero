@@ -425,7 +425,21 @@ class CompositeZonalStats(UUIDMixin, TimestampMixin, Base):
         Float,
         nullable=False,
         default=0.0,
-        comment="Area in hectares where score > 70",
+        comment=(
+            "Compatibility name: hectares in the legend's high-risk classes "
+            "(= ha_alto + ha_critico) since #738. Legacy rows written before the "
+            "recompute keep the pre-#738 score>70 figure until the task re-runs."
+        ),
+    )
+    ha_alto: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+        comment="Hectares in the legend's Alto class [55, 75) for flood_risk",
+    )
+    ha_critico: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+        comment="Hectares in the legend's Crítico class [75, 100] for flood_risk",
     )
     weights_used: Mapped[Optional[dict]] = mapped_column(
         JSON,
@@ -440,6 +454,110 @@ class CompositeZonalStats(UUIDMixin, TimestampMixin, Base):
         return (
             f"<CompositeZonalStats {self.id} zona={self.zona_id} "
             f"tipo={self.tipo!r} mean={self.mean_score}>"
+        )
+
+
+# ── Riesgo Validación Evento (PR 5, S4) ───────────────────────────────────────
+
+
+class RiesgoValidacionEvento(UUIDMixin, Base):
+    """Observed water per flood_risk class on one anchor event (whole zone).
+
+    One row per (anchor event, legend class) measured over the WHOLE consorcio
+    zone — the validation is of the index itself, so the informe presents it at
+    zone scale rather than fabricating a per-selection clip. ``ha_clase`` sums
+    to the flood_risk raster's covered area; ``ha_con_agua`` is the MNDWI ≥ 0.1
+    (optical) or VH < -18 dB (Sentinel-1, marked apart by ``sensor``) share of
+    that class on the event's chosen scene; ``lluvia_30d_mm`` is CHIRPS daily
+    summed over the 30 days before the event date.
+
+    Idempotency: UNIQUE (evento_key, clase) — the ETL replaces an event's rows
+    on every re-run, so re-running with the same scene and raster yields the
+    same rows.
+    """
+
+    __tablename__ = "riesgo_validacion_evento"
+    __table_args__ = (
+        UniqueConstraint("evento_key", "clase", name="uq_riesgo_validacion_evento_clase"),
+        CheckConstraint(
+            "sensor IN ('sentinel2', 'sentinel1', 'landsat9', 'landsat8', 'landsat7', 'landsat5')",
+            name="ck_riesgo_validacion_sensor",
+        ),
+        CheckConstraint(
+            "pct_con_agua >= 0.0 AND pct_con_agua <= 100.0",
+            name="ck_riesgo_validacion_pct",
+        ),
+        CheckConstraint(
+            "ha_clase >= 0.0 AND ha_con_agua >= 0.0 AND ha_con_agua <= ha_clase",
+            name="ck_riesgo_validacion_ha",
+        ),
+        CheckConstraint(
+            "clase IN ('Bajo', 'Medio', 'Alto', 'Crítico')",
+            name="ck_riesgo_validacion_clase",
+        ),
+        Index("ix_riesgo_validacion_evento", "evento_key"),
+    )
+
+    evento_key: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        comment="Anchor event key (rainfall_extreme_event.event_key)",
+    )
+    fecha: Mapped[date] = mapped_column(
+        Date,
+        nullable=False,
+        comment="Event date (the scene is chosen around it)",
+    )
+    clase: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        comment="flood_risk legend class (Bajo / Medio / Alto / Crítico)",
+    )
+    ha_clase: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        comment="Hectares of the class in the whole zone (30 m grid)",
+    )
+    ha_con_agua: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        comment="Hectares of the class under water on the event scene",
+    )
+    pct_con_agua: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        comment="ha_con_agua / ha_clase * 100",
+    )
+    lluvia_30d_mm: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+        comment="CHIRPS daily sum over the 30 days before fecha (NULL = no coverage)",
+    )
+    sensor: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        comment="Scene sensor; sentinel1 marks the SAR path apart",
+    )
+    escena_id: Mapped[str] = mapped_column(
+        String(256),
+        nullable=False,
+        comment="GEE scene id the water mask was measured on",
+    )
+    version_flood_risk: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        comment="geo_layers.id of the flood_risk raster validated",
+    )
+    created_at: Mapped[dt_datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<RiesgoValidacionEvento {self.evento_key} clase={self.clase!r} "
+            f"pct={self.pct_con_agua}>"
         )
 
 

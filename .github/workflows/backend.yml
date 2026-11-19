@@ -174,7 +174,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: [changes]
     if: ${{ needs.changes.outputs.backend == 'true' }}
-    timeout-minutes: 20
+    # 30 y no 20: la suite del informe de área (PRs 1-4 del plan) creció el
+    # árbol completo por encima de los 20 m calibrados para la suite
+    # pre-informe — la run del 2026-11-19 (PR 746) llegó al 69% en 20 m y el
+    # timeout la cortó sin ningún test rojo. 30 cubre la suite actual con
+    # margen; revisar si vuelve a acercarse al techo.
+    timeout-minutes: 30
     services:
       # TEST-02: one Postgres for the job. Each pytest-xdist worker creates
       # its own database on this server (see tests/new/xdist_db.py).

@@ -352,7 +352,7 @@ async function instalarMocks(page: Page): Promise<void> {
   await page.route('**/geo/basins**', (route) => route.fulfill({ json: BASINS_GEOJSON }));
 
   // Geometry-only preview: areas from the fixture catalog, modo from the L2 cap.
-  await page.route('**/geo/analisis-zona/preview**', async (route) => {
+  await page.route('**/geo/informes-area/preview**', async (route) => {
     const cuerpo = JSON.parse(route.request().postData() ?? '{}') as { zona_ids?: string[] };
     const ids = cuerpo.zona_ids ?? [];
     const zonas = ids.flatMap((id) => {

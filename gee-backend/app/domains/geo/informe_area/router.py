@@ -29,6 +29,8 @@ from app.domains.geo.informe_area import service
 from app.domains.geo.informe_area.schemas import (
     InformeAreaCreate,
     InformeAreaListResponse,
+    InformeAreaPreviewRequest,
+    InformeAreaPreviewResponse,
     InformeAreaResponse,
     respuesta_informe,
 )
@@ -100,6 +102,27 @@ def crear_informe(
     when the selection + layer versions already produced one (S4)."""
     row, desde_cache = service.crear_informe(db, payload, usuario_id=usuario.id)
     return respuesta_informe(row, desde_cache=desde_cache)
+
+
+@router.post(
+    "/preview",
+    response_model=InformeAreaPreviewResponse,
+    summary="Medir una selección mixta (privado)",
+)
+def preview_informe(
+    payload: InformeAreaPreviewRequest,
+    db: Session = Depends(get_db),
+    usuario: Any = Depends(current_active_user),
+) -> InformeAreaPreviewResponse:
+    """Geometry-only measurement of a zonas + geometrias selection (PR 3).
+
+    The Revisar step's data source now that the selection can carry drawn /
+    KML-imported polygons the ficha's zonas-only preview cannot express. No
+    rate limiter ON PURPOSE: the POST throttle above prices the background
+    informe, this is authenticated statement-timeout-bounded PostGIS per
+    selection change — the same reasoning that keeps GET status/list free.
+    """
+    return service.previsualizar(db, payload)
 
 
 @router.get("", response_model=InformeAreaListResponse, summary="Mis informes")

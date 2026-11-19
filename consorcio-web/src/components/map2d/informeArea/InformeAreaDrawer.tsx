@@ -48,13 +48,14 @@ import type { FeatureCollection } from 'geojson';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useBasins } from '../../../hooks/useBasins';
 import { useDrawerHistoryClose } from '../../../hooks/useDrawerHistoryClose';
-import { FichaApiError, fetchZonasPreview } from '../../../lib/api/ficha';
+import { FichaApiError } from '../../../lib/api/ficha';
 import {
   INFORME_AREA_ESTADOS,
   INFORME_AREA_MAX_HA,
   INFORME_AREA_NOMBRE_MAX,
   type InformeAreaItem,
   InformesAreaApiError,
+  medirInformeArea,
 } from '../../../lib/api/informesArea';
 import { Z_INDEX } from '../../../lib/zIndex';
 import { fmtHa } from '../fichaShared';
@@ -72,18 +73,24 @@ import {
   type ZonaResuelta,
 } from './informeAreaLayers';
 import { MisInformes } from './MisInformes';
+import { SeleccionArchivo } from './SeleccionArchivo';
 import { SeleccionChips } from './SeleccionChips';
+import { SeleccionDibujo } from './SeleccionDibujo';
 import { SeleccionLista } from './SeleccionLista';
 import { useCrearInformeArea, useDescargarInformeArea, useMisInformes } from './useInformeArea';
 import {
-  claveDeSeleccion,
+  claveSeleccionMixta,
   contarSeleccion,
   cupoLleno,
+  cupoMixtoLleno,
+  geometriasDeSeleccion,
   idsDeCuenca,
+  LIMITE_SELECCION_MIXTA,
   LIMITE_ZONAS,
   type SeleccionAreaState,
+  type SeleccionGeometria,
   seleccionAreaReducer,
-  seleccionVacia,
+  seleccionMixtaVacia,
   type ZonaRef,
   zonasSeleccionadas,
 } from './useSeleccionArea';
@@ -186,6 +193,13 @@ export function InformeAreaDrawer({ opened, onClose }: InformeAreaDrawerProps) {
     new Set<string>() as SeleccionAreaState
   );
 
+  // PR 3 (S1): the OTHER half of the selection — drawn and KML-imported
+  // polygons. Parallel to the zonas reducer by design (see
+  // useSeleccionArea's PR 3 block); the two compose at the edges below.
+  const [geometrias, setGeometrias] = useState<readonly SeleccionGeometria[]>([]);
+  // True while the Dibujar tab's MapboxDraw session owns map clicks.
+  const [dibujoActivo, setDibujoActivo] = useState(false);
+
   // Generar (PR 2): the launcher form + the last launched job.
   const [nombre, setNombre] = useState('');
   const [nivel, setNivel] = useState<NivelDetalle>('subcuencas');
@@ -217,7 +231,10 @@ export function InformeAreaDrawer({ opened, onClose }: InformeAreaDrawerProps) {
     aplicarSeleccionEnMapa(map, basins, seleccion);
   }, [opened, map, basins, seleccion]);
 
-  // Click ownership: ONLY the Elegir step routes map clicks to the selection.
+  // Click ownership: ONLY the Elegir step routes map clicks to the
+  // selection — and NOT while a draw session is live (PR 3): MapboxDraw
+  // doesn't stop the map click, so a vertex placed over a subcuenca would
+  // also toggle that zona through the bridge.
   //
   // `descartarSeleccionPrevia: false` is a REPORTED DEVIATION, not a whim: the
   // bridge's `enter` (useMapInteractionEffects) resolves `parcela=null`, whose
@@ -227,7 +244,7 @@ export function InformeAreaDrawer({ opened, onClose }: InformeAreaDrawerProps) {
   // (its file is outside informeArea's surface), the drawer does not fire it,
   // so the ficha that opened the flow stays as context while zonas are picked.
   useEffect(() => {
-    if (!opened || paso !== 0) return;
+    if (!opened || paso !== 0 || dibujoActivo) return;
     return activarSeleccionDeZonas(
       (zona: ZonaResuelta, additive: boolean) => {
         const sumar = additive || sumarMovilRef.current;
@@ -237,34 +254,48 @@ export function InformeAreaDrawer({ opened, onClose }: InformeAreaDrawerProps) {
       },
       { descartarSeleccionPrevia: false }
     );
-  }, [opened, paso]);
+  }, [opened, paso, dibujoActivo]);
 
   const cantidad = contarSeleccion(seleccion);
-  const clave = claveDeSeleccion(seleccion);
+  const clave = claveSeleccionMixta(seleccion, geometrias);
+  const seleccionTotalVacia = seleccionMixtaVacia(seleccion, geometrias);
 
-  // Revisar: geometry-only preview of the current selection.
+  // Revisar: geometry-only preview of the current MIXED selection (PR 3:
+  // the informe's own endpoint — it measures zonas + geometrias together
+  // and answers the fuera-de-zona / separados avisos).
   const preview = useQuery({
     queryKey: ['informe-area', 'preview', clave],
-    queryFn: ({ signal }) => fetchZonasPreview({ zona_ids: [...seleccion] }, signal),
-    enabled: opened && paso >= 1 && !seleccionVacia(seleccion),
+    queryFn: ({ signal }) =>
+      medirInformeArea(
+        { zona_ids: [...seleccion], geometrias: geometriasDeSeleccion(geometrias) },
+        signal
+      ),
+    enabled: opened && paso >= 1 && !seleccionTotalVacia,
     retry: (fallos: number, error: unknown) => (esReintentable(error) ? fallos < 1 : false),
     staleTime: 30_000,
   });
 
   // Selection outline while reviewing/generating; removed when back to Elegir.
+  // PR 3: while CHOOSING (paso 0) the drawn/imported geometries stay visible
+  // through the same source — without fitBounds moving the map mid-pick.
   useEffect(() => {
     if (!opened || !map) return;
+    if (paso === 0 && geometrias.length > 0) {
+      pintarContornoSeleccion(map, geometriasDeSeleccion(geometrias), { ajustar: false });
+      return;
+    }
     if (paso >= 1 && preview.data) {
-      const geometrias = [...seleccion]
+      const geometriasZona = [...seleccion]
         .map((id) => catalogo.geometrias.get(id))
         .filter((geometria): geometria is GeometriaZona => !!geometria);
-      if (geometrias.length > 0) {
-        pintarContornoSeleccion(map, geometrias);
+      const todas = [...geometriasZona, ...geometriasDeSeleccion(geometrias)];
+      if (todas.length > 0) {
+        pintarContornoSeleccion(map, todas);
         return;
       }
     }
-    quitarContornoSeleccion(map);
-  }, [opened, map, paso, preview.data, seleccion, catalogo]);
+    if (paso === 0) quitarContornoSeleccion(map);
+  }, [opened, map, paso, preview.data, seleccion, catalogo, geometrias]);
 
   // Generar (PR 2): the create mutation + the shared Mis informes list. The
   // list row (fresher: polled) wins over the create snapshot; the snapshot is
@@ -280,13 +311,14 @@ export function InformeAreaDrawer({ opened, onClose }: InformeAreaDrawerProps) {
   const areaHa = preview.data?.area_total_ha ?? null;
   const sobreTope = areaHa !== null && areaHa > INFORME_AREA_MAX_HA;
   const puedeCrear =
-    nombre.trim().length > 0 && !seleccionVacia(seleccion) && !sobreTope && !crear.isPending;
+    nombre.trim().length > 0 && !seleccionTotalVacia && !sobreTope && !crear.isPending;
 
   const lanzarInforme = () => {
     crear.mutate(
       {
         nombre: nombre.trim(),
         zona_ids: [...seleccion],
+        geometrias: geometriasDeSeleccion(geometrias),
         desglose: nivel === 'subcuencas',
       },
       { onSuccess: (informe) => setInformeCreado(informe) }
@@ -311,6 +343,8 @@ export function InformeAreaDrawer({ opened, onClose }: InformeAreaDrawerProps) {
     const { map: mapaActual, basins: basinsActuales } = cierreRef.current;
     if (mapaActual) limpiarCapasInformeArea(mapaActual, basinsActuales);
     dispatch({ type: 'vaciar' });
+    setGeometrias([]);
+    setDibujoActivo(false);
     setPaso(0);
     setSumarMovil(false);
     setVerInformes(false);
@@ -377,12 +411,14 @@ export function InformeAreaDrawer({ opened, onClose }: InformeAreaDrawerProps) {
           size="xs"
           data-testid="informe-area-stepper"
         >
-          <Stepper.Step label="Elegir" description="Subcuencas">
+          <Stepper.Step label="Elegir" description="Selección">
             <Stack gap="sm" data-testid="informe-area-elegir">
               <Tabs defaultValue="mapa" data-testid="informe-area-tabs">
                 <Tabs.List grow>
                   <Tabs.Tab value="mapa">Mapa</Tabs.Tab>
                   <Tabs.Tab value="lista">Lista</Tabs.Tab>
+                  <Tabs.Tab value="dibujar">Dibujar</Tabs.Tab>
+                  <Tabs.Tab value="archivo">Archivo</Tabs.Tab>
                 </Tabs.List>
                 <Tabs.Panel value="mapa" pt="sm">
                   <Stack gap="xs">
@@ -417,22 +453,58 @@ export function InformeAreaDrawer({ opened, onClose }: InformeAreaDrawerProps) {
                     }
                   />
                 </Tabs.Panel>
+                <Tabs.Panel value="dibujar" pt="sm">
+                  <SeleccionDibujo
+                    geometrias={geometrias}
+                    onAgregar={(geometria) =>
+                      setGeometrias((previas) =>
+                        cupoMixtoLleno(seleccion, previas) ? previas : [...previas, geometria]
+                      )
+                    }
+                    onSesionCambio={setDibujoActivo}
+                  />
+                </Tabs.Panel>
+                <Tabs.Panel value="archivo" pt="sm">
+                  <SeleccionArchivo
+                    esEscritorio={esEscritorio}
+                    onAgregar={(nuevas) =>
+                      setGeometrias((previas) => {
+                        if (cupoMixtoLleno(seleccion, previas)) return previas;
+                        const margen = LIMITE_SELECCION_MIXTA - previas.length - seleccion.size;
+                        return [...previas, ...nuevas.slice(0, Math.max(0, margen))];
+                      })
+                    }
+                  />
+                </Tabs.Panel>
               </Tabs>
               {cupoLleno(seleccion) && (
                 <Alert color="yellow" variant="light" data-testid="informe-area-cupo">
                   Llegaste al máximo de {LIMITE_ZONAS} subcuencas por selección.
                 </Alert>
               )}
+              {cupoMixtoLleno(seleccion, geometrias) && (
+                <Alert color="yellow" variant="light" data-testid="informe-area-cupo-mixto">
+                  Llegaste al máximo de {LIMITE_SELECCION_MIXTA} elementos (subcuencas y polígonos)
+                  por selección.
+                </Alert>
+              )}
               <Divider />
               <SeleccionChips
                 zonas={zonasElegidas}
+                geometrias={geometrias}
                 onRemove={(id) => dispatch({ type: 'quitar', ids: [id] })}
-                onClear={() => dispatch({ type: 'vaciar' })}
+                onRemoveGeometria={(id) =>
+                  setGeometrias((previas) => previas.filter((g) => g.id !== id))
+                }
+                onClear={() => {
+                  dispatch({ type: 'vaciar' });
+                  setGeometrias([]);
+                }}
               />
               <Group justify="flex-end">
                 <Button
                   size="xs"
-                  disabled={seleccionVacia(seleccion)}
+                  disabled={seleccionTotalVacia}
                   onClick={() => setPaso(1)}
                   data-testid="informe-area-siguiente"
                 >
@@ -587,6 +659,11 @@ function InformeLanzado({
         <Stack gap="xs">
           <Text size="sm">
             {informe.cantidad_zonas} {informe.cantidad_zonas === 1 ? 'subcuenca' : 'subcuencas'}
+            {informe.cantidad_geometrias > 0
+              ? ` · ${informe.cantidad_geometrias} ${
+                  informe.cantidad_geometrias === 1 ? 'polígono' : 'polígonos'
+                }`
+              : ''}
             {informe.area_ha !== null ? ` · ${fmtHa(informe.area_ha)}` : ''}
           </Text>
           <Button

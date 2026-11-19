@@ -328,10 +328,15 @@ function bboxDeGeometrias(
  * `/geo/basins` geometries — adjacent zonas tile their union, so the visual
  * result is the selected extent framed — plus the exact union bbox for
  * `fitBounds`.
+ *
+ * PR 3: `ajustar: false` paints the drawn/imported geometries of the
+ * selection while the user is STILL CHOOSING (paso Elegir) — the same
+ * source/layer, without moving the map under their feet.
  */
 export function pintarContornoSeleccion(
   map: maplibregl.Map,
-  geometrias: readonly Geometry[]
+  geometrias: readonly Geometry[],
+  { ajustar = true }: { ajustar?: boolean } = {}
 ): void {
   const features: Feature[] = geometrias.map((geometry, indice) => ({
     type: 'Feature',
@@ -358,6 +363,7 @@ export function pintarContornoSeleccion(
       },
     });
   }
+  if (!ajustar) return;
   const bbox = bboxDeGeometrias(geometrias);
   if (bbox) {
     map.fitBounds(bbox, { padding: 64, duration: 600, maxZoom: 14 });

@@ -376,13 +376,12 @@ class FichaResponse(BaseModel):
     # recompute. ``None`` for every other tipo, same additive contract as
     # ``variante`` / ``geometria_cuenca``.
     desglose_por_subcuenca: list[DesgloseSubcuenca] | None = None
-    # Provenance of ``pct_alto_critico``: ``"legacy70"`` while the only stored
-    # figure is ``composite_zonal_stats.area_high_risk_ha`` (score > 70, a legacy
-    # threshold that does NOT match the ``class_breaks`` Alto edge of 55).
-    # Decision #738 moves the threshold to the class-breaks edge in PR 5; until
-    # then the response says which number it served, so the UI never renders a
-    # threshold it cannot name. ``None`` when there is no desglose.
-    umbral_alto_critico: Literal["legacy70"] | None = None
+    # Provenance of ``pct_alto_critico``: ``"leyenda-55"`` — since #738 the
+    # composite task stores ``area_high_risk_ha = ha_alto + ha_critico`` (the
+    # class-breaks Alto edge of 55); zones whose rows predate the recompute
+    # render ``None`` rather than a mislabeled figure. ``None`` also when
+    # there is no desglose.
+    umbral_alto_critico: Literal["leyenda-55"] | None = None
 
 
 # ── on-map overlay (A(b) slice 1: soils only) ───────────────────────────────

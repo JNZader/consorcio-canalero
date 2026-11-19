@@ -10,7 +10,7 @@
   ``zona_ids`` and the RESOLVED total after cuenca expansion).
 * ``POST /api/v2/geo/analisis-zona`` with ``tipo="zonas"`` — the ficha compute
   over the resolved union with ``desglose_por_subcuenca`` derived from STORED
-  data only: ``composite_zonal_stats`` (``pct_alto_critico`` + the ``legacy70``
+  data only: ``composite_zonal_stats`` (``pct_alto_critico`` + the ``leyenda-55``
   threshold tag until #738 lands in PR 5), ``suelos_catastro`` (dominant class)
   and the registered CHIRPS annual normal (``lluvia_anual_mm``).
 * A rough local p95 of the preview logic with 60 zonas (the L2 acceptance
@@ -564,7 +564,7 @@ def test_ficha_zonas_desglose_desde_datos_guardados(ficha_db, monkeypatch, tmp_p
     assert por_nombre["B1"]["clase_suelo_dominante"] == "VII"
 
     # the threshold tag travels with the desglose (S8: mark it until #738)
-    assert cuerpo["umbral_alto_critico"] == "legacy70"
+    assert cuerpo["umbral_alto_critico"] == "leyenda-55"
 
 
 def test_ficha_zonas_desglose_mas_fuera_es_total(ficha_db, monkeypatch, tmp_path):

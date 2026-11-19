@@ -155,9 +155,14 @@ def canales_db(test_engine) -> Session:
 
     # canal_consorcio (+ canal_catchment) are migration-only; build them from
     # 0020's real DDL. geo_layers already exists (ORM model) as an FK target.
-    for statement in _MIGRATION.UPGRADE_STATEMENTS:
-        session.execute(text(statement))
-    session.commit()  # release the DDL savepoint
+    # Guarded: other suites (informe_area_pr4's tablas_canales) may leave an
+    # EMPTY canal_consorcio behind — their teardown DROP deadlocks on share
+    # locks, so they leave it and we skip what already exists.
+    ya_existe = session.execute(text("SELECT to_regclass('canal_consorcio')")).scalar_one_or_none()
+    if ya_existe is None:
+        for statement in _MIGRATION.UPGRADE_STATEMENTS:
+            session.execute(text(statement))
+        session.commit()  # release the DDL savepoint
 
     yield session
 

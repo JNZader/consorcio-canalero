@@ -481,7 +481,9 @@ class Settings(BaseSettings):
     # layout/sections change (T2+) so completed informes regenerate instead
     # of serving a stale layout — same mechanism a layer refresh gets for
     # free through geo_layers.created_at.
-    informe_area_version_plantilla: str = "1"
+    informe_area_version_plantilla: str = (
+        "2"  # "2": PR 4 adds suelos/cobertura/canales/imágenes sections
+    )
     # Retention (S11, decision L2): an informe expires 90 days after creation;
     # the daily beat sweep deletes rows past their ``vence_at``.
     informe_area_retencion_dias: int = 90

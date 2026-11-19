@@ -195,7 +195,7 @@ async function instalarMocks(page: Page): Promise<void> {
     route.fulfill({ json: { access_token: 'a11y-token' } })
   );
   await page.route('**/geo/basins**', (route) => route.fulfill({ json: BASINS }));
-  await page.route('**/geo/analisis-zona/preview**', (route) =>
+  await page.route('**/geo/informes-area/preview**', (route) =>
     route.fulfill({
       json: {
         area_total_ha: 1801.0,

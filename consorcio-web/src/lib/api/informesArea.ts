@@ -62,6 +62,10 @@ export interface InformeAreaItem {
   /** Union hectares once `resultado` exists; `null` before completion. */
   readonly area_ha: number | null;
   readonly cantidad_zonas: number;
+  /** Caller-supplied geometries in the selection (PR 3); 0 pre-completion. */
+  readonly cantidad_geometrias: number;
+  /** Hectares outside the consorcio zone once `resultado` exists (PR 3). */
+  readonly fuera_zona_ha: number | null;
   /** Readable one-line reason, present only on `failed` (S8). */
   readonly error: string | null;
   readonly vence_at: string;
@@ -75,12 +79,53 @@ export interface InformeAreaListado {
   readonly total: number;
 }
 
-/** The Generar step's create payload — `desglose` mirrors the SegmentedControl. */
+/** Polygonal GeoJSON geometry the informe accepts (S3), EPSG:4326. */
+export type GeometriaInforme = import('geojson').Polygon | import('geojson').MultiPolygon;
+
+/**
+ * The Generar step's create payload — `desglose` mirrors the SegmentedControl.
+ *
+ * PR 3 (S3): the selection is MIXED — `zona_ids` (subcuencas) plus
+ * `geometrias` (drawn / KML-imported polygons). Either side may be empty but
+ * not both; the server counts both against its 120 zonas-equivalents.
+ */
 export interface InformeAreaCreateParams {
   readonly nombre: string;
   readonly zona_ids: readonly string[];
+  readonly geometrias?: readonly GeometriaInforme[];
   /** False → totals only; True → plus one row per subcuenca. */
   readonly desglose: boolean;
+}
+
+/** The Revisar step's preview request — the same mixed selection. */
+export interface InformeAreaPreviewParams {
+  readonly zona_ids: readonly string[];
+  readonly geometrias?: readonly GeometriaInforme[];
+}
+
+/** One zonas-side row of the preview (geometrias carry no names, PR 3). */
+export interface InformeAreaPreviewSubcuenca {
+  readonly id: string;
+  readonly nombre: string;
+  readonly cuenca: string;
+  readonly ha: number;
+}
+
+/**
+ * What the Revisar step shows over a mixed selection (PR 3): the union
+ * figures plus the two S2 avisos — `fuera_zona_ha` (parts outside the
+ * consorcio zone) and `poligonos_separados` (a disjoint selection).
+ */
+export interface InformeAreaPreviewResponse {
+  readonly area_total_ha: number;
+  /** Geodesic (WGS84) reference of the same union (S4: agrees within 0.2 %). */
+  readonly area_total_ha_geodesica: number;
+  readonly subcuencas: readonly InformeAreaPreviewSubcuenca[];
+  readonly cantidad_geometrias: number;
+  readonly fuera_zona_ha: number;
+  readonly poligonos_separados: boolean;
+  /** True past the 35 000 ha online cap — the "informe en segundo plano" note. */
+  readonly aviso_cap: boolean;
 }
 
 /**
@@ -168,6 +213,28 @@ export async function crearInformeArea(
     signal,
   });
   return (await response.json()) as InformeAreaItem;
+}
+
+/**
+ * Measure a MIXED selection (zonas + geometrias) without generating anything
+ * — the Revisar step since PR 3. Server-side PostGIS union, repair and
+ * `fuera_zona_ha`; over-cap selections are ANSWERED with `aviso_cap`, never
+ * rejected (the create keeps the hard caps).
+ *
+ * @throws {InformesAreaApiError} 404 `zona_no_encontrada`, 422
+ * `geometria_invalida` for a non-polygonal/unclosed geometry or an empty
+ * selection.
+ */
+export async function medirInformeArea(
+  params: InformeAreaPreviewParams,
+  signal?: AbortSignal
+): Promise<InformeAreaPreviewResponse> {
+  const response = await pedirInformesArea('/preview', {
+    method: 'POST',
+    body: JSON.stringify(params),
+    signal,
+  });
+  return (await response.json()) as InformeAreaPreviewResponse;
 }
 
 /**
