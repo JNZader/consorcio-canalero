@@ -33,6 +33,8 @@ class IntelligenceRepositoryCompositesMixin:
                 "max_score": stmt.excluded.max_score,
                 "p90_score": stmt.excluded.p90_score,
                 "area_high_risk_ha": stmt.excluded.area_high_risk_ha,
+                "ha_alto": stmt.excluded.ha_alto,
+                "ha_critico": stmt.excluded.ha_critico,
                 "weights_used": stmt.excluded.weights_used,
                 "updated_at": func.now(),
             },

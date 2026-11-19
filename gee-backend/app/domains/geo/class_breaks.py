@@ -10,6 +10,11 @@ paths read these definitions -- two copies would drift.
 
 Bin-edge convention: every bin is half-open ``[min, max)`` except the last one of
 each list, which is closed ``[min, max]`` so the raster maximum is never dropped.
+
+The "Alto" and "Crítico" bins of a legend are also the STATISTICAL thresholds
+decision #738 unified: the composite zonal statistics count hectares from the
+start of "Alto" (never from a second hardcoded 70), so the stored figures and
+the legend the user reads cannot drift apart again.
 """
 
 from __future__ import annotations
@@ -111,3 +116,28 @@ RANGE_CONFIGS: dict[str, list[dict]] = {
         {"label": "Cresta", "min": 0.5, "max": 1.5, "color": "#2166ac"},
     ],
 }
+
+
+def high_risk_edges(breaks: list[dict]) -> tuple[float, float, float] | None:
+    """``(alto_min, critico_min, critico_max)`` — the legend's own high-risk edges.
+
+    Decision #738 (Option A with breakdown): the high-risk statistic derives
+    from the legend, not from a constant. "Alto" starts at its bin's ``min``
+    (55 for ``flood_risk``, 50 for ``drainage_need``) and "Crítico" at its own
+    ``min`` (75 / 70), so ``ha_alto`` counts ``[alto_min, critico_min)`` and
+    ``ha_critico`` counts ``[critico_min, critico_max]`` — the same half-open
+    bins (closed on the last) every other consumer of these lists uses.
+
+    Returns ``None`` when the legend has no "Alto"/"Crítico" pair — the caller
+    reports zeros rather than inventing an edge a legend never stated.
+    """
+    por_etiqueta = {str(cfg.get("label")): cfg for cfg in breaks}
+    alto = por_etiqueta.get("Alto")
+    critico = por_etiqueta.get("Crítico")
+    if alto is None or critico is None:
+        return None
+    return (
+        float(alto["min"]),
+        float(critico["min"]),
+        float(critico["max"]),
+    )

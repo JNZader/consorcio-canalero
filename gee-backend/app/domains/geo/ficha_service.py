@@ -1281,11 +1281,10 @@ def _anual_mm(layer: GeoLayer | None, geom4326: dict[str, Any], area_m2: float) 
 # ``precipitacion_mensual`` already performs — reading a stored product is not
 # recomputing it.
 
-# Stored high-risk hectares per zone. ``area_high_risk_ha`` counts pixels with
-# score > 70 — the LEGACY threshold, which does not match the ``class_breaks``
-# flood_risk "Alto" edge of 55. Decision #738 moves it to the class-breaks edge
-# in PR 5; until then the response carries ``umbral_alto_critico="legacy70"``
-# so no consumer mistakes the figure for the Alto+Crítico class share.
+# Stored high-risk hectares per zone. Since #738 (PR 5) the composite task
+# writes ``area_high_risk_ha`` as ``ha_alto + ha_critico`` — the leyenda-55
+# Alto+Crítico share — so the desglose label is now honest. Zones whose rows
+# predate the recompute render None («—») rather than a mislabeled figure.
 _ALTO_CRITICO_SQL = text(
     """
     SELECT zona_id, area_high_risk_ha
@@ -1346,7 +1345,7 @@ def _clase_dominante(db: Session, zonas: list[ZonaResuelta]) -> dict[uuid.UUID, 
 
 def _desglose_zonas(
     db: Session, zonas: list[ZonaResuelta]
-) -> tuple[list[DesgloseSubcuenca], Literal["legacy70"]]:
+) -> tuple[list[DesgloseSubcuenca], Literal["leyenda-55"]]:
     """Assemble the per-zone rows from stored figures. Never invents a number.
 
     ``pct_alto_critico`` is the stored ``area_high_risk_ha`` over the zone's own
@@ -1395,7 +1394,7 @@ def _desglose_zonas(
                 lluvia_anual_mm=lluvia.get(zona.zona_id),
             )
         )
-    return filas, "legacy70"
+    return filas, "leyenda-55"
 
 
 # ── orchestration ───────────────────────────────────────────────────────────
@@ -1435,7 +1434,7 @@ def _ficha_de_geometria(
         area_ha = area_m2 / M2_POR_HA
         geom4326 = json.loads(geojson_4326)
         desglose: list[DesgloseSubcuenca] | None = None
-        umbral: Literal["legacy70"] | None = None
+        umbral: Literal["leyenda-55"] | None = None
         if zonas is not None:
             desglose, umbral = _desglose_zonas(db, zonas)
         return FichaResponse(
