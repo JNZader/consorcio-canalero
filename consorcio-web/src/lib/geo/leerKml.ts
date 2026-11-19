@@ -162,7 +162,7 @@ export function kmlAPoligonos(texto: string): PoligonoKml[] {
     );
   }
   // Reviewed false positives, suppressed with reasons (CodeQL high alerts):
-  // codeql[js/uncontrolled-data-used-in-xml-parser] Billion-laughs is a
+  // codeql[js/xml-bomb] Billion-laughs is a
   //   server-parser threat; browser DOMParser hard-caps entity expansion,
   //   and the DOCTYPE/ENTITY guard above rejects the input outright anyway.
   // codeql[js/xss] The parse output never reaches innerHTML: the only text
