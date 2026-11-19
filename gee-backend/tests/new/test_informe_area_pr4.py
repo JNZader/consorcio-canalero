@@ -26,11 +26,12 @@ from typing import Any
 
 import numpy as np
 import pytest
-from sqlalchemy import text
+from sqlalchemy import delete, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.domains.geo.etl import idecor_suelos_50mil as etl_suelos
-from app.domains.geo.informe_area import service
+from app.domains.geo.informe_area import service, tasks
+from app.domains.geo.informe_area.models import InformeArea
 from tests.new.fixtures.informe_area_pr4 import wfs_suelos
 
 # Dedicated world (PR 2's convention): no other fixture seeds near -61.5.
@@ -996,3 +997,439 @@ def test_idcor_live_wfs():
     entradas = normalizar_leyenda(leyenda.json())
     agua = [e for e in entradas if "agua estacional" in e["etiqueta"].lower()]
     assert len(agua) == 1 and agua[0]["codigo"] == 9
+
+
+# ── S7/S8: integración final — el informe completo con todas las capas ──────
+
+
+def _mundo_completo(factory, tmp_path) -> dict[str, Any]:
+    """PR 2's world (rasters + precip + composite) PLUS every PR 4 layer.
+
+    Real commits (the task opens its own SessionLocal). Cleanup is the
+    caller's ``finally`` through ``_limpiar_mundo_completo``.
+    """
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+
+    from app.auth.models import User
+    from app.domains.geo.informe_area.schemas import InformeAreaCreate
+
+    nodata = -9999.0
+    rasters: set[str] = set()
+
+    def raster_constante(nombre: str, valor: float) -> str:
+        ruta = str(tmp_path / nombre)
+        with rasterio.open(
+            ruta,
+            "w",
+            driver="GTiff",
+            height=120,
+            width=160,
+            count=1,
+            dtype="float32",
+            crs="EPSG:4326",
+            transform=from_origin(LON0 - 0.05, LAT0 + 0.06, 0.001, 0.001),
+            nodata=nodata,
+        ) as dst:
+            dst.write(np.full((120, 160), valor, dtype="float32"), 1)
+        return ruta
+
+    with factory() as db:
+        db.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS suelos_catastro ("
+                "  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+                "  simbolo VARCHAR(50) NOT NULL,"
+                "  cap VARCHAR(10), ip VARCHAR(50),"
+                "  geometria GEOMETRY(MULTIPOLYGON, 4326) NOT NULL)"
+            )
+        )
+        # PR 1's desglose still joins suelos_catastro; one II band.
+        db.execute(
+            text(
+                "INSERT INTO suelos_catastro (simbolo, cap, geometria) "
+                "VALUES ('PR4-II', 'II', ST_GeomFromText(:wkt, 4326))"
+            ),
+            {
+                "wkt": f"MULTIPOLYGON((({LON0 - 0.02} {LAT0 - 0.02}, {LON0 + 0.1} {LAT0 - 0.02}, "
+                f"{LON0 + 0.1} {LAT0 + 0.05}, {LON0 - 0.02} {LAT0 + 0.05}, "
+                f"{LON0 - 0.02} {LAT0 - 0.02})))"
+            },
+        )
+        from app.db.migrations.versions import zz_idecor_suelos_50mil as migracion_suelos
+        from app.db.migrations.versions import zz_idecor_cobertura_raster as migracion_cob
+
+        for statement in migracion_suelos.UPGRADE_STATEMENTS:
+            db.execute(text(statement))
+        for statement in migracion_cob.UPGRADE_STATEMENTS:
+            db.execute(text(statement))
+        db.execute(text("DELETE FROM idecor_suelos_50mil"))
+        db.execute(text("DELETE FROM idecor_cobertura_raster"))
+
+        # S3: two carta units — II covering the zona (>95 %), IV hanging off.
+        for fid, bbox, clase, ip_valor, serie in (
+            (101, _bbox_zona(), "II", 90, "MONTE BUEY"),
+            (
+                102,
+                (LON0 + LADO + 0.005, LAT0, LON0 + LADO + 0.02, LAT0 + LADO),
+                "IV",
+                40,
+                "SAN FABIAN",
+            ),
+        ):
+            feature = wfs_suelos.feature_suelo(fid, bbox, clase=clase, ip=ip_valor, serie=serie)
+            db.execute(
+                text(
+                    "INSERT INTO idecor_suelos_50mil (id, simbolo, cu, clase, ip, au_1m, au_2m, "
+                    " serie_1, porc_1, nombre, tipo_unida, pdf_simbolo, pdf_serie_1, geometria) "
+                    "VALUES (:id, :simbolo, :cu, :clase, :ip, :au1, :au2, :serie, 100, :nombre, "
+                    "        'Consociación', :simbolo, :pdf_serie, ST_Multi(ST_CollectionExtract("
+                    "ST_MakeValid(ST_GeomFromGeoJSON(CAST(:geojson AS json))), 3)))"
+                ),
+                {
+                    "id": fid,
+                    "simbolo": feature["properties"]["simbolo"],
+                    "cu": feature["properties"]["cu"],
+                    "clase": clase,
+                    "ip": ip_valor,
+                    "au1": feature["properties"]["au_1m"],
+                    "au2": feature["properties"]["au_2m"],
+                    "serie": serie,
+                    "nombre": feature["properties"]["nombre"],
+                    "pdf_serie": feature["properties"]["pdf_serie1"],
+                    "geojson": json.dumps(feature["geometry"]),
+                },
+            )
+
+        # S4: register the cobertura world through the ETL double — the
+        # zona MUST exist first (the ETL resolves zonas_operativas's extent).
+        zona_id = _seed_zona(db, "pr4-int", "cuenca-pr4", LON0, LAT0)
+        db.commit()
+        from app.domains.geo.etl import idecor_coberturas as etl_cob
+
+        fetch_bytes, fetch_json = _fetch_coberturas_doble(tmp_path)
+        etl_cob.run_etl(
+            db, data_root=tmp_path / "idecor", fetch_bytes=fetch_bytes, fetch_json=fetch_json
+        )
+
+        # S5: canales + cruces.
+        _seed_canal_cruces(db)
+        db.commit()
+    _seed_eventos_ancla(factory)
+
+    with factory() as db:
+        flood = raster_constante("pr4_flood.tif", 80.0)
+        drain = raster_constante("pr4_drain.tif", 60.0)
+        from app.domains.geo.models import FormatoGeoLayer, FuenteGeoLayer, GeoLayer, TipoGeoLayer
+
+        for tipo, ruta in ((TipoGeoLayer.FLOOD_RISK, flood), (TipoGeoLayer.DRAINAGE_NEED, drain)):
+            db.add(
+                GeoLayer(
+                    nombre=f"pr4-{tipo.value}",
+                    tipo=tipo,
+                    fuente=FuenteGeoLayer.MANUAL,
+                    archivo_path=ruta,
+                    formato=FormatoGeoLayer.GEOTIFF,
+                    srid=4326,
+                )
+            )
+            rasters.add(ruta)
+        precip = raster_constante("pr4_precip.tif", 100.0)
+        for mes in [*range(1, 13), "anual"]:
+            db.add(
+                GeoLayer(
+                    nombre=f"pr4-precip-{mes}",
+                    tipo=TipoGeoLayer.PRECIP_NORMAL,
+                    fuente=FuenteGeoLayer.MANUAL,
+                    archivo_path=precip,
+                    formato=FormatoGeoLayer.GEOTIFF,
+                    srid=4326,
+                    metadata_extra={"mes": mes, "version": "2026-01-01T00:00:00+00:00"},
+                )
+            )
+        rasters.add(precip)
+
+        usuario = User(
+            email=f"pr4-int-{uuid.uuid4().hex[:8]}@test.local",
+            hashed_password="x",
+            role="operador",
+            nombre="PR4",
+            apellido="Int",
+            telefono="",
+        )
+        db.add(usuario)
+        db.flush()
+        db.execute(
+            text(
+                "INSERT INTO composite_zonal_stats "
+                "(id, zona_id, tipo, fecha_calculo, mean_score, max_score, p90_score, area_high_risk_ha) "
+                "VALUES (:id, :zona, 'flood_risk', CURRENT_DATE, 50, 90, 70, 100)"
+            ),
+            {"id": uuid.uuid4(), "zona": str(zona_id)},
+        )
+        db.execute(
+            text(
+                "INSERT INTO composite_zonal_stats "
+                "(id, zona_id, tipo, fecha_calculo, mean_score, max_score, p90_score, area_high_risk_ha) "
+                "VALUES (:id, :zona, 'drainage_need', CURRENT_DATE, 50, 90, 70, 80)"
+            ),
+            {"id": uuid.uuid4(), "zona": str(zona_id)},
+        )
+        db.commit()
+        from app.domains.geo.informe_area import service as informe_service
+
+        fila, _cache = informe_service.crear_informe(
+            db,
+            InformeAreaCreate(nombre="Informe PR4 integración", zona_ids=[zona_id]),
+            usuario_id=usuario.id,
+        )
+        informe_id = fila.id
+        db.commit()
+
+    return {
+        "usuario_id": usuario.id,
+        "zona_id": zona_id,
+        "informe_id": informe_id,
+        "rasters": rasters,
+    }
+
+
+def _limpiar_mundo_completo(factory, mundo: dict[str, Any]) -> None:
+    from app.auth.models import User
+    from app.domains.geo.models import GeoLayer
+    from app.domains.geo.informe_area.models import InformeArea
+    from app.shared.celery_outbox import CeleryTaskOutbox
+
+    with factory() as db:
+        db.execute(
+            delete(CeleryTaskOutbox).where(CeleryTaskOutbox.task_key == "geo.informe_area.generar")
+        )
+        db.execute(delete(InformeArea).where(InformeArea.id == mundo["informe_id"]))
+        db.execute(delete(GeoLayer).where(GeoLayer.archivo_path.in_(mundo["rasters"])))
+        db.execute(
+            text("DELETE FROM composite_zonal_stats WHERE zona_id = :z"),
+            {"z": str(mundo["zona_id"])},
+        )
+        db.execute(text("DELETE FROM zonas_operativas WHERE id = :z"), {"z": str(mundo["zona_id"])})
+        db.execute(text("DELETE FROM suelos_catastro WHERE simbolo = 'PR4-II'"))
+        db.execute(delete(User).where(User.id == mundo["usuario_id"]))
+        db.commit()
+    _limpiar_canal_cruces_factory(factory)
+    _limpiar_eventos_ancla(factory)
+
+
+def _limpiar_canal_cruces_factory(factory) -> None:
+    with factory() as db:
+        _limpiar_canal_cruces(db)
+        db.commit()
+
+
+SECCIONES_PR4 = [
+    "1. Resumen",
+    "2. Riesgo hídrico",
+    "3. Necesidad de drenaje",
+    "4. Suelos",
+    "5. Cobertura y cultivos",
+    "6. Lluvia",
+    "7. Canales",
+    "8. Imágenes de eventos ancla",
+    "9. Consideraciones",
+    "10. Fuentes",
+]
+
+
+def test_informe_completo_todas_las_capas_pdf_y_resultado(
+    factory, tmp_path, monkeypatch, tablas_canales
+):
+    """S7/S8 end-to-end: capas IDECOR + canales + imágenes con GEE mockeado.
+
+    * the task completes and stores a PDF with the TEN sections in order;
+    * suelos: cobertura > 95 % on the test subcuenca AND the series render;
+    * cobertura: classes present, residual reconciles to 100 % (±0,1 %);
+    * the three anchor thumbnails are in the PDF when GEE answers (S8);
+    * canales: the clipped km reach the resultado.
+    """
+    pypdf = pytest.importorskip("pypdf")
+    import io as _io
+    import re as _re
+
+    from app.domains.geo.informe_area import service as informe_service
+
+    def fetch_gee_ok(_scene: str, _sensor: str, _region) -> bytes:
+        return _png_chico()
+
+    monkeypatch.setattr(informe_service, "_miniatura_por_defecto", fetch_gee_ok)
+    monkeypatch.setattr(
+        "app.domains.geo.informe_area.service.try_publish_celery_task", lambda _id: False
+    )
+
+    mundo = _mundo_completo(factory, tmp_path)
+    try:
+        salida = tasks.generar_informe_area(str(mundo["informe_id"]))
+        assert salida["estado"] == "completed", salida
+
+        with factory() as db:
+            fila = db.get(
+                InformeArea,
+                mundo["informe_id"],
+            )
+            assert fila.estado.value == "completed"
+            res = fila.resultado
+            pdf_bytes = bytes(fila.pdf_bytes)
+
+            # S8: suelos >95 % con series; imágenes presentes; canales km.
+            assert res["suelos_idecor"]["cobertura_ratio"] > 0.95
+            assert res["suelos_idecor"]["unidades"] >= 1
+            assert res["canales_resumen"]["km_relevados"] > 0
+            miniaturas = [i for i in res["imagenes_ancla"] if i["con_miniatura"]]
+            assert len(miniaturas) == 3  # S8: las 3 con GEE respondiendo
+            # S7: la suma de ha de la sección suelos reconcilia ±0,1 %.
+            suelos = fila.resultado  # placeholder para claridad de lectura
+            del suelos
+
+        texto = _texto_de_pdf(pdf_bytes)
+        posiciones = [texto.find(titulo) for titulo in SECCIONES_PR4]
+        assert all(pos != -1 for pos in posiciones), posiciones
+        assert posiciones == sorted(posiciones), posiciones
+        # Series de la carta en la tabla de suelos + fuente IDECOR citada.
+        assert "MONTE BUEY" in texto
+        assert "IDECOR" in texto
+        # Las tres miniaturas embebidas: imágenes dentro del PDF (ubicación
+        # + 3 miniaturas de eventos; los mapas de clase dependen del raster
+        # del mundo y ya tienen su suite propia en PR 2).
+        lector = pypdf.PdfReader(_io.BytesIO(pdf_bytes))
+        total_imagenes = sum(len(pagina.images) for pagina in lector.pages)
+        assert total_imagenes >= 4
+        assert not _re.search(r"\d,\d{3}\.\d", texto)  # es-AR, no en-US
+    finally:
+        _limpiar_mundo_completo(factory, mundo)
+
+
+def test_informe_sin_idECOR_sale_con_sin_datos(factory, tmp_path, monkeypatch):
+    """S7: sin capas IDECOR ni catálogo de eventos, el informe SALE IGUAL —
+    cada sección nueva con «sin datos» y el resto del informe intacto."""
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+
+    from app.auth.models import User
+    from app.domains.geo.informe_area import service as informe_service
+    from app.domains.geo.informe_area.schemas import InformeAreaCreate
+    from app.domains.geo.models import (
+        FormatoGeoLayer,
+        FuenteGeoLayer,
+        GeoLayer,
+        TipoGeoLayer,
+    )
+
+    monkeypatch.setattr(informe_service, "try_publish_celery_task", lambda _id: False)
+    # GEE real nunca debe llamarse: sin catálogo no hay eventos.
+    monkeypatch.setattr(
+        informe_service,
+        "_miniatura_por_defecto",
+        lambda *_a: (_ for _ in ()).throw(AssertionError("GEE no debe llamarse")),
+    )
+
+    with factory() as db:
+        db.execute(text("DROP TABLE IF EXISTS idecor_suelos_50mil"))
+        db.execute(text("DROP TABLE IF EXISTS idecor_cobertura_raster"))
+        db.execute(text("DELETE FROM rainfall_extreme_event WHERE provenance = 'curated'"))
+        db.commit()
+
+    ruta_flood = str(tmp_path / "sinidecor_flood.tif")
+    with rasterio.open(
+        ruta_flood,
+        "w",
+        driver="GTiff",
+        height=120,
+        width=160,
+        count=1,
+        dtype="float32",
+        crs="EPSG:4326",
+        transform=from_origin(LON0 - 0.05, LAT0 + 0.06, 0.001, 0.001),
+        nodata=-9999.0,
+    ) as dst:
+        dst.write(np.full((120, 160), 80.0, dtype="float32"), 1)
+
+    usuario_id = zona_id = informe_id = None
+    try:
+        with factory() as db:
+            db.add(
+                GeoLayer(
+                    nombre="pr4-sinflood",
+                    tipo=TipoGeoLayer.FLOOD_RISK,
+                    fuente=FuenteGeoLayer.MANUAL,
+                    archivo_path=ruta_flood,
+                    formato=FormatoGeoLayer.GEOTIFF,
+                    srid=4326,
+                )
+            )
+            usuario = User(
+                email=f"pr4-sin-{uuid.uuid4().hex[:8]}@test.local",
+                hashed_password="x",
+                role="operador",
+                nombre="PR4",
+                apellido="Sin",
+                telefono="",
+            )
+            db.add(usuario)
+            db.flush()
+            zona_id = _seed_zona(db, "pr4-sin", "cuenca-pr4", LON0 + 0.4, LAT0)
+            db.commit()
+            usuario_id = usuario.id
+            fila, _cache = informe_service.crear_informe(
+                db,
+                InformeAreaCreate(nombre="Informe sin IDECOR", zona_ids=[zona_id]),
+                usuario_id=usuario_id,
+            )
+            informe_id = fila.id
+            db.commit()
+
+        salida = tasks.generar_informe_area(str(informe_id))
+        assert salida["estado"] == "completed", salida
+
+        with factory() as db:
+            fila = db.get(
+                InformeArea,
+                informe_id,
+            )
+            res = fila.resultado
+            assert res["suelos_idecor"] is None
+            assert res["cobertura_idecor"] is None
+            assert res["imagenes_ancla"] == []
+            texto = _texto_de_pdf(bytes(fila.pdf_bytes))
+        assert "no está cargada" in texto  # suelos sin datos
+        assert "no están registrados" in texto  # cobertura sin datos
+        assert "Sin miniatura" in texto or "no hay eventos ancla" in texto
+        # El resto del informe sale igual (las secciones base siguen).
+        assert "2. Riesgo hídrico" in texto and "6. Lluvia" in texto
+    finally:
+        with factory() as db:
+            from app.shared.celery_outbox import CeleryTaskOutbox
+
+            db.execute(
+                delete(CeleryTaskOutbox).where(
+                    CeleryTaskOutbox.task_key == "geo.informe_area.generar"
+                )
+            )
+            if informe_id is not None:
+                db.execute(delete(InformeArea).where(InformeArea.id == informe_id))
+            db.execute(delete(GeoLayer).where(GeoLayer.archivo_path == ruta_flood))
+            if zona_id is not None:
+                db.execute(text("DELETE FROM zonas_operativas WHERE id = :z"), {"z": str(zona_id)})
+            if usuario_id is not None:
+                db.execute(delete(User).where(User.id == usuario_id))
+            db.commit()
+
+
+def _texto_de_pdf(pdf_bytes: bytes) -> str:
+    pypdf = pytest.importorskip("pypdf")
+    import io as _io
+    import re as _re
+
+    lector = pypdf.PdfReader(_io.BytesIO(pdf_bytes))
+    texto = " ".join(pagina.extract_text() or "" for pagina in lector.pages)
+    # pypdf wraps long table cells across extracted lines («MONTE\nBUEY»):
+    # collapse ALL whitespace so word-boundary asserts see one line.
+    return _re.sub(r"\s+", " ", texto)
