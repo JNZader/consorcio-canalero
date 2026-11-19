@@ -44,6 +44,7 @@ export type CodigoErrorKml =
   | 'demasiados_vertices'
   | 'sin_poligonos'
   | 'archivo_invalido'
+  | 'entidades_no_permitidas'
   | 'lectura_fallida';
 
 export class ErrorKml extends Error {
