@@ -158,6 +158,33 @@ def _fuentes_informe(db, precip_fuente: str, precip_periodo: str) -> list[dict]:
                     ),
                 }
             )
+
+    # Cobertura y cultivos (S4): uso 2024/2025 + campañas estivales, one
+    # Fuentes row per registered raster family (same date, same source).
+    if (
+        db.execute(text("SELECT to_regclass('idecor_cobertura_raster')")).scalar_one_or_none()
+        is not None
+    ):
+        filas_cob = db.execute(
+            text(
+                "SELECT tipo, max(fecha_de_bajada)::date::text AS fecha, count(*) "
+                "FROM idecor_cobertura_raster GROUP BY tipo"
+            )
+        ).all()
+        etiquetas = {
+            "cobertura_uso": ("Cobertura y uso del suelo (IDECOR)", "10 m · 21 clases"),
+            "cobertura_estival": ("Cultivos estivales (IDECOR/INTA)", "10 m · 3 campañas"),
+        }
+        for fila in filas_cob:
+            etiqueta, resolucion = etiquetas.get(str(fila.tipo), (str(fila.tipo), "10 m"))
+            fuentes.append(
+                {
+                    "capa": etiqueta,
+                    "fecha": str(fila.fecha),
+                    "resolucion": resolucion,
+                    "origen": "IDECOR · Mapas Córdoba (WCS/WMS) · licencia CC BY 4.0",
+                }
+            )
     return fuentes
 
 
@@ -275,6 +302,13 @@ def generar_informe_area(informe_id: str) -> dict:
                 suelos["por_zona"] = service.suelos_idecor_por_zona(
                     db, [(z.zona_id, z.ha) for z in zonas]
                 )
+            # Cobertura y cultivos (S4): uso 2024/2025 + 3 campañas
+            # estivales + recurrencia. Degrades to None → «sin datos».
+            cobertura = service.cobertura_dataset(db, union_geom, area_m2)
+            if cobertura is not None:
+                cobertura["por_zona"] = service.cobertura_por_zona(
+                    db, [(z.zona_id, z.nombre, z.g4326) for z in zonas]
+                )
             lluvia = ficha_service._precipitacion_dataset(  # noqa: SLF001
                 db, union_geom, area_m2
             ).model_dump()
@@ -318,7 +352,7 @@ def generar_informe_area(informe_id: str) -> dict:
                 calcular_kpis,
             )
 
-            for ds in (riesgo, drenaje, suelos, lluvia):
+            for ds in (riesgo, drenaje, suelos, cobertura, lluvia):
                 if ds is not None:
                     ds["area_ha"] = seleccion.area_ha
 
@@ -331,6 +365,7 @@ def generar_informe_area(informe_id: str) -> dict:
                 "riesgo": riesgo,
                 "drenaje": drenaje,
                 "suelos": suelos,
+                "cobertura": cobertura,
                 "lluvia": lluvia,
                 "desglose": desglose,
                 "umbral_alto_critico": umbral,
@@ -367,6 +402,20 @@ def generar_informe_area(informe_id: str) -> dict:
                         "ip_ponderado": suelos.get("ip_ponderado"),
                     }
                     if suelos
+                    else None
+                ),
+                "cobertura_idecor": (
+                    {
+                        "cobertura": cobertura.get("cobertura"),
+                        "cobertura_ratio": cobertura.get("cobertura_ratio"),
+                        "pct_agua_estacional": cobertura.get("pct_agua_estacional"),
+                        "campanias": [
+                            {"campania": c["campania"], "ha_cultivo": c["ha_cultivo"]}
+                            for c in cobertura.get("campanias") or []
+                        ],
+                        "recurrencia": cobertura.get("recurrencia"),
+                    }
+                    if cobertura
                     else None
                 ),
                 # GEE-dependent pieces (Sentinel-2 miniature) land later;

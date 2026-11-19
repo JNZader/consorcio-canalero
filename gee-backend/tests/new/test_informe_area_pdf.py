@@ -9,7 +9,7 @@ Covers, on top of T1's backend suite:
 * the task end-to-end over a SEEDED world (class rasters, CHIRPS normals,
   soils band, composite rows) → ``completed`` with ``pdf_bytes``;
 * pypdf text extraction (house pattern from ``test_pdf_es_ar``): folio
-  "Página 1 de", the SEVEN section titles IN ORDER, es-AR numbers (a
+  "Página 1 de", the section titles IN ORDER, es-AR numbers (a
   thousands-separated total with comma decimal present, no English
   "N,NNN.N" anywhere), and the selection total matching ``resultado``
   (the same figure that lands in the tables, ±0,1 ha by construction);
@@ -77,9 +77,10 @@ SECCIONES = [
     "2. Riesgo hídrico",
     "3. Necesidad de drenaje",
     "4. Suelos",
-    "5. Lluvia",
-    "6. Consideraciones",
-    "7. Fuentes",
+    "5. Cobertura y cultivos",
+    "6. Lluvia",
+    "7. Consideraciones",
+    "8. Fuentes",
 ]
 
 repo = InformeAreaRepository()

@@ -141,6 +141,11 @@ _VERSIONES_SQL = text(
 _VERSIONES_SUELOS_SQL = text("SELECT max(fecha_de_bajada)::text FROM idecor_suelos_50mil")
 _TABLA_SUELOS_IDECOR = "idecor_suelos_50mil"
 
+#: Same guarded stamp for the cobertura rasters (S4): a re-run of the ETL
+#: re-downloads and re-registers, and the clave must move with it.
+_VERSIONES_COBERTURA_SQL = text("SELECT max(fecha_de_bajada)::text FROM idecor_cobertura_raster")
+_TABLA_COBERTURA = "idecor_cobertura_raster"
+
 
 def resolver_seleccion(db: Session, zona_ids: list[uuid.UUID]) -> SeleccionResuelta:
     """Resolve, hash and measure a selection under the INFORME caps (S5).
@@ -454,6 +459,14 @@ def calcular_version_clave(db: Session, hash_seleccion: str) -> str:
             is not None
         ):
             suelos_idecor = db.execute(_VERSIONES_SUELOS_SQL).scalar()
+        cobertura_idecor: str | None = None
+        if (
+            db.execute(
+                text("SELECT to_regclass(:tabla)"), {"tabla": _TABLA_COBERTURA}
+            ).scalar_one_or_none()
+            is not None
+        ):
+            cobertura_idecor = db.execute(_VERSIONES_COBERTURA_SQL).scalar()
     partes = [
         hash_seleccion,
         f"plantilla={settings.informe_area_version_plantilla}",
@@ -462,6 +475,7 @@ def calcular_version_clave(db: Session, hash_seleccion: str) -> str:
         f"precip_normal={fila.precip_normal or '-'}",
         f"composite={fila.composite or '-'}",
         f"suelos_idecor={suelos_idecor or '-'}",
+        f"cobertura_idecor={cobertura_idecor or '-'}",
     ]
     return "|".join(partes)
 
@@ -578,3 +592,267 @@ def descargar_pdf(db: Session, informe_id: uuid.UUID, *, usuario: Any) -> tuple[
     return bytes(
         row.pdf_bytes
     ), f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{utf8_name}"
+
+
+# ── Cobertura IDECOR (PR 4, S4) ──────────────────────────────────────────────
+
+#: Registered raster rows: uso (1) + estivales (3), newest per capa. The
+#: table is this PR's own registration surface (see the migration's
+#: docstring for why not ``geo_layers``).
+_COBERTURAS_SQL = text(
+    """
+    SELECT capa, tipo, campania, archivo_path, leyenda
+    FROM idecor_cobertura_raster
+    ORDER BY tipo, campania
+    """
+)
+
+
+def _leer_capas_cobertura(db: Session) -> list[dict[str, Any]] | None:
+    """Registered rows, or ``None`` when the table is missing/empty (S7).
+
+    Savepoint for the same reason as the suelos read: a missing table
+    must degrade the section, not poison the task's transaction.
+    """
+    try:
+        with db.begin_nested():
+            filas = db.execute(_COBERTURAS_SQL).all()
+    except SQLAlchemyError:
+        logger.warning("informe_area.cobertura_no_disponible", exc_info=True)
+        return None
+    if not filas:
+        return None
+    return [
+        {
+            "capa": f.capa,
+            "tipo": f.tipo,
+            "campania": f.campania,
+            "archivo_path": f.archivo_path,
+            "leyenda": f.leyenda or [],
+        }
+        for f in filas
+    ]
+
+
+def _breaks_de_leyenda(leyenda: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Legend entries → half-open bins centered on each class code.
+
+    ``extract_zonal_profile`` bins on ``[min, max)`` with the last bin
+    closed; ±0.5 around integer codes puts 255 (uso nodata) and NaN
+    (estival nodata) outside every bin, which is exactly the intent.
+    """
+    return [
+        {
+            "label": str(entrada["etiqueta"]),
+            "min": float(entrada["codigo"]) - 0.5,
+            "max": float(entrada["codigo"]) + 0.5,
+        }
+        for entrada in leyenda
+    ]
+
+
+def _perfil_por_clase(
+    ruta: str,
+    leyenda: list[dict[str, Any]],
+    geom4326: dict[str, Any],
+    area_m2: float,
+) -> tuple[list[dict[str, Any]], str, float]:
+    """(clases ordenadas por ha, cobertura, cobertura_ratio) for one cover."""
+    from app.domains.geo.composites import extract_zonal_profile
+
+    perfil = extract_zonal_profile(
+        ruta,
+        geom4326,
+        geom_crs="EPSG:4326",
+        breaks=_breaks_de_leyenda(leyenda),
+        geom_area_m2=area_m2,
+    )
+    clases: list[dict[str, Any]] = [
+        {"clase": str(b["label"]), "ha": float(b["ha"]), "pct": float(b["pct"])}
+        for b in perfil["bins"]
+        if b["pixels"] > 0
+    ]
+    clases.sort(key=lambda c: -float(c["ha"]))
+    return clases, str(perfil["coverage"]), float(perfil["coverage_ratio"])
+    return clases, str(perfil["coverage"]), float(perfil["coverage_ratio"])
+
+
+def _recurrencia_estivales(
+    estivales: list[dict[str, Any]], geom4326: dict[str, Any]
+) -> dict[str, float] | None:
+    """Hectareas con cultivo estival en 3 / 2 / 1 / 0 campañas (pixel-exacto).
+
+    The ETL downloads every estival cover onto the SAME 10 m grid, so the
+    three reads stack without resampling: a pixel counts for a campaign
+    when it is not nodata there (NaN = sin cultivo estival). The
+    selection is rasterized once onto that grid; each cell contributes
+    its whole 0,01 ha — at 10 m against selections of thousands of ha the
+    boundary error sits far below S7's ±0,1 % reconciliation budget.
+    """
+    if len(estivales) < 3:
+        return None
+    try:
+        import numpy as np
+        import rasterio
+        from pyproj import Transformer
+        from rasterio.features import rasterize
+        from shapely.geometry import shape
+        from shapely.ops import transform as shapely_transform
+    except Exception:  # noqa: BLE001 — worker deps; tests inject their own grids
+        return None
+
+    try:
+        with rasterio.open(estivales[0]["archivo_path"]) as ref:
+            grid_transform = ref.transform
+            ancho, alto = ref.width, ref.height
+            presentes = np.zeros((alto, ancho), dtype="uint8")
+            for capa in estivales:
+                with rasterio.open(capa["archivo_path"]) as src:
+                    if src.width != ancho or src.height != alto:
+                        logger.warning(
+                            "informe_area.cobertura_grillas_desalineadas", capa=capa["capa"]
+                        )
+                        return None
+                    # The estival covers carry NaN values WITHOUT a nodata
+                    # tag (verified live: rasterio reports nodata=None), so
+                    # ``read(masked=True)`` would mask nothing — validity is
+                    # finiteness itself. Same rule ``extract_zonal_profile``
+                    # applies (~np.isnan) for the per-class tables.
+                    datos = src.read(1)
+                    presentes += np.isfinite(datos).astype("uint8")
+    except Exception:  # noqa: BLE001 — a missing/unreadable file degrades
+        logger.warning(
+            "informe_area.cobertura_archivo_ilegible", rutas=[c["archivo_path"] for c in estivales]
+        )
+        return None
+
+    reproj = Transformer.from_crs("EPSG:4326", "EPSG:22174", always_xy=True)
+    geom_22174 = shapely_transform(reproj.transform, shape(geom4326))
+    mascara = rasterize(
+        [(geom_22174, 1)],
+        out_shape=(alto, ancho),
+        transform=grid_transform,
+        fill=0,
+        dtype="uint8",
+        all_touched=False,
+    ).astype(bool)
+
+    dentro = presentes[mascara]
+    area_px_ha = 100.0 / 10_000.0  # 10 m × 10 m
+    return {
+        f"{n}_campanias_ha": round(float((dentro == n).sum()) * area_px_ha, 2) for n in (3, 2, 1, 0)
+    }
+
+
+def cobertura_dataset(
+    db: Session, geom4326: dict[str, Any], area_m2: float
+) -> dict[str, Any] | None:
+    """Section 5's dataset: uso classes, estival campaigns, summer recurrence.
+
+    ``None`` → «sin datos» (S7). Percentages are over the selection's
+    whole area; the builder's residual row reconciles each table.
+    """
+    capas = _leer_capas_cobertura(db)
+    if capas is None:
+        return None
+    usos = [c for c in capas if c["tipo"] == "cobertura_uso"]
+    estivales = [c for c in capas if c["tipo"] == "cobertura_estival"]
+    if not usos:
+        return None
+
+    try:
+        uso = usos[0]
+        clases, cobertura, cobertura_ratio = _perfil_por_clase(
+            uso["archivo_path"], uso["leyenda"], geom4326, area_m2
+        )
+        por_clase = {c["clase"]: c for c in clases}
+        # % «Cuerpo de agua estacional» (código 9, S4): resolved from the
+        # STORED legend by label — never by hardcoded code or position,
+        # because the estival codings differ between campaigns.
+        etiqueta_agua = next(
+            (
+                str(e["etiqueta"])
+                for e in uso["leyenda"]
+                if "agua estacional" in str(e["etiqueta"]).lower()
+            ),
+            None,
+        )
+        pct_agua = por_clase[etiqueta_agua]["pct"] if etiqueta_agua in por_clase else None
+
+        area_ha = area_m2 / 10_000.0
+        campanias = []
+        for capa in estivales:
+            clases_c, _cob, _ratio = _perfil_por_clase(
+                capa["archivo_path"], capa["leyenda"], geom4326, area_m2
+            )
+            cultivado = sum(c["ha"] for c in clases_c)
+            campanias.append(
+                {
+                    "capa": capa["capa"],
+                    "campania": capa["campania"],
+                    "clases": clases_c,
+                    "ha_cultivo": round(cultivado, 2),
+                    "pct_cultivo": round(cultivado / area_ha * 100.0, 2) if area_ha > 0 else 0.0,
+                }
+            )
+
+        return {
+            "cobertura": cobertura,
+            "cobertura_ratio": cobertura_ratio,
+            "clases": clases,
+            "etiqueta_agua_estacional": etiqueta_agua,
+            "pct_agua_estacional": pct_agua,
+            "campanias": campanias,
+            "recurrencia": _recurrencia_estivales(estivales, geom4326),
+        }
+    except Exception:  # noqa: BLE001 — IDECOR is a reported layer, never fatal
+        logger.warning("informe_area.cobertura_fallo", exc_info=True)
+        return None
+
+
+def cobertura_por_zona(
+    db: Session,
+    zonas: list[tuple[uuid.UUID, str, str]],
+) -> dict[str, dict[str, float | None]]:
+    """Per-zone % cultivo (uso, clases de «Cultivo») y % soja (última campaña).
+
+    ``zonas`` carries ``(zona_id, nombre, geojson_4326)`` — the task
+    already resolved those geometries for the maps, so no re-query. Label
+    matching (not codes) keeps working when a campaign's coding differs.
+    Degrades to ``{}`` like every IDECOR read (S7).
+    """
+    capas = _leer_capas_cobertura(db)
+    if capas is None:
+        return {}
+    usos = [c for c in capas if c["tipo"] == "cobertura_uso"]
+    estivales = [c for c in capas if c["tipo"] == "cobertura_estival"]
+    if not usos:
+        return {}
+
+    def _pct(clases: list[dict[str, Any]], claves: tuple[str, ...]) -> float | None:
+        pct = sum(
+            float(c["pct"]) for c in clases if any(clave in c["clase"].lower() for clave in claves)
+        )
+        return round(pct, 2) if pct > 0 else None
+
+    uso = usos[0]
+    estival = estivales[-1] if estivales else None
+    resultado: dict[str, dict[str, float | None]] = {}
+    try:
+        for zona_id, _nombre, geojson in zonas:
+            clases_uso, _cob, _ratio = _perfil_por_clase(
+                uso["archivo_path"], uso["leyenda"], json.loads(geojson), 0.0
+            )
+            fila: dict[str, float | None] = {
+                "pct_cultivo": _pct(clases_uso, ("cultivo",)),
+            }
+            if estival is not None:
+                clases_est, _cob_e, _ratio_e = _perfil_por_clase(
+                    estival["archivo_path"], estival["leyenda"], json.loads(geojson), 0.0
+                )
+                fila["pct_soja"] = _pct(clases_est, ("soja",))
+            resultado[str(zona_id)] = fila
+    except Exception:  # noqa: BLE001 — reported layer, never fatal
+        logger.warning("informe_area.cobertura_zonas_fallo", exc_info=True)
+        return {}
+    return resultado

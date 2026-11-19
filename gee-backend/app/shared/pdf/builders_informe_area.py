@@ -1,4 +1,4 @@
-"""Informe de área PDF builder — the S6 seven sections (PR 2, T2).
+"""Informe de área PDF builder — the informe de área PDF sections (PR 2 T2 + PR 4 IDECOR layers).
 
 Mandatory reuse (S12): ``BrandedPDF``/``NumberedCanvas`` from
 ``app.shared/pdf/base.py`` (the "Página n de N" folio is stamped there) and
@@ -14,9 +14,10 @@ Section order is FIXED (S6) and the tests assert it in extracted text:
    nota de método, desglose por subcuenca)
 3. Necesidad de drenaje (igual estructura que 2)
 4. Suelos (carta IDECOR 1:50.000 — PR 4: unidades, series, IP, agua útil)
-5. Lluvia (normales mensuales en barras — ReportLab primitives, no chart lib)
-6. Consideraciones (cobertura por capa, límites, descargo)
-7. Fuentes (capa · fecha · resolución · origen)
+5. Cobertura y cultivos (IDECOR uso 2024/2025 + estivales — PR 4, S4)
+6. Lluvia (normales mensuales en barras — ReportLab primitives, no chart lib)
+7. Consideraciones (cobertura por capa, límites, descargo)
+8. Fuentes (capa · fecha · resolución · origen)
 
 Per-subcuenca tables (S6): inline and complete when there are ≤ 8 subcuencas;
 beyond that each section shows a resumen line and the complete table at the
@@ -87,6 +88,19 @@ _FRASE_SUELOS_SIN_DATOS = (
     "La carta de suelos 1:50.000 de IDECOR no está cargada en este "
     "despliegue: ejecutá el ETL app.domains.geo.etl.idecor_suelos_50mil "
     "para habilitar la sección."
+)
+_FRASE_COBERTURA = (
+    "Cobertura y uso del suelo (IDECOR 2024/2025, 10 m, 21 clases) y "
+    "cultivos estivales de las campañas 22/23 a 24/25 (IDECOR/INTA)."
+)
+_FRASE_COBERTURA_SIN_DATOS = (
+    "Los rasters de cobertura IDECOR no están registrados en este "
+    "despliegue: ejecutá el ETL app.domains.geo.etl.idecor_coberturas "
+    "para habilitar la sección."
+)
+_FUENTE_COBERTURA = (
+    "Fuente: IDECOR · Mapas Córdoba — cobertura_uso_2024_2025 y "
+    "coberturas_estivales 2223/2324/2425 (WCS/WMS) · licencia CC BY 4.0."
 )
 _FRASE_LLUVIA = "Normales mensuales de precipitación (mm) promediadas sobre la selección."
 
@@ -459,7 +473,7 @@ def _seccion_resumen(
             flowables.append(
                 Paragraph(
                     f"Se muestran las {ZONAS_INLINE_MAX} mayores de {len(desglose)}; "
-                    "el detalle completo está al final de las secciones 2, 4 y 5.",
+                    "el detalle completo está al final de las secciones 2, 3, 4 y 6.",
                     estilos["small"],
                 )
             )
@@ -698,12 +712,136 @@ def _seccion_suelos(
     return flowables
 
 
+def _seccion_cobertura(
+    datos: dict[str, Any],
+    branding: BrandingInfo,
+    estilos: dict[str, Any],
+) -> list[Flowable]:
+    flowables: list[Flowable] = [Paragraph("5. Cobertura y cultivos", estilos["subtitle"])]
+
+    dataset = datos.get("cobertura")
+    if not dataset or not dataset.get("clases"):
+        flowables.append(Paragraph(_FRASE_COBERTURA_SIN_DATOS, estilos["body"]))
+        flowables.append(PageBreak())
+        return flowables
+
+    flowables.append(Paragraph(_FRASE_COBERTURA, estilos["body"]))
+    flowables.append(Spacer(1, 2 * mm))
+
+    # Uso 2024/2025: clase · ha · % (S4). The dataset's own ha order.
+    orden = [{"label": c["clase"]} for c in dataset["clases"]]
+    flowables.extend(_tabla_clases(dataset, orden, branding, titulo_total="Total con cobertura"))
+    flowables.append(Spacer(1, 2 * mm))
+
+    pct_agua = dataset.get("pct_agua_estacional")
+    etiqueta_agua = dataset.get("etiqueta_agua_estacional") or "Cuerpo de agua estacional"
+    if pct_agua is not None:
+        flowables.append(
+            Paragraph(
+                f"{_esc(etiqueta_agua)} (clase 9): {fmt_pct(pct_agua)} de la selección.",
+                estilos["body"],
+            )
+        )
+    flowables.append(Spacer(1, 3 * mm))
+
+    # Campañas estivales: one class table per campaign, plus the
+    # cultivated summary line (S4 "recurrencia" follows below).
+    flowables.append(Paragraph("Cultivos estivales por campaña", estilos["body"]))
+    for campania in dataset.get("campanias") or []:
+        clases = campania.get("clases") or []
+        if not clases:
+            continue
+        filas = [[str(c["clase"]), fmt_ha(c.get("ha")), fmt_pct(c.get("pct"))] for c in clases]
+        filas.append(
+            [
+                "Total cultivado",
+                fmt_ha(campania.get("ha_cultivo")),
+                fmt_pct(campania.get("pct_cultivo")),
+            ]
+        )
+        flowables.append(Spacer(1, 1 * mm))
+        flowables.append(Paragraph(f"Campaña {campania['campania']}", estilos["body"]))
+        flowables.append(
+            build_data_table(["Clase", "Superficie (ha)", "% de la selección"], filas, branding)
+        )
+    flowables.append(Spacer(1, 3 * mm))
+
+    # Recurrencia del cultivo de verano across the three campaigns (S4).
+    recurrencia = dataset.get("recurrencia")
+    if recurrencia:
+        etiquetas_rec = {
+            "3_campanias_ha": "Con cultivo en las 3 campañas",
+            "2_campanias_ha": "Con cultivo en 2 campañas",
+            "1_campanias_ha": "Con cultivo en 1 campaña",
+            "0_campanias_ha": "Sin cultivo estival en ninguna",
+        }
+        filas_rec = [
+            [etiqueta, fmt_ha(recurrencia.get(clave))] for clave, etiqueta in etiquetas_rec.items()
+        ]
+        flowables.append(Paragraph("Recurrencia del cultivo de verano", estilos["body"]))
+        flowables.append(Spacer(1, 1 * mm))
+        flowables.append(build_data_table(["Situación", "Superficie (ha)"], filas_rec, branding))
+        flowables.append(
+            Paragraph(
+                "Píxeles de 10 m clasificados por campaña; un píxel cuenta para "
+                "una campaña cuando esa campaña lo mapeó como cultivado.",
+                estilos["small"],
+            )
+        )
+    flowables.append(Spacer(1, 3 * mm))
+
+    # Desglose por subcuenca (S10): % cultivo + % soja última campaña.
+    por_zona = dataset.get("por_zona") or {}
+    desglose = datos.get("desglose")
+    if desglose and por_zona:
+        nota = _nota_resumen_zonas(desglose, estilos)
+        if nota is not None:
+            flowables.append(nota)
+            flowables.append(Spacer(1, 1 * mm))
+        flowables.append(Paragraph("Desglose por subcuenca", estilos["body"]))
+        flowables.append(Spacer(1, 1 * mm))
+        columnas: list[tuple[str, str, Any]] = [
+            ("Subcuenca", "nombre", str),
+            ("Cuenca", "cuenca", str),
+            ("Superficie (ha)", "ha", fmt_ha),
+        ]
+        filas_zonas: list[list[str]] = []
+        for fila in _top_zonas(desglose):
+            extra = por_zona.get(str(fila.get("zona_id")) or "") or {}
+            celdas = [
+                "—" if fila.get(clave) is None else str(fmt(fila.get(clave)))
+                for _enc, clave, fmt in columnas
+            ]
+            celdas.append(
+                fmt_pct(extra["pct_cultivo"]) if extra.get("pct_cultivo") is not None else "—"
+            )
+            celdas.append(fmt_pct(extra["pct_soja"]) if extra.get("pct_soja") is not None else "—")
+            filas_zonas.append(celdas)
+        flowables.append(
+            build_data_table(
+                [
+                    "Subcuenca",
+                    "Cuenca",
+                    "Superficie (ha)",
+                    "% cultivo (uso)",
+                    "% soja (última campaña)",
+                ],
+                filas_zonas,
+                branding,
+            )
+        )
+    flowables.append(Spacer(1, 2 * mm))
+    flowables.append(Paragraph(_FUENTE_COBERTURA, estilos["small"]))
+    flowables.append(PageBreak())
+    return flowables
+
+
 def _seccion_lluvia(
     datos: dict[str, Any],
     branding: BrandingInfo,
     estilos: dict[str, Any],
 ) -> list[Flowable]:
-    flowables: list[Flowable] = [Paragraph("5. Lluvia", estilos["subtitle"])]
+    flowables: list[Flowable] = [Paragraph("6. Lluvia", estilos["subtitle"])]
     flowables.append(Paragraph(_FRASE_LLUVIA, estilos["body"]))
     flowables.append(Spacer(1, 2 * mm))
 
@@ -761,12 +899,13 @@ def _seccion_consideraciones(
     branding: BrandingInfo,
     estilos: dict[str, Any],
 ) -> list[Flowable]:
-    flowables: list[Flowable] = [Paragraph("6. Consideraciones", estilos["subtitle"])]
+    flowables: list[Flowable] = [Paragraph("7. Consideraciones", estilos["subtitle"])]
 
     cobertura_labels = [
         ("Riesgo hídrico", datos.get("riesgo")),
         ("Necesidad de drenaje", datos.get("drenaje")),
         ("Suelos", datos.get("suelos")),
+        ("Cobertura y cultivos", datos.get("cobertura")),
     ]
     filas: list[list[str]] = []
     for nombre, dataset in cobertura_labels:
@@ -822,7 +961,7 @@ def _seccion_fuentes(
     branding: BrandingInfo,
     estilos: dict[str, Any],
 ) -> list[Flowable]:
-    flowables: list[Flowable] = [Paragraph("7. Fuentes", estilos["subtitle"])]
+    flowables: list[Flowable] = [Paragraph("8. Fuentes", estilos["subtitle"])]
     fuentes = datos.get("fuentes") or []
     if not fuentes:
         flowables.append(Paragraph("Sin capas registradas para este informe.", estilos["body"]))
@@ -911,6 +1050,7 @@ def build_informe_area_pdf(
         )
     )
     story.extend(_seccion_suelos(datos, branding, estilos))
+    story.extend(_seccion_cobertura(datos, branding, estilos))
     story.extend(_seccion_lluvia(datos, branding, estilos))
     story.extend(_seccion_consideraciones(datos, branding, estilos))
     story.extend(_seccion_fuentes(datos, branding, estilos))
