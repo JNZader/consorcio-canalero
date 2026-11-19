@@ -23,11 +23,13 @@ NEVER Esri) and ``build_informe_area_pdf`` lays out the 7 sections (S6). The
 bytes land in ``informes_area.pdf_bytes`` (bytea) inside the SAME completion
 compare-and-set, so a row is never ``completed`` without its PDF.
 
-GEE degradation (S8): nothing here calls GEE yet. A future Sentinel-2
-miniature will append to ``resultado["degradado"]`` instead of failing the
-report; a map-render failure degrades the same way today. A HARD failure
-(anything raised below) leaves ``estado=failed`` with a readable one-line
-reason in ``error`` — the traceback goes to the log, not the user.
+GEE degradation (S8): the ONLY GEE dependency is the S6 anchor-event
+miniature (NIR-SWIR1-red thumbnails of dated scenes picked by the imagery
+shortlist). Every failure there appends to ``resultado["degradado"]`` and
+renders «sin datos» for that event — a report never fails on GEE; a
+map-render failure degrades the same way. A HARD failure (anything raised
+below) leaves ``estado=failed`` with a readable one-line reason in
+``error`` — the traceback goes to the log, not the user.
 """
 
 from __future__ import annotations
@@ -137,14 +139,54 @@ def _fuentes_informe(db, precip_fuente: str, precip_periodo: str) -> list[dict]:
             }
         )
 
-    fuentes.append(
-        {
-            "capa": "Suelos (capacidad de uso)",
-            "fecha": "—",
-            "resolucion": "vectorial",
-            "origen": "catastro INTA (suelos_catastro)",
+    # Suelos: section 4 reads the IDECOR 1:50.000 cartography (PR 4, S3).
+    # The row exists only when the ETL actually ran — the same "absent from
+    # this deployment is absent from the table" rule as every other row.
+    if (
+        db.execute(text("SELECT to_regclass('idecor_suelos_50mil')")).scalar_one_or_none()
+        is not None
+    ):
+        fecha_suelos = db.execute(
+            text("SELECT max(fecha_de_bajada)::date::text FROM idecor_suelos_50mil")
+        ).scalar_one_or_none()
+        if fecha_suelos:
+            fuentes.append(
+                {
+                    "capa": "Suelos 1:50.000 (IDECOR)",
+                    "fecha": str(fecha_suelos),
+                    "resolucion": "vectorial · escala 1:50.000",
+                    "origen": (
+                        "IDECOR · carta_suelo_50mil_2025 (WFS) · INTA series · licencia CC BY 4.0"
+                    ),
+                }
+            )
+
+    # Cobertura y cultivos (S4): uso 2024/2025 + campañas estivales, one
+    # Fuentes row per registered raster family (same date, same source).
+    if (
+        db.execute(text("SELECT to_regclass('idecor_cobertura_raster')")).scalar_one_or_none()
+        is not None
+    ):
+        filas_cob = db.execute(
+            text(
+                "SELECT tipo, max(fecha_de_bajada)::date::text AS fecha, count(*) "
+                "FROM idecor_cobertura_raster GROUP BY tipo"
+            )
+        ).all()
+        etiquetas = {
+            "cobertura_uso": ("Cobertura y uso del suelo (IDECOR)", "10 m · 21 clases"),
+            "cobertura_estival": ("Cultivos estivales (IDECOR/INTA)", "10 m · 3 campañas"),
         }
-    )
+        for fila in filas_cob:
+            etiqueta, resolucion = etiquetas.get(str(fila.tipo), (str(fila.tipo), "10 m"))
+            fuentes.append(
+                {
+                    "capa": etiqueta,
+                    "fecha": str(fila.fecha),
+                    "resolucion": resolucion,
+                    "origen": "IDECOR · Mapas Córdoba (WCS/WMS) · licencia CC BY 4.0",
+                }
+            )
     return fuentes
 
 
@@ -157,7 +199,6 @@ def generar_informe_area(informe_id: str) -> dict:
     import json
     from datetime import datetime, timezone
 
-    from app.domains.geo import ficha_errors
     from app.domains.geo import ficha_service
     from app.domains.geo.informe_area import service
     from app.domains.geo.informe_area.repository import InformeAreaRepository
@@ -258,15 +299,39 @@ def generar_informe_area(informe_id: str) -> dict:
             drenaje = ficha_service._raster_dataset(  # noqa: SLF001
                 db, "drainage_need", union_geom, area_m2
             ).model_dump()
-            try:
-                suelos = ficha_service._suelos_dataset(  # noqa: SLF001
-                    db, seleccion.geojson, seleccion.area_ha
-                ).model_dump()
-            except ficha_errors.FichaError:
-                # Empty/uninstalled soils product: the ficha 503s (it is a
-                # hard dependency THERE); the informe reports sin cobertura
-                # and keeps serving the rest (S6 §6 cobertura por capa).
-                suelos = None
+            # Section 4's data (S3): IDECOR 1:50.000 cartography. The
+            # dataset itself degrades to None on a missing/failed table
+            # (S7 — «sin datos», the report never fails); the ficha's
+            # suelos_cu no longer feeds the informe, and the desglose's
+            # clase_suelo_dominante (suelos_catastro) stays as PR 1 built
+            # it — PR 3 owns that surface.
+            suelos = service.suelos_idecor_dataset(db, seleccion.geojson, seleccion.area_ha)
+            if suelos is not None:
+                suelos["por_zona"] = service.suelos_idecor_por_zona(
+                    db, [(z.zona_id, z.ha) for z in zonas]
+                )
+            # Cobertura y cultivos (S4): uso 2024/2025 + 3 campañas
+            # estivales + recurrencia. Degrades to None → «sin datos».
+            cobertura = service.cobertura_dataset(db, union_geom, area_m2)
+            if cobertura is not None:
+                cobertura["por_zona"] = service.cobertura_por_zona(
+                    db, [(z.zona_id, z.nombre, z.g4326) for z in zonas]
+                )
+            # Canales (S5): km relevados/propuestos clip por el área +
+            # cruces y conflictos. None → «sin datos»; ceros son reales.
+            canales = service.canales_dataset(db, seleccion.geojson, seleccion.area_ha)
+            if canales is not None:
+                canales["por_zona"] = service.canales_por_zona(
+                    db, [(z.zona_id, z.nombre, z.ha) for z in zonas]
+                )
+            # Imágenes de los eventos ancla (S6): miniaturas GEE falso
+            # color NIR-SWIR1-R recortadas al área. Cada fallo es por
+            # evento (png=None → «sin datos»), el informe no falla (S7).
+            degradado: list[str] = []
+            imagenes = service.imagenes_eventos_ancla(db, union_geom)
+            for imagen in imagenes:
+                if imagen.get("png") is None:
+                    degradado.append(f"miniatura sin datos: {imagen.get('nombre')}")
             lluvia = ficha_service._precipitacion_dataset(  # noqa: SLF001
                 db, union_geom, area_m2
             ).model_dump()
@@ -276,7 +341,6 @@ def generar_informe_area(informe_id: str) -> dict:
 
             zonas_geo = [{"nombre": z.nombre, "geojson": json.loads(z.g4326)} for z in zonas]
             mapas_bytes: dict[str, bytes] = {}
-            degradado: list[str] = []
 
             ubicacion = mapas.render_mapa_ubicacion(union_geom, zonas_geo)
             if ubicacion:
@@ -310,7 +374,7 @@ def generar_informe_area(informe_id: str) -> dict:
                 calcular_kpis,
             )
 
-            for ds in (riesgo, drenaje, suelos, lluvia):
+            for ds in (riesgo, drenaje, suelos, cobertura, lluvia):
                 if ds is not None:
                     ds["area_ha"] = seleccion.area_ha
 
@@ -323,6 +387,9 @@ def generar_informe_area(informe_id: str) -> dict:
                 "riesgo": riesgo,
                 "drenaje": drenaje,
                 "suelos": suelos,
+                "cobertura": cobertura,
+                "canales": canales,
+                "imagenes": imagenes,
                 "lluvia": lluvia,
                 "desglose": desglose,
                 "umbral_alto_critico": umbral,
@@ -353,6 +420,57 @@ def generar_informe_area(informe_id: str) -> dict:
                 "desglose": desglose,
                 "umbral_alto_critico": umbral,
                 "kpis": calcular_kpis(datos),
+                "suelos_idecor": (
+                    {
+                        "cobertura": suelos.get("cobertura"),
+                        "cobertura_ratio": suelos.get("cobertura_ratio"),
+                        "unidades": len(suelos.get("unidades") or []),
+                        "ip_ponderado": suelos.get("ip_ponderado"),
+                    }
+                    if suelos
+                    else None
+                ),
+                "cobertura_idecor": (
+                    {
+                        "cobertura": cobertura.get("cobertura"),
+                        "cobertura_ratio": cobertura.get("cobertura_ratio"),
+                        "pct_agua_estacional": cobertura.get("pct_agua_estacional"),
+                        "campanias": [
+                            {"campania": c["campania"], "ha_cultivo": c["ha_cultivo"]}
+                            for c in cobertura.get("campanias") or []
+                        ],
+                        "recurrencia": cobertura.get("recurrencia"),
+                    }
+                    if cobertura
+                    else None
+                ),
+                "canales_resumen": (
+                    {
+                        "km_relevados": canales.get("km_relevados"),
+                        "km_propuestos": canales.get("km_propuestos"),
+                        "km_total": canales.get("km_total"),
+                        "km_por_mil_ha": canales.get("km_por_mil_ha"),
+                        "cruces_camino": canales.get("cruces_camino"),
+                        "puntos_conflicto": canales.get("puntos_conflicto"),
+                    }
+                    if canales
+                    else None
+                ),
+                # PNG bytes stay OUT of resultado (JSONB budget, S9): only
+                # the per-event presence the UI polls for.
+                "imagenes_ancla": (
+                    [
+                        {
+                            "event_key": i["event_key"],
+                            "fecha": i["fecha"],
+                            "sensor": i["sensor"],
+                            "con_miniatura": i.get("png") is not None,
+                        }
+                        for i in imagenes
+                    ]
+                    if imagenes
+                    else []
+                ),
                 # GEE-dependent pieces (Sentinel-2 miniature) land later;
                 # each degradation is APPENDED here, never fails the report.
                 "degradado": degradado,
