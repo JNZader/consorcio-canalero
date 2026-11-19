@@ -3,7 +3,7 @@
 # ==============================================
 
 # --- Build stage (with compiler toolchain) ---
-FROM python:3.15.2-slim-trixie@sha256:e97b88e416c3c01eb427b21fd8cd3ebf006e6ee38afcfcc3cae1c54ee2ab0a75 AS build
+FROM python:3.15.2-slim-trixie@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS build
 
 WORKDIR /app
 
@@ -96,7 +96,7 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload
 # libz.so.1 and libexpat.so.1, so OSMesa and CPython keep loading them.
 # zlib 1.4 changes deflateReset, raw-deflate completion, and gzopen("x").
 # Build tools stay in this stage; production only receives the .debs.
-FROM python:3.15.2-slim-trixie@sha256:e97b88e416c3c01eb427b21fd8cd3ebf006e6ee38afcfcc3cae1c54ee2ab0a75 AS upstream-c-libs
+FROM python:3.15.2-slim-trixie@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS upstream-c-libs
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -111,7 +111,7 @@ COPY docker/upstream-c-libs/build.sh /tmp/build-upstream-c-libs.sh
 RUN bash /tmp/build-upstream-c-libs.sh
 
 # --- Production stage (clean, no gcc) ---
-FROM python:3.15.2-slim-trixie@sha256:e97b88e416c3c01eb427b21fd8cd3ebf006e6ee38afcfcc3cae1c54ee2ab0a75 AS production
+FROM python:3.15.2-slim-trixie@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS production
 
 WORKDIR /app
 
