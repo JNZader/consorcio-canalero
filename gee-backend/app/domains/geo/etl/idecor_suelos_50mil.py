@@ -34,7 +34,6 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Sequence
 from urllib.parse import urlencode
 
-from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -91,12 +90,12 @@ _COLUMNAS: tuple[tuple[str, str], ...] = (
     ("pdf_serie_8", "pdf_serie8"),
 )
 
-_INSERT = text(
+_INSERT = (
     "INSERT INTO idecor_suelos_50mil (id, "
     + ", ".join(col for col, _prop in _COLUMNAS)
     + ", geometria, fecha_de_bajada) VALUES ("
-    + ", ".join([":id"] + [f":{col}" for col, _prop in _COLUMNAS])
-    + ", ST_Multi(ST_CollectionExtract(ST_MakeValid(ST_GeomFromGeoJSON(:geojson)), 3)), :fecha)"
+    + ", ".join(["%(id)s"] + [f"%({col})s" for col, _prop in _COLUMNAS])
+    + ", ST_Multi(ST_CollectionExtract(ST_MakeValid(ST_GeomFromGeoJSON(%(geojson)s)), 3)), %(fecha)s)"
 )
 
 
@@ -117,9 +116,11 @@ def resolver_bbox_zonas(
     corner) and register it as if it were the zona. No zonas → no extent
     → no download.
     """
-    fila = db.execute(
-        text("SELECT ST_Extent(geometria)::text FROM zonas_operativas")
-    ).scalar_one_or_none()
+    fila = (
+        db.connection()
+        .exec_driver_sql("SELECT ST_Extent(geometria)::text FROM zonas_operativas")
+        .scalar_one_or_none()
+    )
     if not fila:
         raise EtlAssertionError(
             "zonas_operativas está vacía — no se puede resolver el bbox de la zona; "
@@ -252,7 +253,7 @@ def cargar_suelos(
     2. every stored geometry is a valid MULTIPOLYGON in SRID 4326.
     """
     fecha = fecha or datetime.now(timezone.utc)
-    db.execute(text("TRUNCATE idecor_suelos_50mil"))
+    db.connection().exec_driver_sql("TRUNCATE idecor_suelos_50mil")
     insertados = 0
     for feature in features:
         params = _params(feature, fecha)
@@ -260,18 +261,22 @@ def cargar_suelos(
             raise EtlAssertionError(
                 f"feature {feature.get('id')!r} sin geometría — se rehúsa la carga completa"
             )
-        db.execute(_INSERT, params)
+        db.connection().exec_driver_sql(_INSERT, params)
         insertados += 1
 
-    almacenados = db.execute(text("SELECT count(*) FROM idecor_suelos_50mil")).scalar_one()
+    almacenados = (
+        db.connection().exec_driver_sql("SELECT count(*) FROM idecor_suelos_50mil").scalar_one()
+    )
     if almacenados != len(features):
         raise EtlAssertionError(f"filas almacenadas {almacenados} != features {len(features)}")
-    invalidos = db.execute(
-        text(
+    invalidos = (
+        db.connection()
+        .exec_driver_sql(
             "SELECT count(*) FROM idecor_suelos_50mil "
             "WHERE NOT ST_IsValid(geometria) OR ST_SRID(geometria) <> 4326"
         )
-    ).scalar_one()
+        .scalar_one()
+    )
     if invalidos:
         raise EtlAssertionError(f"{invalidos} geometrías inválidas o con SRID distinto de 4326")
     return int(almacenados)

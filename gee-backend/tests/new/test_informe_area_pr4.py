@@ -258,10 +258,16 @@ def test_suelos_dataset_tabla_ausente_degrada_a_none(db):
 
 
 @pytest.fixture
-def tablas_canales(factory):
+def tablas_canales(test_engine):
     """Committed canal_consorcio/red_vial/cruce_camino DDL (the migrations'
     own constants, guarded with to_regclass — these tables have no ORM
     model, so ``create_all`` never made them). Dropped at teardown.
+
+    DDL runs on a DEDICATED autocommit connection, NOT the factory session:
+    the session's open transaction would hold locks past this fixture's
+    teardown and block the DROP forever (the no-teardown leak this fixture
+    shipped with broke test_load_canales_consorcio's own unguarded CREATE).
+    Autocommit keeps creation/drop invisible to any session transaction.
 
     The migrations' ``ADD_ENUM_VALUE`` statements are deliberately NOT
     applied: the test enum already has every value the seed uses.
@@ -271,34 +277,24 @@ def tablas_canales(factory):
     m20 = importlib.import_module("app.db.migrations.versions.0020_add_canal_consorcio")
     m21 = importlib.import_module("app.db.migrations.versions.0021_add_red_vial")
     m22 = importlib.import_module("app.db.migrations.versions.0022_add_cruce_camino")
-    tablas = ("canal_consorcio", "red_vial", "cruce_camino")
-    # Per-table guard: other suites leave red_vial/cruce_camino behind in
-    # the shared test database while canal_consorcio is absent — an
-    # all-or-nothing check would skip creating what is actually missing.
-    creadas: dict[str, bool] = {}
-    with factory() as db:
-        existentes = {
-            t: db.execute(text("SELECT to_regclass(:t)"), {"t": t}).scalar_one_or_none()
-            for t in tablas
-        }
-        for tabla, statement in (
-            ("canal_consorcio", m20.CREATE_CANAL_CONSORCIO),
-            ("red_vial", m21.CREATE_RED_VIAL),
-            ("cruce_camino", m22.CREATE_CRUCE_CAMINO),
-        ):
-            if existentes.get(tabla) is None:
-                db.execute(text(statement))
-                creadas[tabla] = True
-        if existentes.get("canal_consorcio") is None:
-            db.execute(text(m20.CREATE_CANAL_CONSORCIO_GEOM_INDEX))
-        db.commit()
+    ddl = (
+        ("canal_consorcio", m20.CREATE_CANAL_CONSORCIO),
+        ("red_vial", m21.CREATE_RED_VIAL),
+        ("cruce_camino", m22.CREATE_CRUCE_CAMINO),
+    )
+    creadas: list[str] = []
+    with test_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        for tabla, statement in ddl:
+            existe = conn.exec_driver_sql(f"SELECT to_regclass('{tabla}')").scalar()
+            if existe is None:
+                conn.exec_driver_sql(statement)
+                creadas.append(tabla)
+        if "canal_consorcio" in creadas:
+            conn.exec_driver_sql(m20.CREATE_CANAL_CONSORCIO_GEOM_INDEX)
     yield
-    # Deliberately NO teardown DROP: the ``db`` fixture's rollback
-    # transaction still holds locks on these tables when this fixture
-    # finalizes (fixture teardown order), and a DROP would block on it
-    # forever. The tables stay EMPTY and committed — every reader treats
-    # an empty canal table as honest zeros, and each run's guard only
-    # creates what is missing.
+    with test_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        for tabla in reversed(creadas):
+            conn.exec_driver_sql(f'DROP TABLE IF EXISTS "{tabla}" CASCADE')
 
 
 @pytest.fixture
