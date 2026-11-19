@@ -151,6 +151,15 @@ const M2_POR_HA = 10_000;
  * three.
  */
 export function kmlAPoligonos(texto: string): PoligonoKml[] {
+  // Guard anti billion-laughs/XXE (CodeQL: entity expansion): KML legítimo
+  // (Google Earth, QGIS) NO usa DTDs ni entidades — cualquier declaración
+  // de ENTITY/DOCTYPE en un archivo subido es ataque, no contenido.
+  if (/<!\s*(DOCTYPE|ENTITY)/i.test(texto)) {
+    throw new ErrorKml(
+      'entidades_no_permitidas',
+      'El KML incluye declaraciones de entidad no permitidas.'
+    );
+  }
   const doc = new DOMParser().parseFromString(texto, 'text/xml');
   if (doc.getElementsByTagName('parsererror').length > 0) {
     throw new ErrorKml('archivo_invalido', 'El archivo no es un KML válido.');
@@ -160,9 +169,16 @@ export function kmlAPoligonos(texto: string): PoligonoKml[] {
   const poligonos: PoligonoKml[] = [];
   let vertices = 0;
   for (const feature of coleccion.features ?? []) {
-    const nombre =
+    // XSS guard (CodeQL): el nombre viene del XML subido y llega a la UI —
+    // React auto-escapa, pero además se recorta, se le quitan caracteres de
+    // marcado y se acota su longitud: nada del archivo se renderiza tal cual.
+    const nombreBruto =
       typeof feature.properties?.name === 'string' && feature.properties.name.trim()
         ? feature.properties.name.trim()
+        : null;
+    const nombre =
+      nombreBruto !== null
+        ? nombreBruto.replace(/[<>&"']/g, '').slice(0, 120) || null
         : null;
     for (const geometry of geometriasPoligonales(feature.geometry)) {
       vertices += contarVertices(geometry);
