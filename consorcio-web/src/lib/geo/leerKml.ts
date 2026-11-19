@@ -44,7 +44,6 @@ export type CodigoErrorKml =
   | 'demasiados_vertices'
   | 'sin_poligonos'
   | 'archivo_invalido'
-  | 'entidades_no_permitidas'
   | 'lectura_fallida';
 
 export class ErrorKml extends Error {
@@ -151,22 +150,19 @@ const M2_POR_HA = 10_000;
  * call this same function, so the parse contract cannot drift between the
  * three.
  */
-export function kmlAPoligonos(texto: string): PoligonoKml[] {
-  // Guard anti billion-laughs/XXE (CodeQL: entity expansion): KML legítimo
-  // (Google Earth, QGIS) NO usa DTDs ni entidades — cualquier declaración
-  // de ENTITY/DOCTYPE en un archivo subido es ataque, no contenido.
-  // (Literal .includes() — CodeQL's xml-bomb query recognizes this guard
-  // shape; a regex .test() with the same semantics was not recognized.)
-  if (texto.includes('<!DOCTYPE') || texto.includes('<!ENTITY')) {
-    throw new ErrorKml(
-      'entidades_no_permitidas',
-      'El KML incluye declaraciones de entidad no permitidas.'
-    );
-  }
+export function kmlAPoligonos(textoEntrante: string): PoligonoKml[] {
+  // Sanitizer anti billion-laughs/XXE: STRIP, not reject. Legitimate KMLs
+  // (ArcGIS and some Earth exporters) DO carry a <!DOCTYPE kml ...> header
+  // that a reject-guard would bounce; entities are never needed to read
+  // geometries, so the whole DOCTYPE block (internal subset included) and
+  // any stray ENTITY declarations are removed before parsing. The browser
+  // DOMParser additionally caps entity expansion on its own.
+  const texto = textoEntrante
+    .replace(/<!DOCTYPE[^>[]*(?:\[[\s\S]*?\])?\s*>/gi, '')
+    .replace(/<!ENTITY[\s\S]*?>/gi, '');
   // Reviewed false positives (CodeQL HIGH), reasons kept next to each rule:
-  //   xml-bomb — browser DOMParser hard-caps entity expansion (a
-  //     server-parser threat), and the DOCTYPE/ENTITY guard above rejects
-  //     the input outright anyway.
+  //   xml-bomb — entities are stripped above AND the browser DOMParser
+  //     hard-caps entity expansion (a server-parser threat).
   //   xss — the parse output never reaches innerHTML: the only extracted
   //     text (polygon name) is markup-stripped and length-capped, and
   //     renders through React's auto-escaping.
