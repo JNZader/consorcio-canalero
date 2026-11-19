@@ -20,6 +20,7 @@ Disciplines (same as ``test_informe_area.py`` / ``_pdf.py``):
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any
 
@@ -742,3 +743,256 @@ def test_canales_dataset_vacio_es_cero_real_no_error(factory, db, tablas_canales
                 text("DELETE FROM zonas_operativas WHERE id = :id"), {"id": str(zona_id)}
             )
             db_limpieza.commit()
+
+
+# ── S6: imágenes de eventos ancla ───────────────────────────────────────────
+
+
+def _png_chico() -> bytes:
+    """A 24x16 red PNG — a valid image for the ReportLab/Pillow path."""
+    import io
+
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (24, 16), (180, 30, 30)).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _seed_eventos_ancla(factory) -> None:
+    """The three curated anchors + rank-1 candidates (mar→landsat8, los
+    otros dos → sentinel2/landsat7) + one anchor WITHOUT a candidate."""
+    payloads = {
+        "mar_2015": {"name": "Inundación Marzo 2015", "sensor": "landsat8"},
+        "feb_2017": {"name": "Inundación Febrero 2017", "sensor": "sentinel2"},
+        "sep_2025": {"name": "Inundación Septiembre 2025", "sensor": None},
+        "sin_cand": {"name": "Evento sin candidata", "sensor": "landsat5"},
+    }
+    fechas = {
+        "mar_2015": "2015-03-15",
+        "feb_2017": "2017-02-20",
+        "sep_2025": "2025-09-05",
+        "sin_cand": "2020-01-10",
+    }
+    with factory() as db:
+        for event_key, fecha in fechas.items():
+            db.execute(
+                text(
+                    "INSERT INTO rainfall_extreme_event "
+                    "(id, source_id, scope_kind, scope_id, scope_version, detector_revision, "
+                    " provenance, event_key, start_date, end_date, curated_payload) "
+                    "VALUES (gen_random_uuid(), 'chirps-v3-final', 'provider_asset', "
+                    "        'zona_cc_ampliada', 'v1', 'curated', 'curated', :k, "
+                    "        CAST(:d AS date), CAST(:d AS date), CAST(:p AS json))"
+                ),
+                {"k": event_key, "d": fecha, "p": json.dumps(payloads[event_key])},
+            )
+        escenas = [
+            ("mar_2015", "landsat8", "LANDSAT/LC08_C02/T1_TOA/LC08_123", "2015-03-16", 10.0),
+            ("feb_2017", "sentinel2", "COPERNICUS/S2_SR_HARMONIZED/20170220T14", "2017-02-21", 5.0),
+            ("sep_2025", "landsat7", "LANDSAT/LE07_C02/T1_TOA/LE07_123", "2025-09-04", 30.0),
+        ]
+        for event_key, sensor, escena, fecha_escena, nubes in escenas:
+            db.execute(
+                text(
+                    "INSERT INTO rainfall_event_imagery_candidate "
+                    "(id, event_key, scorer_revision, sensor, scene_id, scene_date, "
+                    " days_from_peak, cloud_pct, cloud_basis, score, rank, visualization, slot) "
+                    "VALUES (gen_random_uuid(), :k, 'pr4', :s, :sc, CAST(:sd AS date), "
+                    "        0, :n, 'scene', 99.0, 1, 'falso_color', 'ranked')"
+                ),
+                {"k": event_key, "s": sensor, "sc": escena, "sd": fecha_escena, "n": nubes},
+            )
+        db.commit()
+
+
+def _limpiar_eventos_ancla(factory) -> None:
+    with factory() as db:
+        db.execute(
+            text("DELETE FROM rainfall_event_imagery_candidate WHERE scorer_revision = 'pr4'")
+        )
+        db.execute(
+            text(
+                "DELETE FROM rainfall_extreme_event WHERE provenance = 'curated' "
+                "AND event_key IN ('mar_2015', 'feb_2017', 'sep_2025', 'sin_cand')"
+            )
+        )
+        db.commit()
+
+
+def test_imagenes_ancla_con_mock_gee_tres_presentas(factory, db):
+    """S8: con GEE respondiendo, las miniaturas están para los eventos con
+    candidata; el evento sin candidata sale «sin datos» y nada falla."""
+    _seed_eventos_ancla(factory)
+    try:
+        llamadas: list[tuple[str, str]] = []
+
+        def fetch_ok(scene_id: str, sensor: str, region) -> bytes:
+            llamadas.append((sensor, scene_id))
+            assert region.get("type") in ("Polygon", "MultiPolygon")
+            return _png_chico()
+
+        filas = service.imagenes_eventos_ancla(
+            db,
+            {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]},
+            fetch_miniatura=fetch_ok,
+        )
+        por_evento = {f["event_key"]: f for f in filas}
+        assert set(por_evento) == {"mar_2015", "feb_2017", "sep_2025", "sin_cand"}
+        # Three events have rank-1 candidates → three thumbnails.
+        assert len(llamadas) == 3
+        assert {sensor for sensor, _escena in llamadas} == {"landsat8", "sentinel2", "landsat7"}
+        for event_key in ("mar_2015", "feb_2017", "sep_2025"):
+            assert por_evento[event_key]["png"] == _png_chico()
+        assert por_evento["sin_cand"]["png"] is None
+        assert por_evento["sin_cand"]["sensor"] is None
+    finally:
+        _limpiar_eventos_ancla(factory)
+
+
+def test_imagenes_ancla_gee_caido_degrada_por_evento(factory, db):
+    """S7: GEE que explota → png None por evento, cero excepciones."""
+    _seed_eventos_ancla(factory)
+    try:
+
+        def fetch_mal(_scene: str, _sensor: str, _region) -> bytes:
+            raise RuntimeError("gee quota exceeded")
+
+        filas = service.imagenes_eventos_ancla(
+            db,
+            {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]},
+            fetch_miniatura=fetch_mal,
+        )
+        assert len(filas) == 4
+        assert all(f["png"] is None for f in filas)
+        # The scene metadata still travels (the report says WHICH scene
+        # it could not render, not just «error»).
+        assert {f["sensor"] for f in filas} == {None, "landsat8", "sentinel2", "landsat7"}
+    finally:
+        _limpiar_eventos_ancla(factory)
+
+
+def test_imagenes_ancla_sin_catalogo_degrada_a_lista_vacia(db):
+    """S7: sin tablas del catálogo → [] (sección «sin eventos»)."""
+    filas = service.imagenes_eventos_ancla(
+        db,
+        {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]},
+        fetch_miniatura=lambda *_a: (_ for _ in ()).throw(AssertionError("no debe llamarse")),
+    )
+    assert filas == []
+
+
+def test_miniatura_falso_color_bandas_por_sensor():
+    """The band triplets are NIR-SWIR1-red per sensor (the water-reading
+    combination), not the house RGB/false-color presets."""
+    assert service._BANDAS_FALSO_COLOR["sentinel2"][0] == ["B8", "B11", "B4"]
+    assert service._BANDAS_FALSO_COLOR["landsat8"][0] == ["B5", "B6", "B4"]
+    assert service._BANDAS_FALSO_COLOR["landsat7"][0] == ["B4", "B5", "B3"]
+
+    # Impl path against a stub ee: select/clip/getThumbURL + PNG fetch.
+    class _Imagen:
+        def __init__(self, meta):
+            self.meta = meta
+
+        def select(self, bandas):
+            self.meta["bandas"] = bandas
+            return self
+
+        def clip(self, region):
+            self.meta["region"] = region
+            return self
+
+        def getThumbURL(self, params):
+            self.meta["params"] = params
+            return "https://ee/thumb"
+
+    class _EE:
+        def __init__(self):
+            self.meta = {}
+
+        def Image(self, scene_id):
+            self.meta["scene"] = scene_id
+            return _Imagen(self.meta)
+
+        def Geometry(self, geometry=None, geodesic=None):
+            self.meta["geom"] = (geometry, geodesic)
+            return ("region", geometry)
+
+    class _Resp:
+        content = b"PNG-FAKE"
+
+        def raise_for_status(self):
+            return None
+
+    class _Req:
+        def get(self, url, timeout=None):
+            assert url == "https://ee/thumb"
+            return _Resp()
+
+    ee_stub, req_stub = _EE(), _Req()
+    png = service.miniatura_falso_color_impl(
+        scene_id="ESCENA-1",
+        sensor="sentinel2",
+        region_geojson={"type": "Polygon", "coordinates": []},
+        ee_module=ee_stub,
+        requests_module=req_stub,
+    )
+    assert png == b"PNG-FAKE"
+    assert ee_stub.meta["scene"] == "ESCENA-1"
+    assert ee_stub.meta["bandas"] == ["B8", "B11", "B4"]
+    assert ee_stub.meta["params"]["dimensions"] == service.MINIATURA_PX
+    assert ee_stub.meta["params"]["format"] == "png"
+    assert ee_stub.meta["geom"][1] is False
+
+
+# ── S7: the ONE opt-in live test (network; skip without IDECOR_LIVE=1) ──────
+
+
+@pytest.mark.integration
+def test_idcor_live_wfs():
+    """Opt-in live probe: the real WFS answers suelos within the zona bbox.
+
+    Runs ONLY with IDECOR_LIVE=1 (bounded: one count=1 page + one
+    count=500 page, read-only). Everything else in this suite is hermetic.
+    """
+    import os
+
+    import requests
+
+    if os.environ.get("IDECOR_LIVE") != "1":
+        pytest.skip("opt-in live test: set IDECOR_LIVE=1")
+
+    respuesta = requests.get(
+        "https://idecor-ws.mapascordoba.gob.ar/geoserver/idecor/wfs",
+        params={
+            "service": "WFS",
+            "version": "2.0.0",
+            "request": "GetFeature",
+            "typeNames": "idecor:carta_suelo_50mil_2025",
+            "outputFormat": "application/json",
+            "count": 1,
+        },
+        timeout=60,
+    )
+    respuesta.raise_for_status()
+    payload = respuesta.json()
+    assert payload.get("numberMatched") == 1555
+    assert payload["features"], "el WFS vivo debe traer al menos una feature"
+
+    leyenda = requests.get(
+        "https://idecor-ws.mapascordoba.gob.ar/geoserver/idecor/wms",
+        params={
+            "service": "WMS",
+            "version": "1.1.1",
+            "request": "GetLegendGraphic",
+            "layer": "cobertura_uso_2024_2025",
+            "format": "application/json",
+        },
+        timeout=60,
+    )
+    leyenda.raise_for_status()
+    from app.domains.geo.etl.idecor_coberturas import normalizar_leyenda
+
+    entradas = normalizar_leyenda(leyenda.json())
+    agua = [e for e in entradas if "agua estacional" in e["etiqueta"].lower()]
+    assert len(agua) == 1 and agua[0]["codigo"] == 9

@@ -17,8 +17,9 @@ Section order is FIXED (S6) and the tests assert it in extracted text:
 5. Cobertura y cultivos (IDECOR uso 2024/2025 + estivales — PR 4, S4)
 6. Lluvia (normales mensuales en barras — ReportLab primitives, no chart lib)
 7. Canales (km relevados/propuestos clip por el área, cruces, conflictos — PR 4, S5)
-8. Consideraciones (cobertura por capa, límites, descargo)
-9. Fuentes (capa · fecha · resolución · origen)
+8. Imágenes de eventos ancla (miniaturas GEE falso color NIR-SWIR1-R — PR 4, S6)
+9. Consideraciones (cobertura por capa, límites, descargo)
+10. Fuentes (capa · fecha · resolución · origen)
 
 Per-subcuenca tables (S6): inline and complete when there are ≤ 8 subcuencas;
 beyond that each section shows a resumen line and the complete table at the
@@ -1009,12 +1010,79 @@ def _seccion_canales(
     return flowables
 
 
+def _seccion_imagenes(
+    datos: dict[str, Any],
+    branding: BrandingInfo,
+    estilos: dict[str, Any],
+) -> list[Flowable]:
+    flowables: list[Flowable] = [Paragraph("8. Imágenes de eventos ancla", estilos["subtitle"])]
+    flowables.append(
+        Paragraph(
+            "Miniaturas en falso color (NIR-SWIR1-rojo: el agua absorbe el "
+            "SWIR, los anegamientos leen oscuro) de los eventos de "
+            "inundación ancla del catálogo, recortadas al área de la "
+            "selección.",
+            estilos["body"],
+        )
+    )
+    flowables.append(Spacer(1, 2 * mm))
+
+    imagenes = datos.get("imagenes") or []
+    if not imagenes:
+        flowables.append(
+            Paragraph(
+                "El catálogo de eventos extremos no está disponible en este "
+                "despliegue: no hay eventos ancla que mostrar.",
+                estilos["body"],
+            )
+        )
+        flowables.append(PageBreak())
+        return flowables
+
+    for imagen in imagenes:
+        fecha_es = str(imagen.get("fecha") or "—")
+        nubes = imagen.get("nubes_pct")
+        partes = [
+            f"{_esc(str(imagen.get('nombre') or imagen.get('event_key')))} · {fecha_es}",
+            f"sensor {_esc(str(imagen.get('sensor') or '—'))}",
+        ]
+        if nubes is not None:
+            partes.append(f"nubes {fmt_pct(float(nubes))}")
+        escena = str(imagen.get("escena") or "")
+        flowables.append(Paragraph(" · ".join(partes), estilos["body"]))
+        png = imagen.get("png")
+        miniatura = _imagen_mapa(png or b"", alto_max_mm=70.0) if png else None
+        if miniatura is not None:
+            flowables.append(KeepTogether([miniatura, Spacer(1, 1 * mm)]))
+        else:
+            flowables.append(
+                Paragraph(
+                    "Sin miniatura para este evento (sin candidata o GEE no respondió).",
+                    estilos["small"],
+                )
+            )
+        if escena:
+            flowables.append(Paragraph(f"Escena: {_esc(escena)}", estilos["small"]))
+        flowables.append(Spacer(1, 2 * mm))
+
+    flowables.append(
+        Paragraph(
+            "Fuente: escenas Sentinel-2 / Landsat vía Google Earth Engine, "
+            "seleccionadas por el shortlist de candidatos del catálogo de "
+            "lluvias extremas (rainfall_event_imagery_candidate).",
+            estilos["small"],
+        )
+    )
+    flowables.append(PageBreak())
+    return flowables
+
+
 def _seccion_consideraciones(
     datos: dict[str, Any],
     branding: BrandingInfo,
     estilos: dict[str, Any],
 ) -> list[Flowable]:
-    flowables: list[Flowable] = [Paragraph("8. Consideraciones", estilos["subtitle"])]
+    flowables: list[Flowable] = [Paragraph("9. Consideraciones", estilos["subtitle"])]
 
     cobertura_labels = [
         ("Riesgo hídrico", datos.get("riesgo")),
@@ -1076,7 +1144,7 @@ def _seccion_fuentes(
     branding: BrandingInfo,
     estilos: dict[str, Any],
 ) -> list[Flowable]:
-    flowables: list[Flowable] = [Paragraph("9. Fuentes", estilos["subtitle"])]
+    flowables: list[Flowable] = [Paragraph("10. Fuentes", estilos["subtitle"])]
     fuentes = datos.get("fuentes") or []
     if not fuentes:
         flowables.append(Paragraph("Sin capas registradas para este informe.", estilos["body"]))
@@ -1168,6 +1236,7 @@ def build_informe_area_pdf(
     story.extend(_seccion_cobertura(datos, branding, estilos))
     story.extend(_seccion_lluvia(datos, branding, estilos))
     story.extend(_seccion_canales(datos, branding, estilos))
+    story.extend(_seccion_imagenes(datos, branding, estilos))
     story.extend(_seccion_consideraciones(datos, branding, estilos))
     story.extend(_seccion_fuentes(datos, branding, estilos))
 

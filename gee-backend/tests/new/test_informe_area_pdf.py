@@ -80,8 +80,9 @@ SECCIONES = [
     "5. Cobertura y cultivos",
     "6. Lluvia",
     "7. Canales",
-    "8. Consideraciones",
-    "9. Fuentes",
+    "8. Imágenes de eventos ancla",
+    "9. Consideraciones",
+    "10. Fuentes",
 ]
 
 repo = InformeAreaRepository()

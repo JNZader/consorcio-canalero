@@ -23,11 +23,13 @@ NEVER Esri) and ``build_informe_area_pdf`` lays out the 7 sections (S6). The
 bytes land in ``informes_area.pdf_bytes`` (bytea) inside the SAME completion
 compare-and-set, so a row is never ``completed`` without its PDF.
 
-GEE degradation (S8): nothing here calls GEE yet. A future Sentinel-2
-miniature will append to ``resultado["degradado"]`` instead of failing the
-report; a map-render failure degrades the same way today. A HARD failure
-(anything raised below) leaves ``estado=failed`` with a readable one-line
-reason in ``error`` — the traceback goes to the log, not the user.
+GEE degradation (S8): the ONLY GEE dependency is the S6 anchor-event
+miniature (NIR-SWIR1-red thumbnails of dated scenes picked by the imagery
+shortlist). Every failure there appends to ``resultado["degradado"]`` and
+renders «sin datos» for that event — a report never fails on GEE; a
+map-render failure degrades the same way. A HARD failure (anything raised
+below) leaves ``estado=failed`` with a readable one-line reason in
+``error`` — the traceback goes to the log, not the user.
 """
 
 from __future__ import annotations
@@ -316,6 +318,14 @@ def generar_informe_area(informe_id: str) -> dict:
                 canales["por_zona"] = service.canales_por_zona(
                     db, [(z.zona_id, z.nombre, z.ha) for z in zonas]
                 )
+            # Imágenes de los eventos ancla (S6): miniaturas GEE falso
+            # color NIR-SWIR1-R recortadas al área. Cada fallo es por
+            # evento (png=None → «sin datos»), el informe no falla (S7).
+            degradado: list[str] = []
+            imagenes = service.imagenes_eventos_ancla(db, union_geom)
+            for imagen in imagenes:
+                if imagen.get("png") is None:
+                    degradado.append(f"miniatura sin datos: {imagen.get('nombre')}")
             lluvia = ficha_service._precipitacion_dataset(  # noqa: SLF001
                 db, union_geom, area_m2
             ).model_dump()
@@ -325,7 +335,6 @@ def generar_informe_area(informe_id: str) -> dict:
 
             zonas_geo = [{"nombre": z.nombre, "geojson": json.loads(z.g4326)} for z in zonas]
             mapas_bytes: dict[str, bytes] = {}
-            degradado: list[str] = []
 
             ubicacion = mapas.render_mapa_ubicacion(union_geom, zonas_geo)
             if ubicacion:
@@ -374,6 +383,7 @@ def generar_informe_area(informe_id: str) -> dict:
                 "suelos": suelos,
                 "cobertura": cobertura,
                 "canales": canales,
+                "imagenes": imagenes,
                 "lluvia": lluvia,
                 "desglose": desglose,
                 "umbral_alto_critico": umbral,
@@ -437,6 +447,21 @@ def generar_informe_area(informe_id: str) -> dict:
                     }
                     if canales
                     else None
+                ),
+                # PNG bytes stay OUT of resultado (JSONB budget, S9): only
+                # the per-event presence the UI polls for.
+                "imagenes_ancla": (
+                    [
+                        {
+                            "event_key": i["event_key"],
+                            "fecha": i["fecha"],
+                            "sensor": i["sensor"],
+                            "con_miniatura": i.get("png") is not None,
+                        }
+                        for i in imagenes
+                    ]
+                    if imagenes
+                    else []
                 ),
                 # GEE-dependent pieces (Sentinel-2 miniature) land later;
                 # each degradation is APPENDED here, never fails the report.

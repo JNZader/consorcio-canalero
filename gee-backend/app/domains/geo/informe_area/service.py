@@ -1006,3 +1006,157 @@ def canales_por_zona(
         }
         for clave, valores in acumulado.items()
     }
+
+
+# ── Imágenes de eventos ancla (PR 4, S6) ─────────────────────────────────────
+
+#: The three curated flood anchors the plan names (2015/2017/2025). Read
+#: from the catalog lluvia_ext_002 seeded — never hardcoded a second time.
+_EVENTOS_ANCLA_SQL = text(
+    """
+    SELECT event_key, start_date, curated_payload
+    FROM rainfall_extreme_event
+    WHERE provenance = 'curated'
+    ORDER BY start_date
+    """
+)
+
+#: Best imagery candidate per event: slot='ranked', rank 1 wins.
+_CANDIDATO_ANCLA_SQL = text(
+    """
+    SELECT DISTINCT ON (event_key)
+           event_key, sensor, scene_id, scene_date, cloud_pct
+    FROM rainfall_event_imagery_candidate
+    WHERE slot = 'ranked'
+    ORDER BY event_key, rank
+    """
+)
+
+#: False-color band triplets (NIR-SWIR1-Rojo — water absorbs SWIR1, so
+#: flooded vegetation/soil reads dark against red vegetation): the S2
+#: surface-reflectance scale the house VIS_PRESETS uses, and the Landsat
+#: TOA reflectance ceiling the explorer pins for those collections.
+_BANDAS_FALSO_COLOR: dict[str, tuple[list[str], float]] = {
+    "sentinel2": (["B8", "B11", "B4"], 3000.0),
+    "landsat9": (["B5", "B6", "B4"], 0.35),
+    "landsat8": (["B5", "B6", "B4"], 0.35),
+    "landsat7": (["B4", "B5", "B3"], 0.35),
+    "landsat5": (["B4", "B5", "B3"], 0.35),
+}
+
+#: Thumbnail budget (S6 «miniatura»; GEE caps thumbnails at 1024 px —
+#: 768 keeps every one of the three requests comfortably inside quota).
+MINIATURA_PX = 768
+
+
+def miniatura_falso_color_impl(
+    *,
+    scene_id: str,
+    sensor: str,
+    region_geojson: dict[str, Any],
+    ee_module: Any,
+    requests_module: Any,
+    dimension_px: int = MINIATURA_PX,
+) -> bytes:
+    """PNG bytes of one scene in NIR-SWIR1-Rojo, clipped to the selection.
+
+    Raises on anything (unknown sensor, GEE error, HTTP failure) — the
+    caller degrades that event to «sin datos», never fails the report.
+    """
+    bandas, maximo = _BANDAS_FALSO_COLOR[sensor]
+    region = ee_module.Geometry(geometry=region_geojson, geodesic=False)
+    imagen = ee_module.Image(scene_id).select(bandas).clip(region)
+    url = imagen.getThumbURL(
+        {
+            "bands": bandas,
+            "min": 0,
+            "max": maximo,
+            "dimensions": dimension_px,
+            "region": region,
+            "format": "png",
+        }
+    )
+    respuesta = requests_module.get(url, timeout=90)
+    respuesta.raise_for_status()
+    return respuesta.content
+
+
+def _miniatura_por_defecto(scene_id: str, sensor: str, region_geojson: dict[str, Any]) -> bytes:
+    """The production fetcher: lazy ee import + the geo-worker's requests."""
+    import ee
+    import requests
+
+    return miniatura_falso_color_impl(
+        scene_id=scene_id,
+        sensor=sensor,
+        region_geojson=region_geojson,
+        ee_module=ee,
+        requests_module=requests,
+    )
+
+
+def imagenes_eventos_ancla(
+    db: Session,
+    union_geojson: dict[str, Any],
+    *,
+    fetch_miniatura: Any = None,
+) -> list[dict[str, Any]]:
+    """One row per curated anchor event, PNG bytes attached when GEE answered.
+
+    Every failure is per-event: an event without a candidate, an unknown
+    sensor or a GEE error yields ``png=None`` (the section prints «sin
+    datos» for it) and the report keeps going (S7). The union geometry is
+    simplified for the clip — a thumbnail loses nothing at ~100 m and
+    EE rejects overly complex regions.
+    """
+    fetch = fetch_miniatura or _miniatura_por_defecto
+    try:
+        with db.begin_nested():
+            eventos = db.execute(_EVENTOS_ANCLA_SQL).all()
+    except SQLAlchemyError:
+        logger.warning("informe_area.eventos_ancla_no_disponibles", exc_info=True)
+        return []
+    if not eventos:
+        return []
+    try:
+        with db.begin_nested():
+            candidatos = {fila.event_key: fila for fila in db.execute(_CANDIDATO_ANCLA_SQL).all()}
+    except SQLAlchemyError:
+        logger.warning("informe_area.candidatos_ancla_no_disponibles", exc_info=True)
+        candidatos = {}
+
+    region = json.loads(json.dumps(union_geojson))  # defensive copy: ee must not see a mutated dict
+
+    filas: list[dict[str, Any]] = []
+    for evento in eventos:
+        fila: dict[str, Any] = {
+            "event_key": str(evento.event_key),
+            "fecha": str(evento.start_date),
+            "nombre": (evento.curated_payload or {}).get("name") or str(evento.event_key),
+            "sensor": None,
+            "escena": None,
+            "nubes_pct": None,
+            "png": None,
+        }
+        candidato = candidatos.get(str(evento.event_key))
+        if candidato is None:
+            filas.append(fila)
+            continue
+        fila.update(
+            {
+                "sensor": str(candidato.sensor),
+                "escena": str(candidato.scene_id),
+                "nubes_pct": candidato.cloud_pct,
+            }
+        )
+        try:
+            fila["png"] = fetch(str(candidato.scene_id), str(candidato.sensor), region)
+        except Exception:  # noqa: BLE001 — GEE degradation is the contract (S7)
+            logger.warning(
+                "informe_area.miniatura_fallo",
+                event_key=str(evento.event_key),
+                scene=str(candidato.scene_id),
+                exc_info=True,
+            )
+        filas.append(fila)
+    return filas

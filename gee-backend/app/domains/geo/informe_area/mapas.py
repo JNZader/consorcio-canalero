@@ -8,10 +8,10 @@ map-furniture element: subcuenca outlines, selection contour, graphic scale
 bar, north arrow and the legend strip (label · color · ha · %).
 
 Background is plain WHITE on purpose. The map-stack policy (AGENTS.md) bans
-Esri imagery in derived products — a report PDF is exactly that — and no
-Sentinel-2 miniature is fetched in this PR; if one lands later it must come
-from our own dated GEE export, appended to ``resultado["degradado"]`` on
-failure, never from a tiled basemap service.
+Esri imagery in derived products — a report PDF is exactly that. The dated
+Sentinel-2/Landsat miniatures the S6 section embeds DO comply with the
+policy: they are our own GEE scene exports (dated provenance, selected by
+the imagery shortlist), never a tiled basemap service.
 
 Two renderers:
 
