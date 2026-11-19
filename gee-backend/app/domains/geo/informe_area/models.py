@@ -121,6 +121,35 @@ class InformeArea(UUIDMixin, TimestampMixin, Base):
         nullable=True,
         comment="Rendered PDF (bytea, ≤5MB per S9); deferred so listings never load it",
     )
+    # PR 6 (S3): the Google Earth export, same storage reasoning as the PDF
+    # — bytes land in the same completion compare-and-set as pdf_bytes, and
+    # the retention sweep reclaims them with the row. Bigger than the PDF
+    # (three imagery PNGs ride along) but still TOAST-sized.
+    kmz_bytes: Mapped[bytes | None] = mapped_column(
+        LargeBinary,
+        deferred=True,
+        nullable=True,
+        comment="KMZ export for Google Earth (S3); deferred like pdf_bytes",
+    )
+    # PR 6 (S4): the offline field package (JSON, target ≤ 15 MB). Stored
+    # beside the PDF for the same sweep-cleans-everything reason.
+    campo_paquete: Mapped[bytes | None] = mapped_column(
+        LargeBinary,
+        deferred=True,
+        nullable=True,
+        comment="Offline field package JSON (S4); deferred like pdf_bytes",
+    )
+    # PR 6 (S5): opaque URL-safe token for the PUBLIC campo route. NOT the
+    # informe id and NOT derived from anything personal — the URL a QR
+    # carries must contain no user data. Generated once at create time so a
+    # cache-reused row and a fresh row behave identically; deleting the row
+    # (retention sweep or manual) revokes the token with it.
+    token_publico: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        unique=True,
+        comment="Opaque public token for /api/v2/public/campo/{token} (S5)",
+    )
 
     def __repr__(self) -> str:
         return f"<InformeArea {self.id} estado={self.estado} usuario={self.usuario_id}>"

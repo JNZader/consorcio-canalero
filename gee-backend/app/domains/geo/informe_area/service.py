@@ -28,6 +28,7 @@ anybody else gets the same 404 as for a missing id.
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 import unicodedata
@@ -1366,3 +1367,228 @@ def imagenes_eventos_ancla(
             )
         filas.append(fila)
     return filas
+
+
+# ── PR 6: paquete de campo + KMZ + token público (S3/S4/S5) ──────────────────
+
+#: Basemap threshold (S4: "para áreas chicas… con imagen de fondo; para
+#: áreas grandes, un PMTiles"). 30 000 ha ≈ 300 km² — a typical consorcio
+#: subcuenca group sits under it. Above it the fixed 768 px Sentinel-2
+#: thumbnail is >60 m/px (useless for parcel orientation) AND the plan's
+#: answer for that size is PMTiles — which is NOT buildable in the backend
+#: container (no tippecanoe binary, no pmtiles package; verified PR 6).
+#: Documented degradation: the package still ships every vector class, the
+#: basemap is dropped, and a nota says so — never a silent failure.
+AREA_CAMPO_BASEMAP_MAX_HA = 30_000.0
+
+#: S9 acceptance target for one subcuenca's package. Exceeding it is logged
+#: and recorded in ``resultado['campo']``/package ``notas`` — the field map
+#: still works with heavier vectors, so it is a budget, not a gate.
+CAMPO_PAQUETE_MAX_BYTES = 15_000_000
+
+#: Soils polygons for the campo themes: simplify tolerance in METRES,
+#: converted to degrees at the clip's latitude inside the helper.
+_TOLERANCIA_SUELOS_M = 15.0
+
+_SUELOS_GEOMETRIAS_SQL = text(
+    """
+    WITH sel AS (SELECT ST_GeomFromGeoJSON(:geojson) AS g4326)
+    SELECT s.clase,
+           ST_AsGeoJSON(ST_Force2D(ST_CollectionExtract(
+               ST_Intersection(ST_MakeValid(s.geometria), ST_MakeValid(sel.g4326)), 3)
+           )) AS geo
+    FROM idecor_suelos_50mil s, sel
+    WHERE ST_Intersects(s.geometria, sel.g4326)
+    """
+)
+
+
+def url_campo(token: str) -> str:
+    """The URL the PDF-cover QR encodes (S5/S7).
+
+    Public base comes from ``settings.frontend_url`` (the deploy's own front
+    origin, default localhost for dev) — no new config surface, the same
+    field the auth emails already trust for links back into the app.
+    """
+    base = (settings.frontend_url or "http://localhost:5173").rstrip("/")
+    return f"{base}/campo/{token}"
+
+
+def suelos_geometrias_clase(db: Session, geojson_4326: str) -> list[dict[str, Any]] | None:
+    """Soils units clipped to the selection, dissolved per class (PR 6).
+
+    ``None`` when the IDECOR table is absent/empty — the same degrade-not-
+    fail contract as ``suelos_idecor_dataset``. Each class carries ONE
+    (multi)polygon — ``unary_union`` of its units, simplified ~15 m — so the
+    KMZ placemark and the package JSON stay payload-bounded.
+    """
+    try:
+        with db.begin_nested():
+            filas = db.execute(_SUELOS_GEOMETRIAS_SQL, {"geojson": geojson_4326}).all()
+    except SQLAlchemyError:
+        logger.warning("informe_area.suelos_geometrias_no_disponible", exc_info=True)
+        return None
+
+    from shapely.geometry import shape
+    from shapely.ops import unary_union
+
+    por_clase: dict[str, list[Any]] = {}
+    for fila in filas:
+        clase = (fila.clase or "").strip() or "sin clasificar"
+        try:
+            por_clase.setdefault(clase, []).append(shape(json.loads(fila.geo)))
+        except (ValueError, TypeError):
+            continue  # a malformed unit never fails the theme
+    if not por_clase:
+        return []
+
+    # Metres → degrees is latitude-dependent, but simplify tolerance is a
+    # rendering budget, not a measurement: the mid-latitude constant is
+    # honest at these scales (all consorcio selections sit near -33°).
+    tol_deg = _TOLERANCIA_SUELOS_M / 111_320.0
+
+    clases: list[dict[str, Any]] = []
+    for clase, geoms in sorted(por_clase.items()):
+        disuelta = unary_union(geoms).simplify(tol_deg, preserve_topology=True)
+        clases.append({"clase": clase, "geometrias": [disuelta.__geo_interface__]})
+    return clases
+
+
+def construir_paquete_campo(
+    *,
+    nombre: str,
+    generado_el: str,
+    vence_at: str,
+    area_ha: float,
+    seleccion_geojson: dict[str, Any],
+    subcuencas: list[dict[str, Any]],
+    temas: list[dict[str, Any]],
+    basemap: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Assemble the offline field package (S4) — PURE, no db/GEE.
+
+    ``temas`` items are ``{"clave", "titulo", "clases": [{clase, color,
+    geometrias}]}`` — the same vectorized pieces the KMZ and the PDF maps
+    consumed, so the phone's map cannot disagree with the report.
+    ``basemap`` is ``{"png", "bounds", "fecha", "sensor"}`` or ``None``;
+    the >30 000 ha degradation drops it here (and says why) so the
+    threshold has exactly one home.
+    """
+    notas: list[str] = []
+    basemap_out: dict[str, Any] | None = None
+    if basemap and basemap.get("png"):
+        if area_ha <= AREA_CAMPO_BASEMAP_MAX_HA:
+            west, south, east, north = basemap["bounds"]
+            basemap_out = {
+                "imagen": (
+                    "data:image/png;base64,"
+                    + base64.b64encode(bytes(basemap["png"])).decode("ascii")
+                ),
+                "bounds": [west, south, east, north],
+                "fecha": basemap.get("fecha"),
+                "sensor": basemap.get("sensor"),
+                "descripcion": (
+                    "Imagen satelital del evento ancla más reciente con datos "
+                    "(falso color NIR-SWIR1-rojo); fondo de orientación, no "
+                    "cartografía oficial."
+                ),
+            }
+        else:
+            notas.append(
+                "Área mayor a 30.000 ha: el paquete se entrega sin imagen de "
+                "fondo (la resolución de la miniatura no aporta a esa escala). "
+                "Los polígonos de clase y los límites están completos."
+            )
+    else:
+        notas.append(
+            "Sin imagen satelital de fondo para esta selección (el evento ancla "
+            "más reciente no tuvo miniatura). Los polígonos de clase y los "
+            "límites están completos."
+        )
+
+    return {
+        "version": 1,
+        "nombre": nombre,
+        "generado_el": generado_el,
+        "vence_at": vence_at,
+        "area_ha": round(float(area_ha), 4),
+        # límites: la selección + las subcuencas, GeoJSON 4326 crudo.
+        "limites": {
+            "seleccion": seleccion_geojson,
+            "subcuencas": [
+                {"nombre": str(z.get("nombre") or ""), "geometry": z.get("geojson")}
+                for z in subcuencas
+                if z.get("geojson")
+            ],
+        },
+        # temas: {clave: {titulo, clases:[{clase, color, geometrias}]}} — la
+        # leyenda vive inline (clase + color), un solo lugar que leer.
+        "temas": {
+            str(tema["clave"]): {
+                "titulo": str(tema.get("titulo") or tema["clave"]),
+                "clases": [
+                    {
+                        "clase": str(c["clase"]),
+                        "color": str(c.get("color") or "#808080"),
+                        "geometrias": list(c.get("geometrias") or []),
+                    }
+                    for c in tema.get("clases") or []
+                ],
+            }
+            for tema in temas
+        },
+        "basemap": basemap_out,
+        "notas": notas,
+    }
+
+
+def serializar_paquete_campo(paquete: dict[str, Any]) -> bytes:
+    """Compact UTF-8 JSON — the bytes the row stores and the route serves."""
+    return json.dumps(paquete, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
+
+def descargar_kmz(db: Session, informe_id: uuid.UUID, *, usuario: Any) -> tuple[bytes, str]:
+    """Same privacy ladder as ``descargar_pdf``, for the KMZ (S3)."""
+    row = obtener_informe(db, informe_id, usuario=usuario)
+    estado = row.estado.value if hasattr(row.estado, "value") else str(row.estado)
+    if estado == "pending" or estado == "running":
+        raise errors.pdf_en_progreso()
+    if estado == "failed":
+        raise errors.informe_fallido(row.error)
+    if not row.kmz_bytes:
+        raise errors.kmz_no_disponible()
+    ascii_name, utf8_name = _nombre_archivo_kmz(row.nombre)
+    return bytes(
+        row.kmz_bytes
+    ), f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{utf8_name}"
+
+
+def _nombre_archivo_kmz(nombre: str) -> tuple[str, str]:
+    """Content-Disposition filenames for the KMZ (see ``_nombre_archivo``)."""
+    plano = unicodedata.normalize("NFKD", nombre).encode("ascii", "ignore").decode()
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", plano).strip("-").lower() or "informe-area"
+    ascii_name = f"informe-{slug[:60]}.kmz"
+    utf8_name = quote(f"{nombre.strip() or 'informe-area'}.kmz")
+    return ascii_name, utf8_name
+
+
+def paquete_campo_por_token(db: Session, token: str) -> bytes:
+    """The PUBLIC campo route's read (S5): token → package bytes.
+
+    404 for anything unanswerable (unknown token, deleted row = revoked,
+    still pending, degraded run without a package) — a public surface gets
+    ONE status for all of those, or it becomes an oracle. 410 only for the
+    row that is present but past ``vence_at``: the phone that scanned the QR
+    deserves to know the map expired, not that it "doesn't exist".
+    """
+    if not token or len(token) > 64:
+        raise errors.campo_token_invalido()
+    row = repo.obtener_por_token(db, token)
+    if row is None:
+        raise errors.campo_token_invalido()
+    if row.vence_at and row.vence_at < datetime.now(timezone.utc):
+        raise errors.campo_vencido()
+    estado = row.estado.value if hasattr(row.estado, "value") else str(row.estado)
+    if estado != "completed" or not row.campo_paquete:
+        raise errors.campo_token_invalido()
+    return bytes(row.campo_paquete)

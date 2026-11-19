@@ -3,6 +3,8 @@ import { resolve } from 'path';
 import { defineConfig, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import {
+  CAMPO_MAP_ENGINE_CACHE_FIRST,
+  CAMPO_PACKAGE_CACHE_FIRST,
   GEE_IMAGE_NETWORK_ONLY,
   GLYPH_SPRITE_NETWORK_ONLY,
   MAP_ENGINE_NETWORK_ONLY,
@@ -234,6 +236,39 @@ export default defineConfig({
           {
             urlPattern: /\/version\.json(\?.*)?$/i,
             handler: 'NetworkOnly',
+          },
+          // Campo (PR 6) — the two rules that make /campo/:token work in
+          // airplane mode after a first visit. They precede BOTH the map-
+          // engine NetworkOnly and the generic /api/v2/public NetworkFirst
+          // below: workbox matches in registration order.
+          {
+            urlPattern: CAMPO_PACKAGE_CACHE_FIRST,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'campo-packages',
+              expiration: {
+                maxEntries: 20,
+                // 90 days — the token's own lifetime (PR 2 retention).
+                maxAgeSeconds: 60 * 60 * 24 * 90,
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
+            urlPattern: CAMPO_MAP_ENGINE_CACHE_FIRST,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'campo-map-engine',
+              expiration: {
+                maxEntries: 6,
+                maxAgeSeconds: 60 * 60 * 24 * 90,
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
           },
           // Map engine, glyphs/sprites, Martin MVT, GEE pixels and terrain-rgb
           // stay on the network. Precaching them (or CacheFirst for 30 days)
