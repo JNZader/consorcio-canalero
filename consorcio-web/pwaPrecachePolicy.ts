@@ -77,9 +77,33 @@ export const GLYPH_SPRITE_NETWORK_ONLY = /^https:\/\/tiles\.openfreemap\.org\//i
  * Martin MVT: ``{host}/{table}/{z}/{x}/{y}`` with no file extension.
  * Same-origin ``/api/...`` and Esri paths have more segments, so they miss.
  */
-export const MARTIN_TILE_NETWORK_ONLY =
-  /^https?:\/\/[^/]+\/[a-z0-9_]+\/\d+\/\d+\/\d+(?:\?.*)?$/i;
+export const MARTIN_TILE_NETWORK_ONLY = /^https?:\/\/[^/]+\/[a-z0-9_]+\/\d+\/\d+\/\d+(?:\?.*)?$/i;
 
 /** 3D terrain-rgb tiles. Colored geo overlays keep their own runtime cache. */
 export const TERRAIN_TILE_NETWORK_ONLY =
   /\/api\/v2\/geo\/layers\/[^/]+\/tiles\/.*encoding=terrain-rgb/i;
+
+/**
+ * Campo (PR 6, S5): the offline field package. CacheFirst with a 90-day
+ * window — the token's own lifetime — because the whole point is "scan the
+ * QR once, then it works in airplane mode". Registered BEFORE the generic
+ * `/api/v2/public/.*` NetworkFirst so this route wins (workbox matches in
+ * order). The page ALSO writes the same URL into the same cache name via
+ * Cache Storage, so first-use caching holds even where the SW has not
+ * settled yet (dev, first install window).
+ */
+export const CAMPO_PACKAGE_CACHE_FIRST = /\/api\/v2\/public\/campo\/[^/?#]+$/i;
+
+export const CAMPO_PACKAGE_CACHE_NAME = 'campo-packages';
+
+/**
+ * Campo (PR 6): the MapLibre engine chunks the campo map needs offline.
+ * The admin map deliberately keeps these NetworkOnly (they are big and the
+ * shell never paints a map offline); the campo route DOES, so the same two
+ * chunks flip to CacheFirst here — scoped to `vendor-maplibre` +
+ * `maplibre-gl-worker` only (map-draw/pmtiles/useMapInitialization are not
+ * on the campo path and stay network-only). Registered BEFORE
+ * `MAP_ENGINE_NETWORK_ONLY` so the more specific intent wins.
+ */
+export const CAMPO_MAP_ENGINE_CACHE_FIRST =
+  /\/assets\/(?:vendor-maplibre|maplibre-gl-worker)-[^/]+\.js$/i;

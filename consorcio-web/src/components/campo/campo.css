@@ -1,0 +1,133 @@
+/*
+ * Campo (PR 6, S6) — full-screen field map chrome.
+ * Plain CSS on purpose: the campo chunk pulls no component library CSS
+ * beyond what the shell already loads, and every rule here is scoped by
+ * the .campo- prefix.
+ *
+ * The map container selector is TWO classes (`.campo-page .campo-mapa`)
+ * because MapLibre injects `.maplibregl-map { position: relative }` with
+ * its own stylesheet at map-boot time — AFTER this file — and an equal
+ * specificity tie would let a 0-height container collapse the canvas to
+ * maplibre's 300 px fallback.
+ */
+
+.campo-page {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  display: flex;
+  flex-direction: column;
+  background: #e9efe9;
+  font-family: var(--mantine-font-family, system-ui, sans-serif);
+  color: #111827;
+}
+
+.campo-page .campo-mapa {
+  position: absolute;
+  inset: 0;
+}
+
+.campo-header {
+  position: absolute;
+  top: max(env(safe-area-inset-top), 8px);
+  left: 12px;
+  z-index: 1;
+  max-width: 70%;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  font-size: 0.9rem;
+}
+
+.campo-cargando {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 1rem;
+  color: #374151;
+}
+
+.campo-error-pagina {
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+}
+
+.campo-panel {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: max(env(safe-area-inset-bottom), 12px);
+  z-index: 1;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.22);
+}
+
+.campo-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.campo-chip {
+  padding: 4px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #f8fafc;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.campo-chip-activo {
+  border-color: #2d8f68;
+  background: #2d8f68;
+  color: #ffffff;
+}
+
+.campo-chip-offline {
+  border-color: #92400e;
+  background: #fef3c7;
+  color: #92400e;
+  cursor: default;
+}
+
+.campo-linea {
+  margin: 2px 0;
+  font-size: 0.95rem;
+}
+
+.campo-limite {
+  font-weight: 600;
+  color: #92400e;
+}
+
+.campo-nota {
+  color: #6b7280;
+  font-size: 0.85rem;
+}
+
+.campo-error {
+  color: #b91c1c;
+}
+
+.campo-acciones {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.campo-boton {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 999px;
+  background: #2d8f68;
+  color: #ffffff;
+  font-size: 0.9rem;
+  cursor: pointer;
+}

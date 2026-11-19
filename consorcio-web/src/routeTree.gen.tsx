@@ -51,9 +51,13 @@ const VerifyEmailPage = lazy(() => import('./components/auth/VerifyEmailPage'));
 const PrivacyPolicyPage = lazy(() => import('./components/PrivacyPolicyPage'));
 const NotFound = lazy(() => import('./components/NotFound'));
 
+// PR 6 (S5/S6): the offline field map a PDF-cover QR opens. Lazy and OUT
+// of RootLayout on purpose — no admin chrome, no auth: the whole page is
+// the public package + GPS over MapLibre.
+const CampoPage = lazy(() => import('./components/campo/CampoPage'));
+
 // Admin components - lazy load only the content, not the layout
-const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard'));
-const ImageExplorerPanel = lazy(() => import('./components/admin/images/ImageExplorerPanel'));
+const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard'));const ImageExplorerPanel = lazy(() => import('./components/admin/images/ImageExplorerPanel'));
 const ParticipacionPanel = lazy(
   () => import('./components/admin/participacion/ParticipacionPanel')
 );
@@ -294,11 +298,27 @@ const participacionRoute = createRoute({
   ),
 });
 
+// PR 6 (S5): `/campo/:token` — public, fullscreen, no RootLayout. The
+// QR on the informe PDF's cover points here; the token is the informe's
+// opaque `token_publico` (no personal data in the URL). Renders lazy and
+// standalone so the phone loads a thin chunk, not the admin shell.
+const campoRoute = createRoute({
+  getParentRoute: () => rootRouteWithComponent,
+  path: '/campo/$token',
+  component: () => {
+    const { token } = campoRoute.useParams();
+    return (
+      <Suspense fallback={<PageLoader />}>
+        <CampoPage token={token} />
+      </Suspense>
+    );
+  },
+});
+
 // `/reportes` y `/sugerencias` sobreviven como redirects: son URLs que los
 // vecinos tienen en marcadores, en carteleria y circulando por WhatsApp. Se
 // resuelven antes de montar nada, sin flash de UI.
-const reportesRoute = createRoute({
-  getParentRoute: () => rootRouteWithComponent,
+const reportesRoute = createRoute({  getParentRoute: () => rootRouteWithComponent,
   path: '/reportes',
   beforeLoad: () => {
     throw redirect({ to: '/participacion' });
@@ -737,6 +757,7 @@ export const routeTree = rootRouteWithComponent.addChildren([
   verifyEmailRoute,
   mapaRoute,
   participacionRoute,
+  campoRoute,
   reportesRoute,
   reportsAliasRoute,
   sugerenciasRoute,

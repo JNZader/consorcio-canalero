@@ -83,6 +83,12 @@ const SPA_ROUTES = new Set([
   '/admin/conocimiento',
   '/admin/canales',
   '/admin/laboratorio-tema',
+  // PR 6: `/campo/:token` is a PUBLIC parametrized route. The set carries
+  // the router literal for the lockstep test, and `isKnownSpaPath` also
+  // accepts the `/campo/` PREFIX — a Set of exact strings can never match
+  // a real token URL. (No apostrophes in this comment: the lockstep test
+  // parses the block with a naive quote regex.)
+  '/campo/$token',
 ]);
 
 export function normalizePathname(pathname) {
@@ -97,7 +103,9 @@ export function normalizePathname(pathname) {
 }
 
 export function isKnownSpaPath(pathname) {
-  return SPA_ROUTES.has(normalizePathname(pathname));
+  const path = normalizePathname(pathname);
+  if (path === '/campo' || path.startsWith('/campo/')) return true;
+  return SPA_ROUTES.has(path);
 }
 
 export function shouldServeRouteNotFound(pathname, status, contentType) {
