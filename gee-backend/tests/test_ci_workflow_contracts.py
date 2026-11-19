@@ -75,7 +75,7 @@ def _line_range(target: str) -> tuple[str, int, int]:
 NGINX_RUNTIME_IMAGE = (
     "nginx:1.30.6-alpine@sha256:e9b2d7624fd7957f4ed44ae0a272d93fb73aeb8512ba8916f8118ae6143fd115"
 )
-PYTHON_RUNTIME_IMAGE = "python:3.15.2-slim-trixie@sha256:e97b88e416c3c01eb427b21fd8cd3ebf006e6ee38afcfcc3cae1c54ee2ab0a75"
+PYTHON_RUNTIME_IMAGE = "python:3.15.2-slim-trixie@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928"
 SETUPTOOLS_RUNTIME_PIN = '"setuptools==80.10.2"'
 WHEEL_RUNTIME_PIN = '"wheel==0.46.3"'
 
