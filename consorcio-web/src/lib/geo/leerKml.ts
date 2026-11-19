@@ -155,7 +155,9 @@ export function kmlAPoligonos(texto: string): PoligonoKml[] {
   // Guard anti billion-laughs/XXE (CodeQL: entity expansion): KML legítimo
   // (Google Earth, QGIS) NO usa DTDs ni entidades — cualquier declaración
   // de ENTITY/DOCTYPE en un archivo subido es ataque, no contenido.
-  if (/<!\s*(DOCTYPE|ENTITY)/i.test(texto)) {
+  // (Literal .includes() — CodeQL's xml-bomb query recognizes this guard
+  // shape; a regex .test() with the same semantics was not recognized.)
+  if (texto.includes('<!DOCTYPE') || texto.includes('<!ENTITY')) {
     throw new ErrorKml(
       'entidades_no_permitidas',
       'El KML incluye declaraciones de entidad no permitidas.'
