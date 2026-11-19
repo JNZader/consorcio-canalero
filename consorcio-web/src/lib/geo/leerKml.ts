@@ -161,6 +161,13 @@ export function kmlAPoligonos(texto: string): PoligonoKml[] {
       'El KML incluye declaraciones de entidad no permitidas.'
     );
   }
+  // Reviewed false positives, suppressed with reasons (CodeQL high alerts):
+  // codeql[js/uncontrolled-data-used-in-xml-parser] Billion-laughs is a
+  //   server-parser threat; browser DOMParser hard-caps entity expansion,
+  //   and the DOCTYPE/ENTITY guard above rejects the input outright anyway.
+  // codeql[js/xss] The parse output never reaches innerHTML: the only text
+  //   extracted (polygon name) is markup-stripped and length-capped below,
+  //   and everything renders through React's auto-escaping.
   const doc = new DOMParser().parseFromString(texto, 'text/xml');
   if (doc.getElementsByTagName('parsererror').length > 0) {
     throw new ErrorKml('archivo_invalido', 'El archivo no es un KML válido.');
