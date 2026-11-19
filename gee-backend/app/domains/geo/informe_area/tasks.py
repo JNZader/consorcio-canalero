@@ -12,9 +12,15 @@ either skips cleanly or loses the race — never resurrects a finished row.
 
 The compute reuses PR 1 wholesale (S12): the zonas resolver SQL for the
 selection, ``_desglose_zonas`` for the per-zone rows from
-``composite_zonal_stats`` / ``suelos_catastro`` / the CHIRPS annual normal,
-and the ``legacy70`` threshold tag until #738. NO raster is recomputed —
-reading registered products is the whole latency budget (S6).
+``composite_zonal_stats`` / ``suelos_catastro`` / the CHIRPS annual normal.
+PR 5 (#738) switches the threshold tag to ``leyenda-55`` and OVERRIDES the
+per-zone % Alto+Crítico with the legend-derived ``ha_alto + ha_critico``
+read, so no legacy-70 figure can appear under the new label. NO raster is
+recomputed — reading registered products is the whole latency budget (S6).
+
+PR 5 also adds the flood_risk validation dataset (S4): observed water per
+class on the anchor events (``riesgo_validacion_evento``, zone scale),
+rendered in section 2 when the calibration ETL has loaded rows.
 
 T2 appends the render pipeline on top of the same stored reads:
 ``_raster_dataset`` / ``_suelos_dataset`` / ``_precipitacion_dataset`` shape
@@ -261,11 +267,28 @@ def generar_informe_area(informe_id: str) -> dict:
             )
 
             desglose: list[dict] | None = None
-            umbral: str | None = None
+            # PR 5 (#738): every % Alto+Crítico figure this informe renders —
+            # the Resumen KPI (raster classes) and the per-subcuenca table —
+            # counts from the legend's Alto edge (55), so the tag says so.
+            # The ficha's own desglose helper still returns its stored-column
+            # figure; the rows are OVERRIDDEN here with the legend-derived
+            # ha_alto + ha_critico read, which is NULL-aware: a row that
+            # predates the recompute reports «—», never a legacy-70 figure
+            # wearing the new label.
+            umbral: str | None = "leyenda-55"
             if con_desglose and zona_ids:
-                filas_desglose, umbral = ficha_service._desglose_zonas(  # noqa: SLF001
+                filas_desglose, _umbral_ficha = ficha_service._desglose_zonas(  # noqa: SLF001
                     db, zonas
                 )
+                # str keys — desglose items are model_dump(mode="json"), so
+                # zona_id arrives as a string (same conversion pct_drenaje
+                # applies below).
+                pct_riesgo_leyenda = {
+                    str(k): v
+                    for k, v in service.pct_alto_critico_por_zona(
+                        db, [(z.zona_id, z.ha) for z in zonas], "flood_risk"
+                    ).items()
+                }
                 # Same clamp/None contract as the ficha's pct_alto_critico,
                 # read from the drainage composite rows so section 3 carries
                 # the same per-subcuenca structure as section 2.
@@ -281,6 +304,7 @@ def generar_informe_area(informe_id: str) -> dict:
                     item = fila.model_dump(mode="json")
                     item["cuenca"] = cuenca_por_id.get(item["zona_id"], "—")
                     item["pct_drenaje_alto_critico"] = pct_drenaje.get(item["zona_id"])
+                    item["pct_alto_critico"] = pct_riesgo_leyenda.get(item["zona_id"])
                     desglose.append(item)
                 repo.actualizar_estado_if_actual(
                     db,
@@ -332,6 +356,10 @@ def generar_informe_area(informe_id: str) -> dict:
             for imagen in imagenes:
                 if imagen.get("png") is None:
                     degradado.append(f"miniatura sin datos: {imagen.get('nombre')}")
+            # Validación de flood_risk (PR 5, S4): agua observada por clase en
+            # los eventos ancla, a escala de la zona del consorcio. None → the
+            # section omits the table (ETL not run here).
+            riesgo_validacion = service.riesgo_validacion_dataset(db)
             lluvia = ficha_service._precipitacion_dataset(  # noqa: SLF001
                 db, union_geom, area_m2
             ).model_dump()
@@ -393,6 +421,7 @@ def generar_informe_area(informe_id: str) -> dict:
                 "lluvia": lluvia,
                 "desglose": desglose,
                 "umbral_alto_critico": umbral,
+                "riesgo_validacion": riesgo_validacion,
                 "degradado": degradado,
                 "fuentes": _fuentes_informe(
                     db,
@@ -419,6 +448,14 @@ def generar_informe_area(informe_id: str) -> dict:
                 "vertices_simplificados": seleccion.vertices_simplificados,
                 "desglose": desglose,
                 "umbral_alto_critico": umbral,
+                "riesgo_validacion": (
+                    {
+                        "eventos": len(riesgo_validacion["eventos"]),
+                        "version_flood_risk": riesgo_validacion.get("version_flood_risk"),
+                    }
+                    if riesgo_validacion
+                    else None
+                ),
                 "kpis": calcular_kpis(datos),
                 "suelos_idecor": (
                     {

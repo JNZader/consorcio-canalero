@@ -335,11 +335,16 @@ def previsualizar(db: Session, payload: InformeAreaPreviewRequest) -> InformeAre
 # writes both tipos through ``extract_composite_zonal_stats``), read here so
 # the PDF's section 3 can carry the same per-subcuenca structure as section 2
 # without touching the ficha's package.
-_DRENAJE_ALTO_SQL = text(
+#
+# PR 5 (#738): the share is ``ha_alto + ha_critico`` — the legend's own
+# Alto+Crítico area (50–70 + ≥70 for drainage_need). Both must be non-NULL:
+# rows written before the recompute carry the legacy figure only and a
+# partial read would mix two threshold regimes in one table.
+_ALTO_CRITICO_HA_SQL = text(
     """
-    SELECT zona_id, area_high_risk_ha
+    SELECT zona_id, ha_alto, ha_critico
     FROM composite_zonal_stats
-    WHERE tipo = 'drainage_need' AND zona_id = ANY(CAST(:ids AS uuid[]))
+    WHERE tipo = :tipo AND zona_id = ANY(CAST(:ids AS uuid[]))
     """
 )
 
@@ -543,25 +548,105 @@ def suelos_idecor_por_zona(
     return resultado
 
 
-def pct_drenaje_por_zona(
-    db: Session, zonas: list[tuple[uuid.UUID, float]]
+def pct_alto_critico_por_zona(
+    db: Session, zonas: list[tuple[uuid.UUID, float]], tipo: str
 ) -> dict[uuid.UUID, float]:
-    """Per-zone drainage Alto+Crítico share from stored composite rows.
+    """Per-zone Alto+Crítico share from the stored legend-derived columns.
 
     Same clamp and same None-means-absent contract as the ficha's
-    ``pct_alto_critico``: stored ha over the zone's own ha, clamped to
-    [0, 100]; zones without a stored row are simply absent.
+    ``pct_alto_critico``: stored ``ha_alto + ha_critico`` over the zone's own
+    ha, clamped to [0, 100]; zones without a stored row — or whose row
+    predates the #738 recompute (NULL columns) — are simply absent, never a
+    confident 0 %.
     """
     ids = [str(zona_id) for zona_id, _ha in zonas]
     with ficha_service._traducir_fallas_db():  # noqa: SLF001 — PR 1 reuse (S12)
-        filas = db.execute(_DRENAJE_ALTO_SQL, {"ids": ids}).all()
+        filas = db.execute(_ALTO_CRITICO_HA_SQL, {"ids": ids, "tipo": tipo}).all()
     ha_por_id = dict(zonas)
-    return {
-        fila.zona_id: round(
-            min(100.0, max(0.0, float(fila.area_high_risk_ha) / ha_por_id[fila.zona_id] * 100.0)), 2
+    resultado: dict[uuid.UUID, float] = {}
+    for fila in filas:
+        if fila.ha_alto is None or fila.ha_critico is None:
+            continue
+        if ha_por_id.get(fila.zona_id, 0.0) <= 0.0:
+            continue
+        alto_critico = float(fila.ha_alto) + float(fila.ha_critico)
+        resultado[fila.zona_id] = round(
+            min(100.0, max(0.0, alto_critico / ha_por_id[fila.zona_id] * 100.0)), 2
         )
-        for fila in filas
-        if fila.area_high_risk_ha is not None and ha_por_id.get(fila.zona_id, 0.0) > 0.0
+    return resultado
+
+
+def pct_drenaje_por_zona(
+    db: Session, zonas: list[tuple[uuid.UUID, float]]
+) -> dict[uuid.UUID, float]:
+    """Per-zone drainage Alto+Crítico share from stored composite rows."""
+    return pct_alto_critico_por_zona(db, zonas, "drainage_need")
+
+
+# ── Validación de flood_risk con eventos ancla (PR 5, S4) ────────────────────
+
+#: The whole validation table — rows are per (event, class) for the WHOLE
+#: consorcio zone, so no per-selection clip exists or is invented: the
+#: section presents the index's zone-scale calibration as zone-scale evidence.
+_VALIDACION_SQL = text(
+    """
+    SELECT evento_key, fecha, clase, ha_clase, ha_con_agua, pct_con_agua,
+           lluvia_30d_mm, sensor, escena_id, version_flood_risk
+    FROM riesgo_validacion_evento
+    ORDER BY fecha, evento_key
+    """
+)
+
+
+def riesgo_validacion_dataset(db: Session) -> dict[str, Any] | None:
+    """Section 2's validation dataset: observed water per class, per event.
+
+    ``None`` (→ the section omits the table) when the table is missing or
+    empty — a deployment without the calibration ETL still gets its informe.
+    Any other DB failure also degrades to ``None``: the validation is a
+    REPORTED layer, never a hard dependency of the job (same contract as the
+    IDECOR reads, including the SAVEPOINT so a missing table cannot poison
+    the task's transaction).
+    """
+    try:
+        if (
+            db.execute(text("SELECT to_regclass('riesgo_validacion_evento')")).scalar_one_or_none()
+            is None
+        ):
+            return None
+        with db.begin_nested():
+            filas = db.execute(_VALIDACION_SQL).all()
+    except SQLAlchemyError:
+        logger.warning("informe_area.riesgo_validacion_no_disponible", exc_info=True)
+        return None
+    if not filas:
+        return None
+
+    eventos: dict[str, dict[str, Any]] = {}
+    for fila in filas:
+        clave = str(fila.evento_key)
+        evento = eventos.setdefault(
+            clave,
+            {
+                "evento_key": clave,
+                "fecha": str(fila.fecha),
+                "sensor": str(fila.sensor),
+                "escena": str(fila.escena_id),
+                "lluvia_30d_mm": (
+                    float(fila.lluvia_30d_mm) if fila.lluvia_30d_mm is not None else None
+                ),
+                "clases": {},
+            },
+        )
+        evento["clases"][str(fila.clase)] = {
+            "ha_clase": float(fila.ha_clase),
+            "ha_con_agua": float(fila.ha_con_agua),
+            "pct_con_agua": float(fila.pct_con_agua),
+        }
+    lista = sorted(eventos.values(), key=lambda e: e["fecha"])
+    return {
+        "eventos": lista,
+        "version_flood_risk": str(filas[0].version_flood_risk),
     }
 
 

@@ -23,9 +23,11 @@ Section order is FIXED (S6) and the tests assert it in extracted text:
 
 Per-subcuenca tables (S6): inline and complete when there are ≤ 8 subcuencas;
 beyond that each section shows a resumen line and the complete table at the
-END of the section. ``% Alto+Crítico`` figures carry the ``legacy70`` note
-wherever they appear (S12, until #738 recalibrates the stored threshold);
-per-class producer phrases are PR 5's, not this builder's.
+END of the section. ``% Alto+Crítico`` figures carry the threshold tag
+wherever they appear (S12): ``leyenda-55`` since #738 — the count starts at
+the legend's Alto edge, with the Alto/Crítico split stored since PR 5;
+per-class producer phrases remain gated on the S7 monotonicity verdict
+(PR 5 T2), so this builder ships none.
 """
 
 from __future__ import annotations
@@ -110,6 +112,20 @@ _NOTA_LEGACY70 = (
     "El porcentaje Alto+Crítico usa el umbral histórico de 70 puntos "
     "(umbral_alto_critico: legacy70) hasta su recalibración; los cortes de "
     "clase del mapa y de las tablas no dependen de ese umbral."
+)
+_NOTA_LEYENDA55 = (
+    "El porcentaje Alto+Crítico se cuenta desde el inicio de la clase Alto "
+    "de la leyenda (55 puntos; umbral_alto_critico: leyenda-55): Alto "
+    "55–75 y Crítico 75 o más, la misma leyenda del mapa y de las tablas."
+)
+_NOTA_VALIDACION = (
+    "El índice de riesgo es puramente topográfico: no incorpora lluvia ni "
+    "historial de inundación. La tabla de validación lo contrasta contra "
+    "agua observada (MNDWI ≥ 0,1 sobre la escena ancla; Sentinel-1 marcado "
+    "aparte cuando no hubo óptica) a escala de toda la zona del consorcio, "
+    "con la lluvia CHIRPS de los 30 días previos al evento. Nubes, escenas "
+    "tardías y lagunas o arrozales permanentes pueden inflar o recortar el "
+    "agua observada; el desglose por clase no es un perímetro de inundación."
 )
 _AVISO_PIXEL = (
     "Los valores de lluvia provienen de un raster de píxeles de ~5 km: son "
@@ -379,6 +395,21 @@ class GraficoBarrasMeses(Flowable):
 # ── sections ─────────────────────────────────────────────────────────────────
 
 
+def _nota_umbral(datos: dict[str, Any]) -> str | None:
+    """Threshold note for the % Alto+Crítico figures, by stored tag.
+
+    ``legacy70`` only appears on rows generated before #738 — kept so an old
+    cached PDF re-render still explains itself instead of printing a tag it
+    no longer understands.
+    """
+    etiqueta = str(datos.get("umbral_alto_critico") or "")
+    if etiqueta == "leyenda-55":
+        return _NOTA_LEYENDA55
+    if etiqueta == "legacy70":
+        return _NOTA_LEGACY70
+    return None
+
+
 def _seccion_resumen(
     datos: dict[str, Any],
     branding: BrandingInfo,
@@ -445,9 +476,10 @@ def _seccion_resumen(
     ]
     tabla_kpi = build_info_table(filas_kpi, branding, col_widths=(8.5 * cm, 8.5 * cm))
     flowables.append(tabla_kpi)
-    if datos.get("umbral_alto_critico") == "legacy70":
+    nota_umbral = _nota_umbral(datos)
+    if nota_umbral is not None:
         flowables.append(Spacer(1, 1.5 * mm))
-        flowables.append(Paragraph(_NOTA_LEGACY70, estilos["small"]))
+        flowables.append(Paragraph(nota_umbral, estilos["small"]))
     flowables.append(Spacer(1, 3 * mm))
 
     desglose = datos.get("desglose")
@@ -487,6 +519,66 @@ def _seccion_resumen(
     return flowables
 
 
+def _tabla_validacion_riesgo(
+    datos: dict[str, Any],
+    branding: BrandingInfo,
+    estilos: dict[str, Any],
+) -> list[Flowable]:
+    """PR 5 (S1/S4): observed water per flood_risk class, per anchor event.
+
+    One row per event, one % con agua column per legend class, plus the
+    event's 30-day CHIRPS total. The figures are ZONE-scale (the whole
+    consorcio zone — the validation is of the index), which the título says
+    out loud; a per-selection clip is not derivable from these rows and is
+    never invented.
+    """
+    from app.domains.geo.class_breaks import RANGE_CONFIGS
+
+    dataset = datos.get("riesgo_validacion") or {}
+    eventos = dataset.get("eventos") or []
+    if not eventos:
+        return []
+
+    clases_leyenda = [str(cfg["label"]) for cfg in RANGE_CONFIGS["flood_risk"]]
+    flowables: list[Flowable] = [
+        Paragraph("Validación contra agua observada (eventos ancla)", estilos["body"]),
+        Spacer(1, 1 * mm),
+    ]
+    filas: list[list[str]] = []
+    for evento in eventos:
+        por_clase = evento.get("clases") or {}
+        celdas = [
+            f"{evento.get('evento_key')} ({evento.get('fecha')})",
+            str(evento.get("sensor") or "—"),
+        ]
+        for clase in clases_leyenda:
+            fila_clase = por_clase.get(clase)
+            celdas.append(fmt_pct(fila_clase["pct_con_agua"]) if fila_clase else "—")
+        lluvia = evento.get("lluvia_30d_mm")
+        celdas.append(f"{fmt_num(lluvia)} mm" if lluvia is not None else "—")
+        filas.append(celdas)
+
+    flowables.append(
+        build_data_table(
+            [
+                "Evento (fecha)",
+                "Sensor",
+                "% agua Bajo",
+                "% agua Medio",
+                "% agua Alto",
+                "% agua Crítico",
+                "Lluvia 30 d",
+            ],
+            filas,
+            branding,
+        )
+    )
+    flowables.append(Spacer(1, 1 * mm))
+    flowables.append(Paragraph(_NOTA_VALIDACION, estilos["small"]))
+    flowables.append(Spacer(1, 3 * mm))
+    return flowables
+
+
 def _seccion_clase(
     numero_titulo: str,
     frase: str,
@@ -499,8 +591,14 @@ def _seccion_clase(
     desglose_columnas: list[tuple[str, str, Any]] | None,
     branding: BrandingInfo,
     estilos: dict[str, Any],
+    extra: list[Flowable] | None = None,
 ) -> list[Flowable]:
-    """Sections 2 and 3 share this shape (S6: 'igual estructura')."""
+    """Sections 2 and 3 share this shape (S6: 'igual estructura').
+
+    ``extra`` is section-2-only content (PR 5): the anchor-event validation
+    table, appended after the desglose so the class table and the desglose
+    keep their fixed order.
+    """
     flowables: list[Flowable] = [Paragraph(numero_titulo, estilos["subtitle"])]
     flowables.append(Paragraph(frase, estilos["body"]))
     flowables.append(Spacer(1, 2 * mm))
@@ -535,6 +633,9 @@ def _seccion_clase(
             )
             flowables.append(Spacer(1, 1 * mm))
             flowables.append(_tabla_desglose(desglose, desglose_columnas, branding))
+    if extra:
+        flowables.append(Spacer(1, 2 * mm))
+        flowables.extend(extra)
     flowables.append(PageBreak())
     return flowables
 
@@ -1111,8 +1212,9 @@ def _seccion_consideraciones(
 
     flowables.append(Paragraph("Límites", estilos["body"]))
     limites = [_DESCARGO, _AVISO_PIXEL]
-    if datos.get("umbral_alto_critico") == "legacy70":
-        limites.insert(0, _NOTA_LEGACY70)
+    nota_umbral = _nota_umbral(datos)
+    if nota_umbral is not None:
+        limites.insert(0, nota_umbral)
     limites.append(
         "El desglose por subcuenca se lee de datos ya calculados por el "
         "pipeline (composite_zonal_stats) y hereda su fecha de cálculo (ver "
@@ -1209,6 +1311,7 @@ def build_informe_area_pdf(
             ],
             branding,
             estilos,
+            extra=_tabla_validacion_riesgo(datos, branding, estilos),
         )
     )
     story.extend(
@@ -1246,7 +1349,7 @@ def build_informe_area_pdf(
 def _notas_metodo_clase(
     tipo: str, dataset: dict[str, Any] | None, datos: dict[str, Any]
 ) -> list[str]:
-    """Method notes for sections 2/3: break edges, coverage base, legacy70."""
+    """Method notes for sections 2/3: break edges, coverage base, threshold tag."""
     from app.domains.geo.class_breaks import RANGE_CONFIGS
 
     cortes = ", ".join(
@@ -1262,12 +1365,18 @@ def _notas_metodo_clase(
             f"({fmt_pct(ratio * 100.0)}); los porcentajes se calculan sobre la "
             "superficie total de la selección."
         )
-    if tipo == "flood_risk" and datos.get("umbral_alto_critico") == "legacy70":
-        notas.append(_NOTA_LEGACY70)
+    nota_umbral = _nota_umbral(datos)
+    if tipo == "flood_risk" and nota_umbral is not None:
+        notas.append(nota_umbral)
     if tipo == "drainage_need":
+        nota_drenaje = (
+            _NOTA_LEYENDA55
+            if str(datos.get("umbral_alto_critico") or "") == "leyenda-55"
+            else _NOTA_LEGACY70
+        )
         notas.append(
-            "El desglose por subcuenca de esta capa usa el mismo umbral "
-            "histórico de 70 puntos (legacy70) hasta su recalibración."
+            "El desglose por subcuenca de esta capa usa el mismo criterio "
+            "(desde el inicio de Alto): " + nota_drenaje
         )
     return notas
 

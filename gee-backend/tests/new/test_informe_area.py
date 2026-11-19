@@ -263,7 +263,7 @@ def test_crear_tarea_completa_y_segunda_create_da_cache(factory, monkeypatch):
             assert res["area_ha"] > 0.0
             assert res["zonas"] == 1
             assert res["cuencas"] == ["cuenca-t1"]
-            assert res["umbral_alto_critico"] == "legacy70"
+            assert res["umbral_alto_critico"] == "leyenda-55"  # PR 5 (#738)
             assert res["degradado"] == []
             # stored-data desglose: no composite row seeded → None, never 0 %
             desglose = res["desglose"]
