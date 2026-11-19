@@ -263,7 +263,7 @@ def test_crear_tarea_completa_y_segunda_create_da_cache(factory, monkeypatch):
             assert res["area_ha"] > 0.0
             assert res["zonas"] == 1
             assert res["cuencas"] == ["cuenca-t1"]
-            assert res["umbral_alto_critico"] == "legacy70"
+            assert res["umbral_alto_critico"] == "leyenda-55"  # PR 5 (#738)
             assert res["degradado"] == []
             # stored-data desglose: no composite row seeded → None, never 0 %
             desglose = res["desglose"]
@@ -331,7 +331,9 @@ def test_version_clave_cambiada_invalida_cache(factory, monkeypatch):
         with factory() as db:
             # Simulate the layout/layer refresh the clave exists for: same
             # selection, NEW version_plantilla → probe misses → new row.
-            monkeypatch.setattr(settings, "informe_area_version_plantilla", "2")
+            # ("3": the default is "2" since PR 4 added sections — the
+            # monkeypatch value must differ from the running default.)
+            monkeypatch.setattr(settings, "informe_area_version_plantilla", "3")
             row2, desde_cache = service.crear_informe(
                 db,
                 InformeAreaCreate(nombre="v1", zona_ids=[zona_id]),

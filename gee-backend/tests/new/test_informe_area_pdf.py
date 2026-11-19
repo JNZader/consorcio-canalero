@@ -9,7 +9,7 @@ Covers, on top of T1's backend suite:
 * the task end-to-end over a SEEDED world (class rasters, CHIRPS normals,
   soils band, composite rows) → ``completed`` with ``pdf_bytes``;
 * pypdf text extraction (house pattern from ``test_pdf_es_ar``): folio
-  "Página 1 de", the SEVEN section titles IN ORDER, es-AR numbers (a
+  "Página 1 de", the section titles IN ORDER, es-AR numbers (a
   thousands-separated total with comma decimal present, no English
   "N,NNN.N" anywhere), and the selection total matching ``resultado``
   (the same figure that lands in the tables, ±0,1 ha by construction);
@@ -77,9 +77,12 @@ SECCIONES = [
     "2. Riesgo hídrico",
     "3. Necesidad de drenaje",
     "4. Suelos",
-    "5. Lluvia",
-    "6. Consideraciones",
-    "7. Fuentes",
+    "5. Cobertura y cultivos",
+    "6. Lluvia",
+    "7. Canales",
+    "8. Imágenes de eventos ancla",
+    "9. Consideraciones",
+    "10. Fuentes",
 ]
 
 repo = InformeAreaRepository()
@@ -146,7 +149,14 @@ def _seed_zona(db: Session, nombre: str, cuenca: str, x0: float, y0: float) -> u
 
 
 def _seed_suelos(db: Session) -> None:
-    """Soils table (if the session's world lacks it) + one 'II' band covering the world."""
+    """Soils table (if the session's world lacks it) + one 'II' band covering the world.
+
+    PR 4 (S3): section 4 reads the IDECOR 1:50.000 cartography, so the
+    world ALSO seeds ``idecor_suelos_50mil`` with a class-'II' unit over
+    the same extent — the KPI ``pct_suelos_i_iii == 100`` then holds
+    through the NEW dataset (the migration's own DDL, applied committed so
+    the Celery task's separate session can see it; dropped in ``_limpiar``).
+    """
     db.execute(
         text(
             "CREATE TABLE IF NOT EXISTS suelos_catastro ("
@@ -169,18 +179,73 @@ def _seed_suelos(db: Session) -> None:
         ),
         {"sim": "T2-II", "wkt": wkt},
     )
+    from app.db.migrations.versions import zz_idecor_suelos_50mil as migracion_suelos
+
+    for statement in migracion_suelos.UPGRADE_STATEMENTS:
+        db.execute(text(statement))
+    db.execute(
+        text(
+            "INSERT INTO idecor_suelos_50mil "
+            "(id, simbolo, cu, clase, ip, au_1m, au_2m, serie_1, porc_1, nombre, "
+            " tipo_unida, pdf_simbolo, pdf_serie_1, geometria) "
+            "VALUES (9001, 'T2U', 'IIc', 'II', 90, 158, 292, 'SERIE T2', 100, "
+            "        'Consociación SERIE T2', 'Consociación', 'T2U', 'SERIE_T2', "
+            "        ST_GeomFromText(:wkt, 4326))"
+        ),
+        {"wkt": wkt},
+    )
 
 
 def _seed_composite(db: Session, zona_id: uuid.UUID, tipo: str, ha: float) -> None:
+    """One stored composite row with the PR 5 (#738) legend split filled in:
+    70 % of the high-risk area in Alto, 30 % in Crítico, and the legacy-name
+    column carrying the SUM (what the writers store since #738)."""
     db.execute(
         text(
             "INSERT INTO composite_zonal_stats "
             "(id, zona_id, tipo, fecha_calculo, mean_score, max_score, p90_score, "
-            " area_high_risk_ha) "
-            "VALUES (:id, :zona_id, :tipo, CURRENT_DATE, 50.0, 90.0, 70.0, :ha)"
+            " area_high_risk_ha, ha_alto, ha_critico) "
+            "VALUES (:id, :zona_id, :tipo, CURRENT_DATE, 50.0, 90.0, 70.0, "
+            "        :ha, :alto, :critico)"
         ),
-        {"id": uuid.uuid4(), "zona_id": zona_id, "tipo": tipo, "ha": ha},
+        {
+            "id": uuid.uuid4(),
+            "zona_id": zona_id,
+            "tipo": tipo,
+            "ha": ha,
+            "alto": round(ha * 0.7, 4),
+            "critico": round(ha * 0.3, 4),
+        },
     )
+
+
+def _seed_validacion(db: Session) -> None:
+    """PR 5 (S4): one anchor event's validation rows (whole-zone figures).
+
+    Monotone on purpose (5→15→40→90 %): the section the task renders reports
+    what the table says — the S7 monotonicity verdict is measured on the real
+    ETL run, not asserted here."""
+    from app.db.migrations.versions import zz_riesgo_validacion_evento as migracion
+
+    for statement in migracion.UPGRADE_STATEMENTS:
+        db.execute(text(statement))
+    por_clase = [("Bajo", 5.0), ("Medio", 15.0), ("Alto", 40.0), ("Crítico", 90.0)]
+    for clase, pct in por_clase:
+        db.execute(
+            text(
+                "INSERT INTO riesgo_validacion_evento "
+                "(id, evento_key, fecha, clase, ha_clase, ha_con_agua, pct_con_agua, "
+                " lluvia_30d_mm, sensor, escena_id, version_flood_risk) "
+                "VALUES (:id, 'mar_2015', CAST('2015-03-15' AS date), :clase, 1000.0, "
+                "        :ha_agua, :pct, 250.0, 'landsat8', 'LC08_123', 'v-t2')"
+            ),
+            {
+                "id": uuid.uuid4(),
+                "clase": clase,
+                "ha_agua": 10.0 * pct,
+                "pct": pct,
+            },
+        )
 
 
 def _raster_constante(directorio: Any, nombre: str, valor: float) -> str:
@@ -245,6 +310,7 @@ def _seed_precip_normals(db: Session, directorio: Any) -> str:
 def _sembrar_mundo(db: Session, tmp_path: Any) -> dict[str, Any]:
     """The whole T2 world: 2 zonas, class rasters, precip, soils, composites."""
     _seed_suelos(db)
+    _seed_validacion(db)
     flood = _raster_constante(tmp_path, "flood.tif", 80.0)  # 80 → Crítico (75-100)
     drain = _raster_constante(tmp_path, "drain.tif", 60.0)  # 60 → Alto (50-70)
     _registrar(db, TipoGeoLayer.FLOOD_RISK, flood)
@@ -279,6 +345,10 @@ def _limpiar(factory, *, usuario_id, zona_ids, informe_ids, rasters) -> None:
                 {"ids": [str(z) for z in zona_ids]},
             )
         db.execute(text("DELETE FROM suelos_catastro WHERE simbolo = 'T2-II'"))
+        db.execute(text("DELETE FROM riesgo_validacion_evento WHERE version_flood_risk = 'v-t2'"))
+        # PR 4 world: the seeded IDECOR carta row and its table leave with
+        # the test (the table is created by _seed_suelos on demand).
+        db.execute(text("DROP TABLE IF EXISTS idecor_suelos_50mil"))
         db.execute(delete(User).where(User.id == usuario_id))
         db.commit()
 
@@ -331,9 +401,11 @@ def test_tarea_completa_con_pdf_secciones_y_numeros_es_ar(factory, tmp_path, mon
             assert res["kpis"]["pct_drenaje_alto_critico"] == 100.0  # cte 60 → Alto
             assert res["kpis"]["pct_suelos_i_iii"] == 100.0  # banda 'II' completa
             assert res["kpis"]["lluvia_anual_mm"] == 100.0  # normal cte 100 mm
-            assert res["umbral_alto_critico"] == "legacy70"
+            assert res["umbral_alto_critico"] == "leyenda-55"
             drenaje_fila = res["desglose"][0]["pct_drenaje_alto_critico"]
             assert drenaje_fila is not None and drenaje_fila > 0.0
+            assert res["riesgo_validacion"]["eventos"] == 1
+            assert res["desglose"][0]["pct_alto_critico"] is not None
 
             pdf_bytes = bytes(row.pdf_bytes)
             assert pdf_bytes[:5] == b"%PDF-"
@@ -354,8 +426,11 @@ def test_tarea_completa_con_pdf_secciones_y_numeros_es_ar(factory, tmp_path, mon
             assert re.search(r"\d\.\d{3},\d", total_es_ar), total_es_ar
             # No English "N,NNN.N" anywhere the totals live.
             assert not re.search(r"\d,\d{3}\.\d", texto)
-            # The legacy70 note travels with the % Alto+Crítico figures (S12).
-            assert "legacy70" in texto
+            # PR 5 (#738): the leyenda-55 tag travels with the % Alto+Crítico
+            # figures, and the anchor-event validation table renders (S4).
+            assert "leyenda-55" in texto
+            assert "Validación contra agua observada" in texto
+            assert "mar_2015" in texto
             # Maps embedded: three images across the document.
             reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
             imagenes = sum(len(page.images) for page in reader.pages)

@@ -170,3 +170,106 @@ describe('helpers', () => {
     );
   });
 });
+
+// ── PR 3: mixed selection helpers (zonas + geometrías) ───────────────────────
+
+import type { Polygon } from 'geojson';
+import {
+  claveSeleccionMixta,
+  contarSeleccionMixta,
+  cupoMixtoLleno,
+  geometriasDeSeleccion,
+  LIMITE_SELECCION_MIXTA,
+  type SeleccionGeometria,
+  seleccionMixtaVacia,
+} from '../../../src/components/map2d/informeArea/useSeleccionArea';
+
+function cuadro(id: string, etiqueta: string): SeleccionGeometria {
+  return {
+    id,
+    origen: 'dibujo',
+    etiqueta,
+    ha: 100,
+    geometry: {
+      type: 'Polygon',
+      coordinates: [
+        [
+          [-62, -32],
+          [-61, -32],
+          [-61, -31],
+          [-62, -31],
+          [-62, -32],
+        ],
+      ],
+    } satisfies Polygon,
+  };
+}
+
+describe('selección mixta (PR 3)', () => {
+  it('vacía solo cuando no hay zonas NI geometrías', () => {
+    expect(seleccionMixtaVacia(seleccion(), [])).toBe(true);
+    expect(seleccionMixtaVacia(seleccion('a1'), [])).toBe(false);
+    expect(seleccionMixtaVacia(seleccion(), [cuadro('dibujo-1', 'Dibujo 1')])).toBe(false);
+  });
+
+  it('cuenta zonas-equivalentes: la suma de ambas mitades', () => {
+    expect(
+      contarSeleccionMixta(seleccion('a1', 'a2'), [
+        cuadro('dibujo-1', 'Dibujo 1'),
+        cuadro('dibujo-2', 'Dibujo 2'),
+      ])
+    ).toBe(4);
+  });
+
+  it('el cupo mixto de 120 se mide sobre la suma (S5)', () => {
+    const muchas: SeleccionGeometria[] = Array.from({ length: 119 }, (_, i) =>
+      cuadro(`dibujo-${i}`, `Dibujo ${i}`)
+    );
+    expect(cupoMixtoLleno(seleccion(), muchas)).toBe(false);
+    expect(cupoMixtoLleno(seleccion('a1'), muchas)).toBe(true);
+    expect(LIMITE_SELECCION_MIXTA).toBe(120);
+  });
+
+  it('geometriasDeSeleccion devuelve las geometrías desnudas para el wire', () => {
+    const geometrias = [cuadro('dibujo-1', 'Dibujo 1'), cuadro('dibujo-2', 'Dibujo 2')];
+    const alambrera = geometriasDeSeleccion(geometrias);
+    expect(alambrera).toHaveLength(2);
+    expect(alambrera[0]).toBe(geometrias[0].geometry);
+    expect(alambrera[0].type).toBe('Polygon');
+  });
+
+  it('claveSeleccionMixta distingue zonas, geometrías y su orden de selección', () => {
+    const g1 = cuadro('dibujo-1', 'Dibujo 1');
+    // A DIFFERENT shape (shifted): the clave hashes wire geometry, so equal
+    // geometries under different UI ids MUST share a clave — and different
+    // geometries must not.
+    const g2: SeleccionGeometria = {
+      ...cuadro('dibujo-2', 'Dibujo 2'),
+      geometry: {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [-61, -32],
+            [-60.9, -32],
+            [-60.9, -31.9],
+            [-61, -31.9],
+            [-61, -32],
+          ],
+        ],
+      },
+    };
+
+    // Same selection assembled differently → same clave…
+    expect(claveSeleccionMixta(seleccion('a1'), [g1, g2])).toBe(
+      claveSeleccionMixta(seleccion('a1'), [g1, g2])
+    );
+    // …but a different geometry set is a different clave.
+    expect(claveSeleccionMixta(seleccion('a1'), [g1])).not.toBe(
+      claveSeleccionMixta(seleccion('a1'), [g2])
+    );
+    // Geometry-only vs zonas-only never collide.
+    expect(claveSeleccionMixta(seleccion(), [g1])).not.toBe(
+      claveSeleccionMixta(seleccion('a1'), [])
+    );
+  });
+});

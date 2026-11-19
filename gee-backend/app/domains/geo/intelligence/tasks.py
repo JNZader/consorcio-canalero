@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 import uuid
 
 import structlog
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.celery_app import celery_app
 
@@ -48,21 +49,68 @@ def _get_db():
 # Batch HCI Calculation
 # ---------------------------------------------------------------------------
 
+#: S10 fallback: the fixed flood-history factor used before the validation
+#: table existed. Kept (and MARKED in the task result as ``historial_fijo``)
+#: so a deployment without the calibration ETL still computes HCI honestly.
+HISTORIAL_INUNDACION_POR_DEFECTO = 0.3
+
+
+def historial_inundacion_desde_validacion(db) -> tuple[float, bool]:
+    """(historial, historial_fijo) from ``riesgo_validacion_evento`` (S10).
+
+    The plan's "% de la zona con agua en los eventos ancla": per anchor event,
+    the zone's water share is ``Σ ha_con_agua / Σ ha_clase`` (S6 guarantees
+    ``Σ ha_clase`` is the zone area), and the historial factor is the MEAN of
+    those shares across events, clamped to [0, 1]. No rows (table empty or
+    missing on this deployment) → ``(0.3, True)``: the fixed default, marked,
+    never silently indistinguishable from a measured value.
+    """
+    from sqlalchemy import text
+
+    try:
+        with db.begin_nested():
+            filas = db.execute(
+                text(
+                    "SELECT evento_key, "
+                    "sum(ha_con_agua) / NULLIF(sum(ha_clase), 0.0) AS fraccion "
+                    "FROM riesgo_validacion_evento GROUP BY evento_key"
+                )
+            ).all()
+    except SQLAlchemyError:
+        logger.warning("hci.historial_validacion_no_disponible", exc_info=True)
+        return HISTORIAL_INUNDACION_POR_DEFECTO, True
+    fracciones = [float(fila.fraccion) for fila in filas if fila.fraccion is not None]
+    if not fracciones:
+        return HISTORIAL_INUNDACION_POR_DEFECTO, True
+    historial = min(1.0, max(0.0, sum(fracciones) / len(fracciones)))
+    return historial, False
+
 
 @celery_app.task(queue="geo", name="geo.intelligence.calculate_hci_all")
 def task_calculate_hci_all_zones(
     proximidad_canal_m: float = 500.0,
-    historial_inundacion: float = 0.3,
+    historial_inundacion: float | None = None,
 ) -> dict:
     """Calculate HCI for all zones using per-zone raster statistics.
 
     Extracts mean slope, mean flow accumulation, and mean TWI from GeoLayers
     for each ZonaOperativa geometry. Falls back to default values if rasters
     are unavailable.
+
+    S10: ``historial_inundacion=None`` (the default) derives the flood-history
+    factor from the anchor-event validation table — the real, measured share
+    of the zone under water. When the table has no data the fixed 0.3 stands
+    and the result carries ``historial_fijo: True`` so the constant is never
+    mistaken for a measurement.
     """
     deps = _get_deps()
     db = _get_db()
     try:
+        if historial_inundacion is None:
+            historial, historial_fijo = historial_inundacion_desde_validacion(db)
+        else:
+            historial = float(historial_inundacion)
+            historial_fijo = True
         zonas, total = deps["intel_repo"].get_zonas(db, page=1, limit=1000)
         if not zonas:
             return {"status": "skipped", "reason": "No zones available"}
@@ -85,13 +133,23 @@ def task_calculate_hci_all_zones(
                     acumulacion_media=zona_stats["acumulacion_media"],
                     twi_medio=zona_stats["twi_medio"],
                     proximidad_canal_m=proximidad_canal_m,
-                    historial_inundacion=historial_inundacion,
+                    historial_inundacion=historial,
                 )
                 results.append(result)
             except Exception:
                 logger.error("hci.zone_failed", zona_id=str(zona.id), exc_info=True)
-        logger.info("hci.batch_done", total=len(results))
-        return {"status": "completed", "zonas_calculadas": len(results)}
+        logger.info(
+            "hci.batch_done",
+            total=len(results),
+            historial_inundacion=round(historial, 4),
+            historial_fijo=historial_fijo,
+        )
+        return {
+            "status": "completed",
+            "zonas_calculadas": len(results),
+            "historial_inundacion": round(historial, 4),
+            "historial_fijo": historial_fijo,
+        }
     except Exception:
         logger.error("hci.batch_failed", exc_info=True)
         raise
@@ -180,6 +238,82 @@ def _zonal_mean_normalized(
     except Exception:
         logger.warning("hci.raster_extraction_failed", raster=raster_path, exc_info=True)
         return default
+
+
+# ---------------------------------------------------------------------------
+# One-shot composite recompute (#738 / PR 5 S9)
+# ---------------------------------------------------------------------------
+
+
+def _latest_registered_raster(db, tipo: str) -> str | None:
+    """Newest registered composite raster path of ``tipo`` (ficha pattern)."""
+    from app.domains.geo.models import GeoLayer
+
+    layer = (
+        db.query(GeoLayer)
+        .filter(GeoLayer.tipo == tipo)
+        .order_by(GeoLayer.created_at.desc(), GeoLayer.id.desc())
+        .first()
+    )
+    if layer is None or not layer.archivo_path:
+        return None
+    return layer.archivo_path
+
+
+@celery_app.task(queue="geo", name="geo.intelligence.recompute_composite_stats")
+def task_recompute_composite_stats() -> dict:
+    """Recompute ``composite_zonal_stats`` under the legend (#738, S9).
+
+    The threshold unification makes every stored row stale: pre-#738 rows
+    counted ``score > 70`` while the legend (and the informe's tables) count
+    from the start of Alto. This one-shot re-runs the DEM pipeline's own
+    store step (``store_composite_zonal_stats_impl`` — delete-then-insert over
+    every zone, both tipos) against the NEWEST REGISTERED rasters, so the
+    stored ``ha_alto``/``ha_critico``/``area_high_risk_ha`` figures match the
+    legend the user reads. Run once after the migration; re-running is
+    idempotent (same rasters → same rows).
+    """
+    from datetime import date as date_mod
+
+    from app.domains.geo import composites
+    from app.domains.geo.intelligence.models import CompositeZonalStats
+    from app.domains.geo.tasks_composite_support import store_composite_zonal_stats_impl
+
+    deps = _get_deps()
+    db = _get_db()
+    try:
+        flood_path = _latest_registered_raster(db, "flood_risk")
+        drainage_path = _latest_registered_raster(db, "drainage_need")
+    finally:
+        db.close()
+    if not flood_path or not drainage_path:
+        razon = (
+            "no hay raster flood_risk registrado"
+            if not flood_path
+            else "no hay raster drainage_need registrado"
+        )
+        logger.warning("composite_recompute.sin_raster", motivo=razon)
+        return {"status": "skipped", "reason": razon}
+
+    count = store_composite_zonal_stats_impl(
+        area_id="recompute-738",
+        flood_output=flood_path,
+        drainage_output=drainage_path,
+        composites=composites,
+        intel_repo=deps["intel_repo"],
+        flood_weights=dict(composites.DEFAULT_FLOOD_WEIGHTS),
+        drainage_weights=dict(composites.DEFAULT_DRAINAGE_WEIGHTS),
+        get_db=_get_db,
+        composite_zonal_stats_model=CompositeZonalStats,
+    )
+    logger.info("composite_recompute.hecho", filas=count)
+    return {
+        "status": "completed",
+        "filas": count,
+        "flood_risk": flood_path,
+        "drainage_need": drainage_path,
+        "fecha": date_mod.today().isoformat(),
+    }
 
 
 # ---------------------------------------------------------------------------

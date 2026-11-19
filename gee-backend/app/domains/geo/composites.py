@@ -21,6 +21,7 @@ import shapely
 from shapely.geometry import mapping, shape
 from shapely.ops import transform as shapely_transform
 from shapely.ops import unary_union
+from app.domains.geo.class_breaks import RANGE_CONFIGS, high_risk_edges
 from app.domains.geo.composites_support import (
     # Re-exported so ``composites.DEFAULT_*_WEIGHTS`` resolves for
     # tasks_composite_support (redundant alias = explicit re-export, ruff-clean).
@@ -264,8 +265,37 @@ def compute_drainage_need(
 # d) Zonal statistics extraction
 # ---------------------------------------------------------------------------
 
-# Threshold above which a pixel is considered "high risk" (score > 70 of 100)
-_HIGH_RISK_THRESHOLD = 70.0
+# Decision #738 (Option A with breakdown): the high-risk statistic derives
+# from the legend in ``class_breaks.RANGE_CONFIGS`` — hectares are counted
+# from the start of "Alto" (55 for flood_risk, 50 for drainage_need) and
+# split into ``ha_alto`` ([alto, crítico)) + ``ha_critico`` ([crítico, max]).
+# The old ``_HIGH_RISK_THRESHOLD = 70.0`` constant is GONE on purpose: a
+# second copy of the edge is exactly how the stored figure and the legend the
+# user reads drifted apart in the first place. ``area_high_risk_ha`` survives
+# as a compatibility column whose value is the leyenda sum (ha_alto +
+# ha_critico), so the consumers that cannot migrate in this PR keep reading
+# a coherent figure.
+
+
+def _high_risk_mask(valid: np.ndarray, tipo: str) -> tuple[np.ndarray, np.ndarray]:
+    """(alto_member, critico_member) boolean masks over valid pixel values.
+
+    Bins follow the legend's own convention (half-open, last closed): Alto is
+    ``[alto_min, critico_min)`` and Crítico is ``[critico_min, critico_max]``.
+    A tipo with no Alto/Crítico pair in the legend yields all-False masks
+    (logged once by the caller) — never an invented threshold.
+    """
+    edges = high_risk_edges(RANGE_CONFIGS.get(tipo, []))
+    if edges is None:
+        return (
+            np.zeros(valid.shape, dtype=bool),
+            np.zeros(valid.shape, dtype=bool),
+        )
+    alto_min, critico_min, critico_max = edges
+    return (
+        (valid >= alto_min) & (valid < critico_min),
+        (valid >= critico_min) & (valid <= critico_max),
+    )
 
 
 def _as_shapely(geom: Any):
@@ -304,8 +334,11 @@ def extract_composite_zonal_stats(
     """Extract per-zone statistics from a composite raster.
 
     For each zona geometry, masks the composite and computes summary
-    statistics: mean, max, 90th percentile, and area (ha) where the
-    composite score exceeds the high-risk threshold (70).
+    statistics: mean, max, 90th percentile, and the hectares in the legend's
+    high-risk classes — ``ha_alto`` (from the start of Alto: 55 for
+    flood_risk) and ``ha_critico`` (from the start of Crítico: 75). The
+    ``area_high_risk_ha`` key is the compatibility sum of both, kept so
+    consumers outside this PR's surfaces keep reading one coherent figure.
 
     Zone geometries are automatically reprojected to match the raster CRS
     when they differ (e.g. zones in EPSG:4326 vs raster in EPSG:32720).
@@ -392,8 +425,9 @@ def extract_composite_zonal_stats(
             mean_score = float(np.mean(valid))
             max_score = float(np.max(valid))
             p90_score = float(np.percentile(valid, 90))
-            high_risk_pixels = int(np.sum(valid > _HIGH_RISK_THRESHOLD))
-            area_high_risk_ha = float(high_risk_pixels * pixel_area_ha)
+            alto_member, critico_member = _high_risk_mask(valid, tipo)
+            ha_alto = float(int(np.sum(alto_member)) * pixel_area_ha)
+            ha_critico = float(int(np.sum(critico_member)) * pixel_area_ha)
 
             results.append(
                 {
@@ -402,10 +436,19 @@ def extract_composite_zonal_stats(
                     "mean_score": round(mean_score, 2),
                     "max_score": round(max_score, 2),
                     "p90_score": round(p90_score, 2),
-                    "area_high_risk_ha": round(area_high_risk_ha, 4),
+                    "ha_alto": round(ha_alto, 4),
+                    "ha_critico": round(ha_critico, 4),
+                    "area_high_risk_ha": round(ha_alto + ha_critico, 4),
                     "weights_used": None,  # caller sets from composite weights
                 }
             )
+
+    if tipo not in RANGE_CONFIGS:
+        logger.warning(
+            "extract_composite_zonal_stats: tipo %r has no legend in RANGE_CONFIGS — "
+            "ha_alto/ha_critico report zeros (no invented threshold)",
+            tipo,
+        )
 
     logger.info(
         "extract_composite_zonal_stats: %d/%d zonas produced stats for %s",

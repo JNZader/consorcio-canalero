@@ -88,18 +88,20 @@ RUN npm prune --production
 # ----------------------------------------------
 # Stage 4: Runtime - Nginx production server
 # ----------------------------------------------
-FROM nginx:1.30.6-alpine@sha256:e9b2d7624fd7957f4ed44ae0a272d93fb73aeb8512ba8916f8118ae6143fd115 AS runtime
+FROM nginx:1.30.7-alpine3.24@sha256:4d1d4ce08432dc7dfe4af762cb224ce6b5273ae878f41e020ea2425d02ea91a4 AS runtime
 
 # Labels
 LABEL org.opencontainers.image.title="Consorcio Web Frontend" \
       org.opencontainers.image.description="React + Vite frontend for Consorcio Canalero" \
       org.opencontainers.image.vendor="Consorcio Canalero"
 
-# nginx:1.30.6-alpine is Alpine 3.24. The nginx binary comes from
-# nginx.org's Alpine repo, not from Alpine's own nginx package. Trivy on
-# 1.30.5-alpine reported CVE-2026-15176, CVE-2026-93479 and CVE-2026-97205
-# (nginx 1.30.5-r1, fixed in 1.30.6-r0). `apk upgrade nginx` against Alpine
-# v3.24 did not move it: that index still serves 1.30.5-r1. The pin is the fix.
+# nginx:1.30.7-alpine3.24 (amd64 digest pinned). The nginx binary comes from
+# nginx.org's Alpine repo, not from Alpine's own nginx package. 1.30.6 closed
+# CVE-2026-15176/93479/97205 (1.30.5-r1 → 1.30.6-r0); 1.30.7, published
+# 2026-11-19, closes the resolver use-after-free CVE-2026-123634 plus
+# CVE-2026-113425 and CVE-2026-118899 (HIGH, flagged by the 2026-11-19 image
+# gate on informe-area-pr3). `apk upgrade nginx` against Alpine v3.24 did not
+# move older versions: that index lagged behind nginx.org. The pin is the fix.
 # CVE-2026-6732 (libxml2) stays closed on this line, same as the 1.30.5 pin.
 # These HIGH rows still need a surgical apk upgrade:
 #   CVE-2026-93990 — libexpat 2.8.4-r0 → 2.8.5-r0

@@ -1,4 +1,4 @@
-"""Informe de área PDF builder — the S6 seven sections (PR 2, T2).
+"""Informe de área PDF builder — the informe de área PDF sections (PR 2 T2 + PR 4 IDECOR layers).
 
 Mandatory reuse (S12): ``BrandedPDF``/``NumberedCanvas`` from
 ``app.shared/pdf/base.py`` (the "Página n de N" folio is stamped there) and
@@ -13,16 +13,21 @@ Section order is FIXED (S6) and the tests assert it in extracted text:
 2. Riesgo hídrico (frase, mapa + leyenda + escala + norte, tabla clase·ha·%,
    nota de método, desglose por subcuenca)
 3. Necesidad de drenaje (igual estructura que 2)
-4. Suelos (catastro ``suelos_cu`` vigente; PR 4 lo reemplaza)
-5. Lluvia (normales mensuales en barras — ReportLab primitives, no chart lib)
-6. Consideraciones (cobertura por capa, límites, descargo)
-7. Fuentes (capa · fecha · resolución · origen)
+4. Suelos (carta IDECOR 1:50.000 — PR 4: unidades, series, IP, agua útil)
+5. Cobertura y cultivos (IDECOR uso 2024/2025 + estivales — PR 4, S4)
+6. Lluvia (normales mensuales en barras — ReportLab primitives, no chart lib)
+7. Canales (km relevados/propuestos clip por el área, cruces, conflictos — PR 4, S5)
+8. Imágenes de eventos ancla (miniaturas GEE falso color NIR-SWIR1-R — PR 4, S6)
+9. Consideraciones (cobertura por capa, límites, descargo)
+10. Fuentes (capa · fecha · resolución · origen)
 
 Per-subcuenca tables (S6): inline and complete when there are ≤ 8 subcuencas;
 beyond that each section shows a resumen line and the complete table at the
-END of the section. ``% Alto+Crítico`` figures carry the ``legacy70`` note
-wherever they appear (S12, until #738 recalibrates the stored threshold);
-per-class producer phrases are PR 5's, not this builder's.
+END of the section. ``% Alto+Crítico`` figures carry the threshold tag
+wherever they appear (S12): ``leyenda-55`` since #738 — the count starts at
+the legend's Alto edge, with the Alto/Crítico split stored since PR 5;
+per-class producer phrases remain gated on the S7 monotonicity verdict
+(PR 5 T2), so this builder ships none.
 """
 
 from __future__ import annotations
@@ -79,8 +84,27 @@ _FRASE_DRENAJE = (
     "obras de drenaje en cada superficie."
 )
 _FRASE_SUELOS = (
-    "Capacidad de uso de los suelos según el catastro INTA vigente "
-    "(suelos_cu), agrupada por clase romana (I a VIII)."
+    "Carta de suelos 1:50.000 (IDECOR 2025): unidades cartográficas con sus "
+    "series constituyentes, clase de capacidad de uso, índice de "
+    "productividad (IP) y agua útil a 1 y 2 m de profundidad."
+)
+_FRASE_SUELOS_SIN_DATOS = (
+    "La carta de suelos 1:50.000 de IDECOR no está cargada en este "
+    "despliegue: ejecutá el ETL app.domains.geo.etl.idecor_suelos_50mil "
+    "para habilitar la sección."
+)
+_FRASE_COBERTURA = (
+    "Cobertura y uso del suelo (IDECOR 2024/2025, 10 m, 21 clases) y "
+    "cultivos estivales de las campañas 22/23 a 24/25 (IDECOR/INTA)."
+)
+_FRASE_COBERTURA_SIN_DATOS = (
+    "Los rasters de cobertura IDECOR no están registrados en este "
+    "despliegue: ejecutá el ETL app.domains.geo.etl.idecor_coberturas "
+    "para habilitar la sección."
+)
+_FUENTE_COBERTURA = (
+    "Fuente: IDECOR · Mapas Córdoba — cobertura_uso_2024_2025 y "
+    "coberturas_estivales 2223/2324/2425 (WCS/WMS) · licencia CC BY 4.0."
 )
 _FRASE_LLUVIA = "Normales mensuales de precipitación (mm) promediadas sobre la selección."
 
@@ -88,6 +112,20 @@ _NOTA_LEGACY70 = (
     "El porcentaje Alto+Crítico usa el umbral histórico de 70 puntos "
     "(umbral_alto_critico: legacy70) hasta su recalibración; los cortes de "
     "clase del mapa y de las tablas no dependen de ese umbral."
+)
+_NOTA_LEYENDA55 = (
+    "El porcentaje Alto+Crítico se cuenta desde el inicio de la clase Alto "
+    "de la leyenda (55 puntos; umbral_alto_critico: leyenda-55): Alto "
+    "55–75 y Crítico 75 o más, la misma leyenda del mapa y de las tablas."
+)
+_NOTA_VALIDACION = (
+    "El índice de riesgo es puramente topográfico: no incorpora lluvia ni "
+    "historial de inundación. La tabla de validación lo contrasta contra "
+    "agua observada (MNDWI ≥ 0,1 sobre la escena ancla; Sentinel-1 marcado "
+    "aparte cuando no hubo óptica) a escala de toda la zona del consorcio, "
+    "con la lluvia CHIRPS de los 30 días previos al evento. Nubes, escenas "
+    "tardías y lagunas o arrozales permanentes pueden inflar o recortar el "
+    "agua observada; el desglose por clase no es un perímetro de inundación."
 )
 _AVISO_PIXEL = (
     "Los valores de lluvia provienen de un raster de píxeles de ~5 km: son "
@@ -357,6 +395,21 @@ class GraficoBarrasMeses(Flowable):
 # ── sections ─────────────────────────────────────────────────────────────────
 
 
+def _nota_umbral(datos: dict[str, Any]) -> str | None:
+    """Threshold note for the % Alto+Crítico figures, by stored tag.
+
+    ``legacy70`` only appears on rows generated before #738 — kept so an old
+    cached PDF re-render still explains itself instead of printing a tag it
+    no longer understands.
+    """
+    etiqueta = str(datos.get("umbral_alto_critico") or "")
+    if etiqueta == "leyenda-55":
+        return _NOTA_LEYENDA55
+    if etiqueta == "legacy70":
+        return _NOTA_LEGACY70
+    return None
+
+
 def _seccion_resumen(
     datos: dict[str, Any],
     branding: BrandingInfo,
@@ -423,9 +476,10 @@ def _seccion_resumen(
     ]
     tabla_kpi = build_info_table(filas_kpi, branding, col_widths=(8.5 * cm, 8.5 * cm))
     flowables.append(tabla_kpi)
-    if datos.get("umbral_alto_critico") == "legacy70":
+    nota_umbral = _nota_umbral(datos)
+    if nota_umbral is not None:
         flowables.append(Spacer(1, 1.5 * mm))
-        flowables.append(Paragraph(_NOTA_LEGACY70, estilos["small"]))
+        flowables.append(Paragraph(nota_umbral, estilos["small"]))
     flowables.append(Spacer(1, 3 * mm))
 
     desglose = datos.get("desglose")
@@ -453,7 +507,7 @@ def _seccion_resumen(
             flowables.append(
                 Paragraph(
                     f"Se muestran las {ZONAS_INLINE_MAX} mayores de {len(desglose)}; "
-                    "el detalle completo está al final de las secciones 2, 4 y 5.",
+                    "el detalle completo está al final de las secciones 2, 3, 4 y 6.",
                     estilos["small"],
                 )
             )
@@ -462,6 +516,66 @@ def _seccion_resumen(
             Paragraph("Informe generado sin desglose por subcuenca.", estilos["small"])
         )
     flowables.append(PageBreak())
+    return flowables
+
+
+def _tabla_validacion_riesgo(
+    datos: dict[str, Any],
+    branding: BrandingInfo,
+    estilos: dict[str, Any],
+) -> list[Flowable]:
+    """PR 5 (S1/S4): observed water per flood_risk class, per anchor event.
+
+    One row per event, one % con agua column per legend class, plus the
+    event's 30-day CHIRPS total. The figures are ZONE-scale (the whole
+    consorcio zone — the validation is of the index), which the título says
+    out loud; a per-selection clip is not derivable from these rows and is
+    never invented.
+    """
+    from app.domains.geo.class_breaks import RANGE_CONFIGS
+
+    dataset = datos.get("riesgo_validacion") or {}
+    eventos = dataset.get("eventos") or []
+    if not eventos:
+        return []
+
+    clases_leyenda = [str(cfg["label"]) for cfg in RANGE_CONFIGS["flood_risk"]]
+    flowables: list[Flowable] = [
+        Paragraph("Validación contra agua observada (eventos ancla)", estilos["body"]),
+        Spacer(1, 1 * mm),
+    ]
+    filas: list[list[str]] = []
+    for evento in eventos:
+        por_clase = evento.get("clases") or {}
+        celdas = [
+            f"{evento.get('evento_key')} ({evento.get('fecha')})",
+            str(evento.get("sensor") or "—"),
+        ]
+        for clase in clases_leyenda:
+            fila_clase = por_clase.get(clase)
+            celdas.append(fmt_pct(fila_clase["pct_con_agua"]) if fila_clase else "—")
+        lluvia = evento.get("lluvia_30d_mm")
+        celdas.append(f"{fmt_num(lluvia)} mm" if lluvia is not None else "—")
+        filas.append(celdas)
+
+    flowables.append(
+        build_data_table(
+            [
+                "Evento (fecha)",
+                "Sensor",
+                "% agua Bajo",
+                "% agua Medio",
+                "% agua Alto",
+                "% agua Crítico",
+                "Lluvia 30 d",
+            ],
+            filas,
+            branding,
+        )
+    )
+    flowables.append(Spacer(1, 1 * mm))
+    flowables.append(Paragraph(_NOTA_VALIDACION, estilos["small"]))
+    flowables.append(Spacer(1, 3 * mm))
     return flowables
 
 
@@ -477,8 +591,14 @@ def _seccion_clase(
     desglose_columnas: list[tuple[str, str, Any]] | None,
     branding: BrandingInfo,
     estilos: dict[str, Any],
+    extra: list[Flowable] | None = None,
 ) -> list[Flowable]:
-    """Sections 2 and 3 share this shape (S6: 'igual estructura')."""
+    """Sections 2 and 3 share this shape (S6: 'igual estructura').
+
+    ``extra`` is section-2-only content (PR 5): the anchor-event validation
+    table, appended after the desglose so the class table and the desglose
+    keep their fixed order.
+    """
     flowables: list[Flowable] = [Paragraph(numero_titulo, estilos["subtitle"])]
     flowables.append(Paragraph(frase, estilos["body"]))
     flowables.append(Spacer(1, 2 * mm))
@@ -513,6 +633,9 @@ def _seccion_clase(
             )
             flowables.append(Spacer(1, 1 * mm))
             flowables.append(_tabla_desglose(desglose, desglose_columnas, branding))
+    if extra:
+        flowables.append(Spacer(1, 2 * mm))
+        flowables.extend(extra)
     flowables.append(PageBreak())
     return flowables
 
@@ -523,33 +646,131 @@ def _seccion_suelos(
     estilos: dict[str, Any],
 ) -> list[Flowable]:
     flowables: list[Flowable] = [Paragraph("4. Suelos", estilos["subtitle"])]
+
+    dataset = datos.get("suelos")
+    if not dataset or not dataset.get("unidades"):
+        # S7: a deployment without the IDECOR ETL still gets its informe —
+        # the section says so and moves on.
+        flowables.append(Paragraph(_FRASE_SUELOS_SIN_DATOS, estilos["body"]))
+        flowables.append(Spacer(1, 3 * mm))
+        desglose = datos.get("desglose")
+        if desglose:
+            flowables.append(
+                _tabla_desglose(
+                    desglose,
+                    [
+                        ("Subcuenca", "nombre", str),
+                        ("Cuenca", "cuenca", str),
+                        ("Superficie (ha)", "ha", fmt_ha),
+                    ],
+                    branding,
+                )
+            )
+        flowables.append(PageBreak())
+        return flowables
+
     flowables.append(Paragraph(_FRASE_SUELOS, estilos["body"]))
     flowables.append(Spacer(1, 2 * mm))
 
-    dataset = datos.get("suelos")
-    clases = (dataset or {}).get("clases") or []
-    # The dataset's own order (I..VIII, then sin clasificar/sin dato) is the
-    # canonical one — no invented zero rows for absent classes.
-    orden_suelos = [{"label": c["clase"]} for c in clases]
-    flowables.extend(
-        _tabla_clases(
-            dataset,
-            orden_suelos,
+    # Main table: one row per cartographic unit (S3: símbolo · series ·
+    # clase · IP · agua útil · ha · %). Wide units list → the 12 largest
+    # plus a count note, so the section stays inside its page budget.
+    unidades = dataset["unidades"]
+    mostradas = unidades[:12]
+    filas_unidades: list[list[str]] = []
+    for unidad in mostradas:
+        filas_unidades.append(
+            [
+                _esc(str(unidad.get("simbolo") or "—")),
+                _esc(str(unidad.get("series") or "—")),
+                _esc(str(unidad.get("clase") or "—")),
+                str(unidad.get("ip") if unidad.get("ip") is not None else "—"),
+                str(unidad.get("au_1m") if unidad.get("au_1m") is not None else "—"),
+                str(unidad.get("au_2m") if unidad.get("au_2m") is not None else "—"),
+                fmt_ha(unidad.get("ha")),
+                fmt_pct(unidad.get("pct")),
+            ]
+        )
+    cubierto = sum(float(u.get("ha") or 0.0) for u in unidades)
+    area_ha = float(dataset.get("area_ha") or 0.0)
+    filas_unidades.append(
+        [
+            "Total con carta 1:50.000",
+            "",
+            "",
+            "",
+            "",
+            "",
+            fmt_ha(cubierto),
+            fmt_pct(cubierto / area_ha * 100.0 if area_ha else 0.0),
+        ]
+    )
+    sin_cobertura = max(0.0, area_ha - cubierto)
+    if sin_cobertura > 0.05:
+        filas_unidades.append(
+            [
+                "Sin carta 1:50.000",
+                "",
+                "",
+                "",
+                "",
+                "",
+                fmt_ha(sin_cobertura),
+                fmt_pct(sin_cobertura / area_ha * 100.0 if area_ha else 0.0),
+            ]
+        )
+    filas_unidades.append(
+        ["Total de la selección", "", "", "", "", "", fmt_ha(area_ha), fmt_pct(100.0)]
+    )
+
+    flowables.append(
+        build_data_table(
+            [
+                "Unidad",
+                "Series (%)",
+                "Clase",
+                "IP",
+                "AU 1 m (mm)",
+                "AU 2 m (mm)",
+                "Superficie (ha)",
+                "% de la selección",
+            ],
+            filas_unidades,
             branding,
-            titulo_total="Total con catastro",
         )
     )
+    if len(unidades) > len(mostradas):
+        flowables.append(Spacer(1, 1 * mm))
+        flowables.append(
+            Paragraph(
+                f"Se listan las {len(mostradas)} mayores de {len(unidades)} "
+                "unidades cartográficas.",
+                estilos["small"],
+            )
+        )
     flowables.append(Spacer(1, 2 * mm))
+
+    ip = dataset.get("ip_ponderado")
+    partes_resumen: list[str] = []
+    if ip is not None:
+        clases_i_iii = _pct_clases(dataset, ("I", "II", "III"))
+        partes_resumen.append(f"IP ponderado por superficie: {fmt_num(ip, 1)}.")
+        if clases_i_iii is not None:
+            partes_resumen.append(f"Clases I–III: {fmt_pct(clases_i_iii)} de la selección.")
+    flowables.append(Paragraph(" ".join(partes_resumen), estilos["body"]))
     flowables.append(
         Paragraph(
-            "Agrupado por prefijo romano (IVws → IV). «Sin dato» es la "
-            "superficie que el catastro no cubre; «sin clasificar» es "
-            "superficie catastrada sin clase de capacidad.",
+            "AU = agua útil estimada por el INTA a la profundidad indicada. "
+            "Fuente: IDECOR · carta de suelos 1:50.000 (2025), WFS "
+            "idecor:carta_suelo_50mil_2025 · licencia CC BY 4.0.",
             estilos["small"],
         )
     )
     flowables.append(Spacer(1, 3 * mm))
 
+    # Per-subcuenca breakdown: dominant class + weighted IP + coverage of
+    # the carta inside each zone (S10).
+    por_zona = dataset.get("por_zona") or {}
     desglose = datos.get("desglose")
     if desglose:
         nota = _nota_resumen_zonas(desglose, estilos)
@@ -558,20 +779,162 @@ def _seccion_suelos(
             flowables.append(Spacer(1, 1 * mm))
         flowables.append(Paragraph("Desglose por subcuenca", estilos["body"]))
         flowables.append(Spacer(1, 1 * mm))
-        columnas = [
-            ("Subcuenca", "nombre", str),
-            ("Cuenca", "cuenca", str),
-            ("Superficie (ha)", "ha", fmt_ha),
-            ("Clase dominante", "clase_suelo_dominante", str),
+        top = _top_zonas(desglose)
+
+        def _fila_suelos_zona(fila: dict[str, Any]) -> list[str]:
+            extra = por_zona.get(str(fila.get("zona_id")) or "") or {}
+            return [
+                str(fila.get("nombre") or "—"),
+                str(fila.get("cuenca") or "—"),
+                fmt_ha(fila.get("ha")),
+                str(extra.get("clase_dominante") or "—"),
+                fmt_num(extra["ip_ponderado"], 1) if extra.get("ip_ponderado") is not None else "—",
+                fmt_pct(extra["cobertura_pct"]) if extra.get("cobertura_pct") is not None else "—",
+            ]
+
+        encabezados = [
+            "Subcuenca",
+            "Cuenca",
+            "Superficie (ha)",
+            "Clase dominante",
+            "IP ponderado",
+            "% con carta",
         ]
-        flowables.append(_tabla_desglose(_top_zonas(desglose), columnas, branding))
+        filas_zonas = [_fila_suelos_zona(f) for f in top]
+        flowables.append(build_data_table(encabezados, filas_zonas, branding))
         if len(desglose) > ZONAS_INLINE_MAX:
             flowables.append(Spacer(1, 2 * mm))
             flowables.append(
                 Paragraph(f"Detalle completo ({len(desglose)} subcuencas):", estilos["body"])
             )
             flowables.append(Spacer(1, 1 * mm))
-            flowables.append(_tabla_desglose(desglose, columnas, branding))
+            flowables.append(
+                build_data_table(encabezados, [_fila_suelos_zona(f) for f in desglose], branding)
+            )
+    flowables.append(PageBreak())
+    return flowables
+
+
+def _seccion_cobertura(
+    datos: dict[str, Any],
+    branding: BrandingInfo,
+    estilos: dict[str, Any],
+) -> list[Flowable]:
+    flowables: list[Flowable] = [Paragraph("5. Cobertura y cultivos", estilos["subtitle"])]
+
+    dataset = datos.get("cobertura")
+    if not dataset or not dataset.get("clases"):
+        flowables.append(Paragraph(_FRASE_COBERTURA_SIN_DATOS, estilos["body"]))
+        flowables.append(PageBreak())
+        return flowables
+
+    flowables.append(Paragraph(_FRASE_COBERTURA, estilos["body"]))
+    flowables.append(Spacer(1, 2 * mm))
+
+    # Uso 2024/2025: clase · ha · % (S4). The dataset's own ha order.
+    orden = [{"label": c["clase"]} for c in dataset["clases"]]
+    flowables.extend(_tabla_clases(dataset, orden, branding, titulo_total="Total con cobertura"))
+    flowables.append(Spacer(1, 2 * mm))
+
+    pct_agua = dataset.get("pct_agua_estacional")
+    etiqueta_agua = dataset.get("etiqueta_agua_estacional") or "Cuerpo de agua estacional"
+    if pct_agua is not None:
+        flowables.append(
+            Paragraph(
+                f"{_esc(etiqueta_agua)} (clase 9): {fmt_pct(pct_agua)} de la selección.",
+                estilos["body"],
+            )
+        )
+    flowables.append(Spacer(1, 3 * mm))
+
+    # Campañas estivales: one class table per campaign, plus the
+    # cultivated summary line (S4 "recurrencia" follows below).
+    flowables.append(Paragraph("Cultivos estivales por campaña", estilos["body"]))
+    for campania in dataset.get("campanias") or []:
+        clases = campania.get("clases") or []
+        if not clases:
+            continue
+        filas = [[str(c["clase"]), fmt_ha(c.get("ha")), fmt_pct(c.get("pct"))] for c in clases]
+        filas.append(
+            [
+                "Total cultivado",
+                fmt_ha(campania.get("ha_cultivo")),
+                fmt_pct(campania.get("pct_cultivo")),
+            ]
+        )
+        flowables.append(Spacer(1, 1 * mm))
+        flowables.append(Paragraph(f"Campaña {campania['campania']}", estilos["body"]))
+        flowables.append(
+            build_data_table(["Clase", "Superficie (ha)", "% de la selección"], filas, branding)
+        )
+    flowables.append(Spacer(1, 3 * mm))
+
+    # Recurrencia del cultivo de verano across the three campaigns (S4).
+    recurrencia = dataset.get("recurrencia")
+    if recurrencia:
+        etiquetas_rec = {
+            "3_campanias_ha": "Con cultivo en las 3 campañas",
+            "2_campanias_ha": "Con cultivo en 2 campañas",
+            "1_campanias_ha": "Con cultivo en 1 campaña",
+            "0_campanias_ha": "Sin cultivo estival en ninguna",
+        }
+        filas_rec = [
+            [etiqueta, fmt_ha(recurrencia.get(clave))] for clave, etiqueta in etiquetas_rec.items()
+        ]
+        flowables.append(Paragraph("Recurrencia del cultivo de verano", estilos["body"]))
+        flowables.append(Spacer(1, 1 * mm))
+        flowables.append(build_data_table(["Situación", "Superficie (ha)"], filas_rec, branding))
+        flowables.append(
+            Paragraph(
+                "Píxeles de 10 m clasificados por campaña; un píxel cuenta para "
+                "una campaña cuando esa campaña lo mapeó como cultivado.",
+                estilos["small"],
+            )
+        )
+    flowables.append(Spacer(1, 3 * mm))
+
+    # Desglose por subcuenca (S10): % cultivo + % soja última campaña.
+    por_zona = dataset.get("por_zona") or {}
+    desglose = datos.get("desglose")
+    if desglose and por_zona:
+        nota = _nota_resumen_zonas(desglose, estilos)
+        if nota is not None:
+            flowables.append(nota)
+            flowables.append(Spacer(1, 1 * mm))
+        flowables.append(Paragraph("Desglose por subcuenca", estilos["body"]))
+        flowables.append(Spacer(1, 1 * mm))
+        columnas: list[tuple[str, str, Any]] = [
+            ("Subcuenca", "nombre", str),
+            ("Cuenca", "cuenca", str),
+            ("Superficie (ha)", "ha", fmt_ha),
+        ]
+        filas_zonas: list[list[str]] = []
+        for fila in _top_zonas(desglose):
+            extra = por_zona.get(str(fila.get("zona_id")) or "") or {}
+            celdas = [
+                "—" if fila.get(clave) is None else str(fmt(fila.get(clave)))
+                for _enc, clave, fmt in columnas
+            ]
+            celdas.append(
+                fmt_pct(extra["pct_cultivo"]) if extra.get("pct_cultivo") is not None else "—"
+            )
+            celdas.append(fmt_pct(extra["pct_soja"]) if extra.get("pct_soja") is not None else "—")
+            filas_zonas.append(celdas)
+        flowables.append(
+            build_data_table(
+                [
+                    "Subcuenca",
+                    "Cuenca",
+                    "Superficie (ha)",
+                    "% cultivo (uso)",
+                    "% soja (última campaña)",
+                ],
+                filas_zonas,
+                branding,
+            )
+        )
+    flowables.append(Spacer(1, 2 * mm))
+    flowables.append(Paragraph(_FUENTE_COBERTURA, estilos["small"]))
     flowables.append(PageBreak())
     return flowables
 
@@ -581,7 +944,7 @@ def _seccion_lluvia(
     branding: BrandingInfo,
     estilos: dict[str, Any],
 ) -> list[Flowable]:
-    flowables: list[Flowable] = [Paragraph("5. Lluvia", estilos["subtitle"])]
+    flowables: list[Flowable] = [Paragraph("6. Lluvia", estilos["subtitle"])]
     flowables.append(Paragraph(_FRASE_LLUVIA, estilos["body"]))
     flowables.append(Spacer(1, 2 * mm))
 
@@ -634,17 +997,199 @@ def _seccion_lluvia(
     return flowables
 
 
+def _seccion_canales(
+    datos: dict[str, Any],
+    branding: BrandingInfo,
+    estilos: dict[str, Any],
+) -> list[Flowable]:
+    flowables: list[Flowable] = [Paragraph("7. Canales", estilos["subtitle"])]
+
+    dataset = datos.get("canales")
+    if not dataset:
+        flowables.append(
+            Paragraph(
+                "Los datos de canales no están disponibles en este despliegue.",
+                estilos["body"],
+            )
+        )
+        flowables.append(PageBreak())
+        return flowables
+
+    km_mil = dataset.get("km_por_mil_ha")
+    filas_kpi = [
+        ("Canales relevados en el área", f"{fmt_num(dataset.get('km_relevados'), 2)} km"),
+        ("Canales propuestos en el área", f"{fmt_num(dataset.get('km_propuestos'), 2)} km"),
+        ("Total de canales", f"{fmt_num(dataset.get('km_total'), 2)} km"),
+        (
+            "Densidad de canales",
+            f"{fmt_num(km_mil, 2)} km cada 1.000 ha" if km_mil is not None else "—",
+        ),
+    ]
+    flowables.append(build_info_table(filas_kpi, branding, col_widths=(8.5 * cm, 8.5 * cm)))
+    flowables.append(Spacer(1, 3 * mm))
+
+    cruces = dataset.get("cruces_camino") or {}
+    conflictos = dataset.get("puntos_conflicto") or {}
+    if cruces or conflictos:
+        flowables.append(Paragraph("Cruces y conflictos en el área", estilos["body"]))
+        flowables.append(Spacer(1, 1 * mm))
+        filas_cruces = [
+            ("Cruces canal / camino", str(cruces.get("canal", 0))),
+            ("Cruces drenaje natural / camino", str(cruces.get("flujo_natural", 0))),
+            ("Puntos de conflicto (severidad alta)", str(conflictos.get("alta", 0))),
+            ("Puntos de conflicto (severidad media)", str(conflictos.get("media", 0))),
+            ("Puntos de conflicto (severidad baja)", str(conflictos.get("baja", 0))),
+        ]
+        flowables.append(build_info_table(filas_cruces, branding, col_widths=(11 * cm, 6 * cm)))
+    else:
+        flowables.append(
+            Paragraph(
+                "Sin cruces con caminos ni puntos de conflicto registrados dentro del área.",
+                estilos["body"],
+            )
+        )
+    flowables.append(Spacer(1, 3 * mm))
+
+    if dataset.get("sin_datos"):
+        flowables.append(
+            Paragraph(
+                "El área no intersecta canales relevados ni propuestos del "
+                "consorcio; las cifras anteriores son ceros reales, no falta de datos.",
+                estilos["small"],
+            )
+        )
+        flowables.append(Spacer(1, 2 * mm))
+    flowables.append(
+        Paragraph(
+            "Longitudes medidas sobre el trazado clip por el área (EPSG:32720). "
+            "Fuente: relevamiento del consorcio (canal_consorcio) y cruce_camino / "
+            "puntos_conflicto del pipeline.",
+            estilos["small"],
+        )
+    )
+    flowables.append(Spacer(1, 3 * mm))
+
+    por_zona = dataset.get("por_zona") or {}
+    desglose = datos.get("desglose")
+    if desglose and por_zona:
+        nota = _nota_resumen_zonas(desglose, estilos)
+        if nota is not None:
+            flowables.append(nota)
+            flowables.append(Spacer(1, 1 * mm))
+        flowables.append(Paragraph("Desglose por subcuenca", estilos["body"]))
+        flowables.append(Spacer(1, 1 * mm))
+        filas_zonas: list[list[str]] = []
+        for fila in _top_zonas(desglose):
+            extra = por_zona.get(str(fila.get("zona_id")) or "")
+            if not extra:
+                continue
+            filas_zonas.append(
+                [
+                    str(fila.get("nombre") or "—"),
+                    fmt_num(extra.get("km_relevados"), 2),
+                    fmt_num(extra.get("km_propuestos"), 2),
+                    fmt_num(extra.get("km_total"), 2),
+                    fmt_num(extra.get("km_por_mil_ha"), 2)
+                    if extra.get("km_por_mil_ha") is not None
+                    else "—",
+                ]
+            )
+        flowables.append(
+            build_data_table(
+                [
+                    "Subcuenca",
+                    "Relevados (km)",
+                    "Propuestos (km)",
+                    "Total (km)",
+                    "km cada 1.000 ha",
+                ],
+                filas_zonas,
+                branding,
+            )
+        )
+    flowables.append(PageBreak())
+    return flowables
+
+
+def _seccion_imagenes(
+    datos: dict[str, Any],
+    branding: BrandingInfo,
+    estilos: dict[str, Any],
+) -> list[Flowable]:
+    flowables: list[Flowable] = [Paragraph("8. Imágenes de eventos ancla", estilos["subtitle"])]
+    flowables.append(
+        Paragraph(
+            "Miniaturas en falso color (NIR-SWIR1-rojo: el agua absorbe el "
+            "SWIR, los anegamientos leen oscuro) de los eventos de "
+            "inundación ancla del catálogo, recortadas al área de la "
+            "selección.",
+            estilos["body"],
+        )
+    )
+    flowables.append(Spacer(1, 2 * mm))
+
+    imagenes = datos.get("imagenes") or []
+    if not imagenes:
+        flowables.append(
+            Paragraph(
+                "El catálogo de eventos extremos no está disponible en este "
+                "despliegue: no hay eventos ancla que mostrar.",
+                estilos["body"],
+            )
+        )
+        flowables.append(PageBreak())
+        return flowables
+
+    for imagen in imagenes:
+        fecha_es = str(imagen.get("fecha") or "—")
+        nubes = imagen.get("nubes_pct")
+        partes = [
+            f"{_esc(str(imagen.get('nombre') or imagen.get('event_key')))} · {fecha_es}",
+            f"sensor {_esc(str(imagen.get('sensor') or '—'))}",
+        ]
+        if nubes is not None:
+            partes.append(f"nubes {fmt_pct(float(nubes))}")
+        escena = str(imagen.get("escena") or "")
+        flowables.append(Paragraph(" · ".join(partes), estilos["body"]))
+        png = imagen.get("png")
+        miniatura = _imagen_mapa(png or b"", alto_max_mm=70.0) if png else None
+        if miniatura is not None:
+            flowables.append(KeepTogether([miniatura, Spacer(1, 1 * mm)]))
+        else:
+            flowables.append(
+                Paragraph(
+                    "Sin miniatura para este evento (sin candidata o GEE no respondió).",
+                    estilos["small"],
+                )
+            )
+        if escena:
+            flowables.append(Paragraph(f"Escena: {_esc(escena)}", estilos["small"]))
+        flowables.append(Spacer(1, 2 * mm))
+
+    flowables.append(
+        Paragraph(
+            "Fuente: escenas Sentinel-2 / Landsat vía Google Earth Engine, "
+            "seleccionadas por el shortlist de candidatos del catálogo de "
+            "lluvias extremas (rainfall_event_imagery_candidate).",
+            estilos["small"],
+        )
+    )
+    flowables.append(PageBreak())
+    return flowables
+
+
 def _seccion_consideraciones(
     datos: dict[str, Any],
     branding: BrandingInfo,
     estilos: dict[str, Any],
 ) -> list[Flowable]:
-    flowables: list[Flowable] = [Paragraph("6. Consideraciones", estilos["subtitle"])]
+    flowables: list[Flowable] = [Paragraph("9. Consideraciones", estilos["subtitle"])]
 
     cobertura_labels = [
         ("Riesgo hídrico", datos.get("riesgo")),
         ("Necesidad de drenaje", datos.get("drenaje")),
         ("Suelos", datos.get("suelos")),
+        ("Cobertura y cultivos", datos.get("cobertura")),
     ]
     filas: list[list[str]] = []
     for nombre, dataset in cobertura_labels:
@@ -667,15 +1212,18 @@ def _seccion_consideraciones(
 
     flowables.append(Paragraph("Límites", estilos["body"]))
     limites = [_DESCARGO, _AVISO_PIXEL]
-    if datos.get("umbral_alto_critico") == "legacy70":
-        limites.insert(0, _NOTA_LEGACY70)
+    nota_umbral = _nota_umbral(datos)
+    if nota_umbral is not None:
+        limites.insert(0, nota_umbral)
     limites.append(
         "El desglose por subcuenca se lee de datos ya calculados por el "
         "pipeline (composite_zonal_stats) y hereda su fecha de cálculo (ver "
         "Fuentes)."
     )
     limites.append(
-        "Suelos: catastro vectorial vigente sin fecha de versión registrada en el sistema."
+        "Suelos: carta IDECOR 1:50.000 bajada por ETL; la fecha de bajada "
+        "queda en Fuentes. Una sección sin datos significa que el ETL no "
+        "corrió en este despliegue."
     )
     limites.append(
         "Mapas: render simbólico sobre fondo blanco, sin imagen satelital en esta versión."
@@ -698,7 +1246,7 @@ def _seccion_fuentes(
     branding: BrandingInfo,
     estilos: dict[str, Any],
 ) -> list[Flowable]:
-    flowables: list[Flowable] = [Paragraph("7. Fuentes", estilos["subtitle"])]
+    flowables: list[Flowable] = [Paragraph("10. Fuentes", estilos["subtitle"])]
     fuentes = datos.get("fuentes") or []
     if not fuentes:
         flowables.append(Paragraph("Sin capas registradas para este informe.", estilos["body"]))
@@ -763,6 +1311,7 @@ def build_informe_area_pdf(
             ],
             branding,
             estilos,
+            extra=_tabla_validacion_riesgo(datos, branding, estilos),
         )
     )
     story.extend(
@@ -787,7 +1336,10 @@ def build_informe_area_pdf(
         )
     )
     story.extend(_seccion_suelos(datos, branding, estilos))
+    story.extend(_seccion_cobertura(datos, branding, estilos))
     story.extend(_seccion_lluvia(datos, branding, estilos))
+    story.extend(_seccion_canales(datos, branding, estilos))
+    story.extend(_seccion_imagenes(datos, branding, estilos))
     story.extend(_seccion_consideraciones(datos, branding, estilos))
     story.extend(_seccion_fuentes(datos, branding, estilos))
 
@@ -797,7 +1349,7 @@ def build_informe_area_pdf(
 def _notas_metodo_clase(
     tipo: str, dataset: dict[str, Any] | None, datos: dict[str, Any]
 ) -> list[str]:
-    """Method notes for sections 2/3: break edges, coverage base, legacy70."""
+    """Method notes for sections 2/3: break edges, coverage base, threshold tag."""
     from app.domains.geo.class_breaks import RANGE_CONFIGS
 
     cortes = ", ".join(
@@ -813,12 +1365,18 @@ def _notas_metodo_clase(
             f"({fmt_pct(ratio * 100.0)}); los porcentajes se calculan sobre la "
             "superficie total de la selección."
         )
-    if tipo == "flood_risk" and datos.get("umbral_alto_critico") == "legacy70":
-        notas.append(_NOTA_LEGACY70)
+    nota_umbral = _nota_umbral(datos)
+    if tipo == "flood_risk" and nota_umbral is not None:
+        notas.append(nota_umbral)
     if tipo == "drainage_need":
+        nota_drenaje = (
+            _NOTA_LEYENDA55
+            if str(datos.get("umbral_alto_critico") or "") == "leyenda-55"
+            else _NOTA_LEGACY70
+        )
         notas.append(
-            "El desglose por subcuenca de esta capa usa el mismo umbral "
-            "histórico de 70 puntos (legacy70) hasta su recalibración."
+            "El desglose por subcuenca de esta capa usa el mismo criterio "
+            "(desde el inicio de Alto): " + nota_drenaje
         )
     return notas
 

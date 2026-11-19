@@ -292,7 +292,18 @@ class CompositeZonalStatsResponse(BaseModel):
     mean_score: float
     max_score: float
     p90_score: float
-    area_high_risk_ha: float
+    area_high_risk_ha: float = Field(
+        ...,
+        description="Compatibility name: ha_alto + ha_critico (legend-derived, #738)",
+    )
+    ha_alto: Optional[float] = Field(
+        default=None,
+        description="Hectares in the legend's Alto class (NULL on pre-#738 rows)",
+    )
+    ha_critico: Optional[float] = Field(
+        default=None,
+        description="Hectares in the legend's Crítico class (NULL on pre-#738 rows)",
+    )
     weights_used: Optional[dict[str, float]] = None
     fecha_calculo: date
 
