@@ -166,6 +166,10 @@ class InformeAreaResponse(BaseModel):
     vence_at: datetime
     created_at: datetime
     updated_at: datetime
+    token_publico: str = Field(
+        default="",
+        description="Opaque token of the public campo map (PR 6, S5); empty pre-PR6 rows",
+    )
 
 
 class InformeAreaListResponse(BaseModel):
@@ -202,4 +206,5 @@ def respuesta_informe(
         vence_at=row.vence_at,
         created_at=row.created_at,
         updated_at=row.updated_at,
+        token_publico=str(getattr(row, "token_publico", "") or ""),
     )

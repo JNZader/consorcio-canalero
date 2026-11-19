@@ -112,6 +112,52 @@ def pdf_no_disponible() -> InformeAreaError:
     )
 
 
+# ── PR 6: KMZ + campo público ────────────────────────────────────────────────
+
+
+def kmz_no_disponible() -> InformeAreaError:
+    """503 when a completed row's KMZ never rendered (degraded run).
+
+    Same contract as ``pdf_no_disponible``: the informe is there, the export
+    is not — an honest typed error, never a fabricated empty archive.
+    """
+    return InformeAreaError(
+        status_code=503,
+        codigo="kmz_aun_no_disponible",
+        detail="El KMZ del informe no está disponible (la generación se degradó)",
+    )
+
+
+def campo_token_invalido() -> InformeAreaError:
+    """404 for an unknown campo token — the ONLY answer an outsider gets.
+
+    Deliberately identical for a token that never existed, a token whose row
+    the retention sweep deleted (revocation, S10), and a token whose informe
+    is still pending: a public route must not confirm which of the three it
+    was, and it must not leak whether SOME informe exists behind a guess.
+    """
+    return InformeAreaError(
+        status_code=404,
+        codigo="campo_no_encontrado",
+        detail="Este mapa de campo no existe o ya no está disponible",
+    )
+
+
+def campo_vencido() -> InformeAreaError:
+    """410 Gone: the token's row outlived its ``vence_at`` (90 days, PR 2).
+
+    Distinct from 404 on purpose: the phone that scanned the QR deserves to
+    know the map EXPIRED (and that re-generating the informe re-issues a new
+    token), not that it mysteriously vanished. Between ``vence_at`` and the
+    daily sweep the row still exists, so this is the honest status.
+    """
+    return InformeAreaError(
+        status_code=410,
+        codigo="campo_vencido",
+        detail="Este mapa de campo venció (los informes se conservan 90 días)",
+    )
+
+
 # 5xx codes that describe a state somebody CHOSE, not something that broke —
 # logged at WARNING so a pending-T2 deployment does not emit an ERROR per
 # download attempt (same discipline as ``ficha_errors._ESTADOS_DELIBERADOS``).

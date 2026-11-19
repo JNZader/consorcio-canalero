@@ -36,11 +36,20 @@ renders «sin datos» for that event — a report never fails on GEE; a
 map-render failure degrades the same way. A HARD failure (anything raised
 below) leaves ``estado=failed`` with a readable one-line reason in
 ``error`` — the traceback goes to the log, not the user.
+
+PR 6 appends the field exports to the SAME completion transaction: the KMZ
+(S3 — vectorized class themes + georeferenced anchor imagery, one theme
+visible at a time via radioFolder) and the offline campo package (S4 — the
+same vectors + límites + leyenda + a Sentinel-2 basemap, target ≤ 15 MB).
+Both degrade per-piece like a map does; the row is never ``completed``
+without its PDF, but it CAN complete without a KMZ or package (each says so
+in ``degradado`` / ``resultado["campo"]``).
 """
 
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import structlog
 
@@ -412,6 +421,9 @@ def generar_informe_area(informe_id: str) -> dict:
                 "area_ha": round(seleccion.area_ha, 4),
                 "cantidad_zonas": len(zona_ids),
                 "cuencas": seleccion.cuencas,
+                # PR 6 (S7): the cover QR encodes the campo URL — the token
+                # was minted at create time, so the URL is known before render.
+                "campo_url": service.url_campo(row.token_publico),
                 "riesgo": riesgo,
                 "drenaje": drenaje,
                 "suelos": suelos,
@@ -438,6 +450,149 @@ def generar_informe_area(informe_id: str) -> dict:
                     informe_id=informe_id,
                     bytes=len(pdf_bytes),
                 )
+
+            # ── PR 6: KMZ + paquete de campo (S3/S4) ────────────────────
+            # Themes are vectorized from the SAME rasters the PDF's maps
+            # painted (vectorize_zonal_classes), so Google Earth and the
+            # phone cannot disagree with the report.
+            from shapely.geometry import shape
+
+            from app.domains.geo.class_breaks import RANGE_CONFIGS
+            from app.domains.geo.composites import vectorize_zonal_classes
+            from app.domains.geo.informe_area import kmz as kmz_export
+
+            bounds_union = shape(union_geom).bounds  # (w, s, e, n) 4326
+
+            datasets_clase = {"flood_risk": riesgo, "drainage_need": drenaje}
+            temas_campo: list[dict[str, Any]] = []
+            for tipo, clave, titulo in (
+                ("flood_risk", "riesgo", "Riesgo hídrico"),
+                ("drainage_need", "drenaje", "Necesidad de drenaje"),
+            ):
+                if datasets_clase[tipo].get("cobertura") == "sin_cobertura":
+                    continue
+                ruta = ficha_service._raster_path(db, tipo)  # noqa: SLF001
+                if not ruta:
+                    continue
+                try:
+                    vectorizado = vectorize_zonal_classes(
+                        ruta, union_geom, RANGE_CONFIGS.get(tipo) or []
+                    )
+                except Exception:  # noqa: BLE001 — a theme degrades, never fails
+                    logger.warning("informe_area.vectorizado_fallo", tipo=tipo, exc_info=True)
+                    degradado.append(f"vectorizado de {tipo} no generado")
+                    continue
+                colores = {str(b["label"]): str(b["color"]) for b in RANGE_CONFIGS.get(tipo) or []}
+                clases = [
+                    {
+                        "clase": str(f["clase"]),
+                        "color": colores.get(str(f["clase"]), "#808080"),
+                        "geometrias": [f["geometry"]],
+                    }
+                    for f in vectorizado
+                    if f.get("geometry")
+                ]
+                if clases:
+                    temas_campo.append({"clave": clave, "titulo": titulo, "clases": clases})
+
+            try:
+                suelos_geo = service.suelos_geometrias_clase(db, seleccion.geojson)
+            except Exception:  # noqa: BLE001
+                suelos_geo = None
+            if suelos_geo:
+                temas_campo.append(
+                    {
+                        "clave": "suelos",
+                        "titulo": "Suelos (IDECOR 1:50.000)",
+                        "clases": [
+                            {
+                                "clase": c["clase"],
+                                "color": kmz_export.color_suelo(c["clase"], i),
+                                "geometrias": c["geometrias"],
+                            }
+                            for i, c in enumerate(suelos_geo)
+                        ],
+                    }
+                )
+
+            # KMZ (S3): one folder per theme + georeferenced anchor imagery.
+            kmz_bytes: bytes | None = None
+            try:
+                temas_kmz = [
+                    kmz_export.TemaKmz(
+                        titulo=t["titulo"],
+                        clases=[
+                            kmz_export.ClaseKmz(
+                                clase=c["clase"],
+                                color=c["color"],
+                                geometrias=c["geometrias"],
+                            )
+                            for c in t["clases"]
+                        ],
+                    )
+                    for t in temas_campo
+                ]
+                imagenes_kmz = [
+                    kmz_export.ImagenKmz(
+                        titulo=f"Imagen {i['fecha']} — {i['nombre']}",
+                        png=i["png"],
+                        bounds=bounds_union,
+                    )
+                    for i in imagenes
+                    if i.get("png")
+                ]
+                kmz_bytes = kmz_export.construir_kmz_informe(
+                    nombre=row.nombre,
+                    seleccion_geojson=union_geom,
+                    subcuencas=zonas_geo,
+                    temas=temas_kmz,
+                    imagenes=imagenes_kmz,
+                )
+            except Exception:  # noqa: BLE001 — the KMZ degrades like a map
+                logger.warning("informe_area.kmz_fallo", informe_id=informe_id, exc_info=True)
+                degradado.append("KMZ no generado")
+
+            # Paquete de campo (S4): vectors + límites + leyenda + basemap.
+            campo_bytes: bytes | None = None
+            campo_notas: list[str] = []
+            campo_basemap = False
+            try:
+                con_png = [i for i in imagenes if i.get("png") is not None]
+                basemap: dict[str, Any] | None = None
+                if con_png:
+                    # imagenes comes ORDER BY start_date: the LAST row with a
+                    # PNG is the latest scene. Prefer a Sentinel-2 one (S4
+                    # names Sentinel-2; the anchors may carry Landsat).
+                    s2 = [i for i in con_png if str(i.get("sensor")) == "sentinel2"]
+                    elegida = (s2 or con_png)[-1]
+                    basemap = {
+                        "png": elegida["png"],
+                        "bounds": bounds_union,
+                        "fecha": elegida.get("fecha"),
+                        "sensor": elegida.get("sensor"),
+                    }
+                paquete = service.construir_paquete_campo(
+                    nombre=row.nombre,
+                    generado_el=str(datos["generado_el"]),
+                    vence_at=row.vence_at.isoformat(),
+                    area_ha=seleccion.area_ha,
+                    seleccion_geojson=union_geom,
+                    subcuencas=zonas_geo,
+                    temas=temas_campo,
+                    basemap=basemap,
+                )
+                campo_bytes = service.serializar_paquete_campo(paquete)
+                campo_notas = list(paquete.get("notas") or [])
+                campo_basemap = paquete.get("basemap") is not None
+                if len(campo_bytes) > service.CAMPO_PAQUETE_MAX_BYTES:
+                    logger.warning(
+                        "informe_area.paquete_grande",
+                        informe_id=informe_id,
+                        bytes=len(campo_bytes),
+                    )
+            except Exception:  # noqa: BLE001 — the package degrades, report lives
+                logger.warning("informe_area.paquete_fallo", informe_id=informe_id, exc_info=True)
+                degradado.append("paquete de campo no generado")
 
             resultado = {
                 "area_ha": round(seleccion.area_ha, 4),
@@ -511,6 +666,17 @@ def generar_informe_area(informe_id: str) -> dict:
                 # GEE-dependent pieces (Sentinel-2 miniature) land later;
                 # each degradation is APPENDED here, never fails the report.
                 "degradado": degradado,
+                # PR 6: what the campo surface needs (S5) — token + url for
+                # the UI, sizes + notas for the operator. Bytes stay in
+                # their own columns, never in JSONB.
+                "campo": {
+                    "token": row.token_publico,
+                    "url": service.url_campo(row.token_publico),
+                    "paquete_bytes": len(campo_bytes) if campo_bytes else None,
+                    "kmz_bytes": len(kmz_bytes) if kmz_bytes else None,
+                    "basemap": campo_basemap,
+                    "notas": campo_notas,
+                },
             }
 
             if not repo.actualizar_estado_if_actual(
@@ -522,6 +688,8 @@ def generar_informe_area(informe_id: str) -> dict:
                 resultado=resultado,
                 error=None,
                 pdf_bytes=pdf_bytes,
+                kmz_bytes=kmz_bytes,
+                campo_paquete=campo_bytes,
             ):
                 logger.warning("informe_area.cas_perdido_al_completar", informe_id=informe_id)
                 return {"informe_id": informe_id, "estado": "skipped"}
@@ -531,6 +699,8 @@ def generar_informe_area(informe_id: str) -> dict:
                 area_ha=resultado["area_ha"],
                 zonas=resultado["zonas"],
                 pdf_bytes=len(pdf_bytes),
+                kmz_bytes=len(kmz_bytes) if kmz_bytes else 0,
+                campo_bytes=len(campo_bytes) if campo_bytes else 0,
                 mapas=list(mapas_bytes),
             )
             return {"informe_id": informe_id, "estado": "completed"}

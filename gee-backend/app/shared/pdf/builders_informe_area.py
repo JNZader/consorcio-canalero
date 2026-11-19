@@ -1267,6 +1267,48 @@ def _seccion_fuentes(
 # ── entry point ──────────────────────────────────────────────────────────────
 
 
+def _qr_campo(url: str, estilos: dict[str, Any]) -> list[Flowable]:
+    """The cover's campo-map QR (S7): QR drawing + caption + plain URL.
+
+    ``reportlab.graphics.barcode.qr`` ships with ReportLab — zero new
+    dependencies, same rule as the KMZ. The caption is real text (not part
+    of the image) so pypdf can assert it; the plain URL below the QR is the
+    copy-paste fallback for a phone that cannot scan.
+    """
+    from reportlab.graphics.barcode import qr as rl_qr
+    from reportlab.graphics.shapes import Drawing
+
+    lado_mm = 24.0
+    widget = rl_qr.QrCodeWidget(url, barLevel="M")
+    x0, y0, x1, y1 = widget.getBounds()
+    dibujo = Drawing(
+        lado_mm,
+        lado_mm,
+        transform=[
+            lado_mm / (x1 - x0),
+            0,
+            0,
+            lado_mm / (y1 - y0),
+            0,
+            0,
+        ],
+    )
+    dibujo.add(widget)
+
+    return [
+        Table(
+            [[dibujo]],
+            colWidths=[lado_mm * mm],
+            style=[("ALIGN", (0, 0), (-1, -1), "CENTER")],
+            hAlign="RIGHT",
+        ),
+        Spacer(1, 1.5 * mm),
+        Paragraph("Mapa de campo — escaneá para abrirlo en el celular", estilos["body"]),
+        Paragraph(f"(también funciona sin señal: {url})", estilos["small"]),
+        Spacer(1, 3 * mm),
+    ]
+
+
 def build_informe_area_pdf(
     datos: dict[str, Any],
     branding: BrandingInfo,
@@ -1287,6 +1329,13 @@ def build_informe_area_pdf(
         ),
         Spacer(1, 4 * mm),
     ]
+
+    # PR 6 (S7): the campo-map QR on the cover — right-aligned, with the
+    # plain URL as the copy-paste fallback. Optional: a pre-PR6 caller (or a
+    # test isolating the cover) builds the same PDF without it.
+    campo_url = str(datos.get("campo_url") or "").strip()
+    if campo_url:
+        story.extend(_qr_campo(campo_url, estilos))
 
     story.extend(_seccion_resumen(datos, branding, estilos, mapas))
 

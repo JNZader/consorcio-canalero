@@ -172,3 +172,68 @@ def descargar_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": disposition},
     )
+
+
+@router.get(
+    "/{informe_id}/kmz",
+    summary="Descargar el KMZ del informe (creador o admin)",
+    responses={
+        409: {"description": "En progreso o fallido"},
+        503: {"description": "Completado sin KMZ renderizado"},
+    },
+)
+def descargar_kmz(
+    informe_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    usuario: Any = Depends(current_active_user),
+) -> Response:
+    """``application/vnd.google-earth.kmz`` — same privacy ladder as the PDF.
+
+    S3: the Google Earth export (límite + subcuencas + one folder per theme,
+    ``radioFolder`` so one theme is visible at a time). A degraded run that
+    finished without the KMZ answers the typed 503, never an empty archive.
+    """
+    contenido, disposition = service.descargar_kmz(db, informe_id, usuario=usuario)
+    return Response(
+        content=contenido,
+        media_type="application/vnd.google-earth.kmz",
+        headers={"Content-Disposition": disposition},
+    )
+
+
+# ── PR 6 (S5): the PUBLIC campo route ────────────────────────────────────────
+#
+# No ``current_active_user`` here — this is the endpoint a phone reaches by
+# scanning the QR on the PDF cover, often with no account and no signal. The
+# opaque ``token_publico`` in the path IS the authorization (no personal
+# data travels in the URL; the token is unrelated to the informe id), and it
+# inherits the row's lifecycle: ``vence_at`` (90 days) and the row's deletion
+# both kill it. Mounted under ``/api/v2/public`` by ``app.api.v2.public`` —
+# the app's public aggregator — NOT under this router's authenticated prefix.
+public_router = APIRouter(prefix="/campo", tags=["Informe de Área — campo"])
+
+
+@public_router.get(
+    "/{token}",
+    summary="Paquete de campo por token público (sin autenticación)",
+    responses={
+        404: {"description": "Token desconocido, revocado o informe no completado"},
+        410: {"description": "El informe venció (retención de 90 días)"},
+    },
+)
+def obtener_paquete_campo(token: str, db: Session = Depends(get_db)) -> Response:
+    """The offline field package JSON — everything ``/campo/:token`` renders.
+
+    404 is the ONLY answer for unknown/revoked/pending tokens (a public
+    route must not become an oracle); 410 says the map expired so the phone
+    shows an honest message instead of "no existe".
+    """
+    contenido = service.paquete_campo_por_token(db, token)
+    return Response(
+        content=contenido,
+        media_type="application/json",
+        # The SW's CacheFirst rule governs offline reuse; a modest HTTP
+        # freshness window keeps the FIRST offline window working even
+        # before the service worker has settled.
+        headers={"Cache-Control": "public, max-age=3600"},
+    )

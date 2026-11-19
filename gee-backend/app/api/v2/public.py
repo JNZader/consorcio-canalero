@@ -32,6 +32,7 @@ from app.domains.capas.repository import CapasRepository
 from app.domains.denuncias.models import Denuncia
 from app.domains.denuncias.service import DenunciaService
 from app.domains.monitoring.models import Sugerencia
+from app.domains.geo.informe_area.router import public_router as informe_area_campo_router
 from app.domains.geo.public_map import router as public_map_router
 from app.domains.geo.public_elevation import router as public_elevation_router
 
@@ -43,6 +44,9 @@ public_router = APIRouter(prefix="/public", tags=["public"])
 admin_publish_router = APIRouter(prefix="/admin/publish", tags=["admin-publish"])
 public_router.include_router(public_map_router)
 public_router.include_router(public_elevation_router)
+# PR 6 (S5): the informe de área's offline field package — the no-auth
+# endpoint a phone reaches from the QR on the PDF cover.
+public_router.include_router(informe_area_campo_router)
 
 
 # ──────────────────────────────────────────────

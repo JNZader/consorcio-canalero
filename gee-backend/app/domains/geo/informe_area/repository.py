@@ -9,6 +9,7 @@ work.
 
 from __future__ import annotations
 
+import secrets
 import uuid
 from datetime import datetime, timezone
 
@@ -50,6 +51,11 @@ class InformeAreaRepository:
             vence_at=vence_at,
             progreso=0,
             celery_task_id=celery_task_id,
+            # PR 6 (S5): generated HERE, once, so every creation path (API,
+            # tests, cache-miss) carries a token without remembering to pass
+            # one. Opaque + URL-safe; carries no user data (the campo URL
+            # must not leak any) and is unrelated to the informe id.
+            token_publico=secrets.token_urlsafe(16),
         )
         db.add(row)
         db.flush()
@@ -58,6 +64,18 @@ class InformeAreaRepository:
     def obtener(self, db: Session, informe_id: uuid.UUID) -> InformeArea | None:
         return db.execute(
             select(InformeArea).where(InformeArea.id == informe_id)
+        ).scalar_one_or_none()
+
+    def obtener_por_token(self, db: Session, token: str) -> InformeArea | None:
+        """The PUBLIC campo route's only lookup (PR 6, S5).
+
+        The token is the whole key — no ``usuario_id`` filter, no auth
+        context — so what the caller learns about the row is decided AFTER
+        the fetch, in the service (estado / vencimiento / package presence),
+        never here.
+        """
+        return db.execute(
+            select(InformeArea).where(InformeArea.token_publico == token)
         ).scalar_one_or_none()
 
     def contar_en_curso(self, db: Session, usuario_id: uuid.UUID) -> int:
@@ -121,6 +139,8 @@ class InformeAreaRepository:
         resultado: dict | None = None,
         error: str | None = None,
         pdf_bytes: bytes | None = None,
+        kmz_bytes: bytes | None = None,
+        campo_paquete: bytes | None = None,
     ) -> bool:
         """Compare-and-set a transition; False means the row moved on."""
         valores: dict[str, object] = {"updated_at": func.now()}
@@ -134,6 +154,10 @@ class InformeAreaRepository:
             valores["error"] = error
         if pdf_bytes is not None:
             valores["pdf_bytes"] = pdf_bytes
+        if kmz_bytes is not None:
+            valores["kmz_bytes"] = kmz_bytes
+        if campo_paquete is not None:
+            valores["campo_paquete"] = campo_paquete
         result = db.execute(
             update(InformeArea)
             .where(InformeArea.id == informe_id, InformeArea.estado == expected_estado)
