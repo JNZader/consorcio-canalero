@@ -102,7 +102,9 @@ def test_kmz_estructura_zip_xml_y_radio_folder():
             titulo="Riesgo hídrico",
             clases=[
                 kmz_export.ClaseKmz(
-                    clase="Alto", color="#fc8d59", geometrias=[_poligono(-62.0, -33.0, -61.95, -32.9)]
+                    clase="Alto",
+                    color="#fc8d59",
+                    geometrias=[_poligono(-62.0, -33.0, -61.95, -32.9)],
                 ),
                 kmz_export.ClaseKmz(
                     clase="Crítico",
@@ -115,7 +117,9 @@ def test_kmz_estructura_zip_xml_y_radio_folder():
             titulo="Necesidad de drenaje",
             clases=[
                 kmz_export.ClaseKmz(
-                    clase="Bajo", color="#fff7ec", geometrias=[_poligono(-62.0, -33.0, -61.9, -32.9)]
+                    clase="Bajo",
+                    color="#fff7ec",
+                    geometrias=[_poligono(-62.0, -33.0, -61.9, -32.9)],
                 )
             ],
         ),
@@ -158,10 +162,7 @@ def test_kmz_estructura_zip_xml_y_radio_folder():
     ]
     assert len(radios) == 1
 
-    folders = {
-        f.find(f"{NS}name").text: f
-        for f in root.iter(f"{NS}Folder")
-    }
+    folders = {f.find(f"{NS}name").text: f for f in root.iter(f"{NS}Folder")}
     # One folder per theme (S3) + límites + the 3 imagery overlays.
     for esperado in (
         "Límite y subcuencas",
@@ -331,10 +332,14 @@ def _png_chico() -> bytes:
 
 def _sembrar_mundo(db: Session, directorio: Any) -> dict[str, Any]:
     # suelos IDECOR (the migration's own DDL + one 'II' unit)
-    db.execute(text("CREATE TABLE IF NOT EXISTS suelos_catastro ("
-                    "  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
-                    "  simbolo VARCHAR(50) NOT NULL, cap VARCHAR(10), ip VARCHAR(50),"
-                    "  geometria GEOMETRY(MULTIPOLYGON, 4326) NOT NULL)"))
+    db.execute(
+        text(
+            "CREATE TABLE IF NOT EXISTS suelos_catastro ("
+            "  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "  simbolo VARCHAR(50) NOT NULL, cap VARCHAR(10), ip VARCHAR(50),"
+            "  geometria GEOMETRY(MULTIPOLYGON, 4326) NOT NULL)"
+        )
+    )
     wkt_suelos = (
         f"MULTIPOLYGON((({LON0 - 0.02} {LAT0 - 0.02}, {LON0 + 0.2} {LAT0 - 0.02}, "
         f"{LON0 + 0.2} {LAT0 + 0.09}, {LON0 - 0.02} {LAT0 + 0.09}, "
@@ -575,8 +580,10 @@ def test_tarea_genera_kmz_paquete_token_y_qr(factory, tmp_path, monkeypatch):
             assert "Suelos (IDECOR 1:50.000)" in nombres
             assert sum("Imagen" in (n or "") for n in nombres) == 3
             assert any(
-                (s.find(f".//{NS}listItemType") is not None
-                 and s.find(f".//{NS}listItemType").text == "radioFolder")
+                (
+                    s.find(f".//{NS}listItemType") is not None
+                    and s.find(f".//{NS}listItemType").text == "radioFolder"
+                )
                 for s in root.iter(f"{NS}Style")
             )
             overlays = root.findall(f".//{NS}GroundOverlay")
@@ -751,7 +758,9 @@ def test_kmz_endpoint_privacidad(factory, tmp_path, monkeypatch):
             rasters = mundo["rasters"]
             creador = _usuario(db, f"informe-t6-kmz-{uuid.uuid4().hex[:8]}@test.local")
             otro = _usuario(db, f"informe-t6-otro-{uuid.uuid4().hex[:8]}@test.local")
-            admin = _usuario(db, f"informe-t6-adm-{uuid.uuid4().hex[:8]}@test.local", UserRole.ADMIN)
+            admin = _usuario(
+                db, f"informe-t6-adm-{uuid.uuid4().hex[:8]}@test.local", UserRole.ADMIN
+            )
             db.commit()
             usuario_id, otro_id, admin_id = creador.id, otro.id, admin.id
             row, _ = service.crear_informe(
