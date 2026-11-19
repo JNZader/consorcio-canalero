@@ -75,6 +75,7 @@ celery_app = Celery(
         "app.domains.geo.gee_tasks_warming",
         "app.domains.geo.intelligence.tasks",
         "app.domains.geo.rainfall.tasks",
+        "app.domains.geo.informe_area.tasks",
         # Registers denuncias.notify_status on every prefork child so
         # outbox-published status mails are not dropped when the flag is on.
         "app.domains.denuncias.tasks",
@@ -157,6 +158,12 @@ celery_app.conf.update(
             "task": "denuncias.reconcile_orphaned_photos",
             "schedule": crontab(minute="45", hour="4"),
             "options": {"queue": "celery"},
+        },
+        # Daily sweep of expired area reports (S11: vence 90 días).
+        "limpiar-informes-area-vencidos": {
+            "task": "geo.informe_area.limpiar_vencidos",
+            "schedule": crontab(minute="5", hour="4"),
+            "options": {"queue": "geo"},
         },
         "publish-celery-outbox": {
             "task": "outbox.publish_pending",
