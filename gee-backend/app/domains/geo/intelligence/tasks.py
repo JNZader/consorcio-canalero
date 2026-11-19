@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 import uuid
 
 import structlog
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.celery_app import celery_app
 
@@ -48,22 +49,68 @@ def _get_db():
 # Batch HCI Calculation
 # ---------------------------------------------------------------------------
 
+#: S10 fallback: the fixed flood-history factor used before the validation
+#: table existed. Kept (and MARKED in the task result as ``historial_fijo``)
+#: so a deployment without the calibration ETL still computes HCI honestly.
+HISTORIAL_INUNDACION_POR_DEFECTO = 0.3
+
+
+def historial_inundacion_desde_validacion(db) -> tuple[float, bool]:
+    """(historial, historial_fijo) from ``riesgo_validacion_evento`` (S10).
+
+    The plan's "% de la zona con agua en los eventos ancla": per anchor event,
+    the zone's water share is ``Σ ha_con_agua / Σ ha_clase`` (S6 guarantees
+    ``Σ ha_clase`` is the zone area), and the historial factor is the MEAN of
+    those shares across events, clamped to [0, 1]. No rows (table empty or
+    missing on this deployment) → ``(0.3, True)``: the fixed default, marked,
+    never silently indistinguishable from a measured value.
+    """
+    from sqlalchemy import text
+
+    try:
+        with db.begin_nested():
+            filas = db.execute(
+                text(
+                    "SELECT evento_key, "
+                    "sum(ha_con_agua) / NULLIF(sum(ha_clase), 0.0) AS fraccion "
+                    "FROM riesgo_validacion_evento GROUP BY evento_key"
+                )
+            ).all()
+    except SQLAlchemyError:
+        logger.warning("hci.historial_validacion_no_disponible", exc_info=True)
+        return HISTORIAL_INUNDACION_POR_DEFECTO, True
+    fracciones = [float(fila.fraccion) for fila in filas if fila.fraccion is not None]
+    if not fracciones:
+        return HISTORIAL_INUNDACION_POR_DEFECTO, True
+    historial = min(1.0, max(0.0, sum(fracciones) / len(fracciones)))
+    return historial, False
+
 
 @celery_app.task(queue="geo", name="geo.intelligence.calculate_hci_all")
 def task_calculate_hci_all_zones(
     proximidad_canal_m: float = 500.0,
-    historial_inundacion: float = 0.3,
+    historial_inundacion: float | None = None,
 ) -> dict:
     """Calculate HCI for all zones using per-zone raster statistics.
 
     Extracts mean slope, mean flow accumulation, and mean TWI from GeoLayers
     for each ZonaOperativa geometry. Falls back to default values if rasters
     are unavailable.
+
+    S10: ``historial_inundacion=None`` (the default) derives the flood-history
+    factor from the anchor-event validation table — the real, measured share
+    of the zone under water. When the table has no data the fixed 0.3 stands
+    and the result carries ``historial_fijo: True`` so the constant is never
+    mistaken for a measurement.
     """
     deps = _get_deps()
     db = _get_db()
     try:
-        historial, historial_fijo = float(historial_inundacion), True
+        if historial_inundacion is None:
+            historial, historial_fijo = historial_inundacion_desde_validacion(db)
+        else:
+            historial = float(historial_inundacion)
+            historial_fijo = True
         zonas, total = deps["intel_repo"].get_zonas(db, page=1, limit=1000)
         if not zonas:
             return {"status": "skipped", "reason": "No zones available"}
@@ -86,7 +133,7 @@ def task_calculate_hci_all_zones(
                     acumulacion_media=zona_stats["acumulacion_media"],
                     twi_medio=zona_stats["twi_medio"],
                     proximidad_canal_m=proximidad_canal_m,
-                    historial_inundacion=historial_inundacion,
+                    historial_inundacion=historial,
                 )
                 results.append(result)
             except Exception:
