@@ -1,6 +1,5 @@
 /**
  * useSeleccionArea — the selection state machine of the informe de área (PR 1).
- *
  * A plain `useReducer` reducer, no external state library: the selection is a
  * SET of `zonas_operativas` ids (the same uuid strings `/geo/basins` publishes
  * as `properties.id` and the ficha `tipo=zonas` expects as `zona_ids`), and
@@ -25,6 +24,8 @@
  * entries; the UI surfaces the cap with `cupoLleno` instead of failing at the
  * server.
  */
+
+import type { MultiPolygon, Polygon } from 'geojson';
 
 /** One selectable subcuenca, as the `/geo/basins` FeatureCollection describes it. */
 export interface ZonaRef {
@@ -156,4 +157,96 @@ export function zonasSeleccionadas(
  */
 export function claveDeSeleccion(state: SeleccionAreaState): string {
   return [...state].sort().join(',');
+}
+
+// ── PR 3: geometries of the MIXED selection (zonas + dibujo + archivo) ───────
+//
+// The zonas reducer above is UNCHANGED on purpose: its contract (a plain id
+// Set) is what the whole PR 1 surface (map clicks, lista, cuenca expansion)
+// and its test suite are written against. The drawn/imported polygons are a
+// SECOND, parallel list — same module, same pure-function discipline — and
+// the mixed helpers below compose both halves at the edges (preview query,
+// create payload, chips). A drawn polygon has no catalog row to key on, so
+// it carries a synthetic id from the moment it enters the selection.
+
+/** One drawn or imported polygon inside the selection (PR 3, S1). */
+export interface SeleccionGeometria {
+  /** Synthetic stable id (`dibujo-3`, `archivo-7f2a…`) — the Pill/removal key. */
+  readonly id: string;
+  readonly origen: 'dibujo' | 'archivo';
+  /** Human label for the Chip: "Dibujo 2", "lote.kml · Polígono 1". */
+  readonly etiqueta: string;
+  /** Client-measured hectares (@turf/area) — shown on the Checkbox/Pill. */
+  readonly ha: number;
+  readonly geometry: Polygon | MultiPolygon;
+}
+
+/**
+ * The combined cap, in zonas-equivalents (S5): the backend counts
+ * `len(zona_ids) + len(geometrias)` against its 120 and so does the UI —
+ * the zona-only 60 above stays the LIST's own bound (it mirrors the ficha
+ * preview's tighter cap, a different contract).
+ */
+export const LIMITE_SELECCION_MIXTA = 120;
+
+/** The wire side of the geometry list: bare geometries, no UI metadata. */
+export function geometriasDeSeleccion(
+  geometrias: readonly SeleccionGeometria[]
+): (Polygon | MultiPolygon)[] {
+  return geometrias.map((geometria) => geometria.geometry);
+}
+
+/** True when NEITHER zonas nor geometrias are selected. */
+export function seleccionMixtaVacia(
+  zonas: SeleccionAreaState,
+  geometrias: readonly SeleccionGeometria[]
+): boolean {
+  return zonas.size === 0 && geometrias.length === 0;
+}
+
+/** Combined zonas-equivalents count (the LIMITE_SELECCION_MIXTA unit). */
+export function contarSeleccionMixta(
+  zonas: SeleccionAreaState,
+  geometrias: readonly SeleccionGeometria[]
+): number {
+  return zonas.size + geometrias.length;
+}
+
+/** True when adding one more element would exceed the combined cap. */
+export function cupoMixtoLleno(
+  zonas: SeleccionAreaState,
+  geometrias: readonly SeleccionGeometria[]
+): boolean {
+  return contarSeleccionMixta(zonas, geometrias) >= LIMITE_SELECCION_MIXTA;
+}
+
+/**
+ * Stable FNV-1a 32-bit hash of a geometry's JSON — deterministic across
+ * sessions and tab reloads, unlike identity or insertion order.
+ */
+function hashGeometria(geometry: Polygon | MultiPolygon): string {
+  const texto = JSON.stringify(geometry);
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < texto.length; i += 1) {
+    hash ^= texto.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
+}
+
+/**
+ * Query-key identity of the WHOLE mixed selection: the zonas clave plus the
+ * geometry hashes in selection order. Same selection → same clave → one
+ * preview cache entry, regardless of how it was assembled.
+ */
+export function claveSeleccionMixta(
+  zonas: SeleccionAreaState,
+  geometrias: readonly SeleccionGeometria[]
+): string {
+  const parteZonas = claveDeSeleccion(zonas);
+  if (geometrias.length === 0) return parteZonas;
+  const parteGeometrias = geometrias
+    .map((geometria) => hashGeometria(geometria.geometry))
+    .join(',');
+  return `${parteZonas}|${parteGeometrias}`;
 }

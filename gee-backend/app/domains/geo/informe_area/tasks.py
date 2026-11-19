@@ -224,9 +224,15 @@ def generar_informe_area(informe_id: str) -> dict:
         try:
             parametros = row.parametros or {}
             zona_ids = [uuid.UUID(z) for z in parametros.get("zona_ids", [])]
+            # PR 3 (S3): the mixed selection's caller-supplied geometries
+            # (drawn / KML-imported), stored in parametros at create time —
+            # the row is their only durable copy. A geometry-only selection
+            # has zona_ids == [] and that is VALID: the union carries the
+            # report, the desglose rows are simply empty.
+            geometrias = [g for g in (parametros.get("geometrias") or []) if isinstance(g, dict)]
             con_desglose = bool(parametros.get("desglose", True))
 
-            seleccion = service.resolver_seleccion(db, zona_ids)
+            seleccion = service.resolver_seleccion(db, zona_ids, geometrias)
             if not seleccion.geojson:
                 raise RuntimeError("la geometría de la selección no pudo resolverse")
 
@@ -407,6 +413,8 @@ def generar_informe_area(informe_id: str) -> dict:
             resultado = {
                 "area_ha": round(seleccion.area_ha, 4),
                 "zonas": len(zona_ids),
+                "geometrias": len(geometrias),
+                "fuera_zona_ha": round(seleccion.fuera_zona_ha, 4),
                 "cuencas": seleccion.cuencas,
                 "vertices_simplificados": seleccion.vertices_simplificados,
                 "desglose": desglose,

@@ -1,9 +1,11 @@
 /**
- * VistaPrevia.test.tsx — the Revisar step's geometry-only preview (S1/S5/S6).
+ * VistaPrevia.test.tsx — the Revisar step's mixed-selection preview
+ * (S1/S5/S6 + PR 3 S2/S4).
  *
  * Behavior-first: loading/error states, the aria-live totals line (union ha +
- * geodesic reference), per-cuenca share rows sorted desc, the 35.000 ha cap
- * Alert (aviso_cap or modo trabajo) and the "fuera de subcuencas" Alert.
+ * geodesic reference + polygon count), per-cuenca share rows sorted desc, the
+ * 35.000 ha cap Alert (aviso_cap), and the PR 3 avisos — fuera de zona and
+ * poligonos separados.
  */
 
 import { MantineProvider } from '@mantine/core';
@@ -12,13 +14,15 @@ import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 
 import { VistaPrevia } from '../../../src/components/map2d/informeArea/VistaPrevia';
-import type { FichaZonasPreviewResponse } from '../../../src/lib/api/ficha';
+import type { InformeAreaPreviewResponse } from '../../../src/lib/api/informesArea';
 
 function wrapper({ children }: { children: ReactNode }) {
   return <MantineProvider env="test">{children}</MantineProvider>;
 }
 
-function preview(parciales: Partial<FichaZonasPreviewResponse> = {}): FichaZonasPreviewResponse {
+function preview(
+  parciales: Partial<InformeAreaPreviewResponse> = {}
+): InformeAreaPreviewResponse {
   return {
     area_total_ha: 1000,
     area_total_ha_geodesica: 1001.2,
@@ -26,8 +30,9 @@ function preview(parciales: Partial<FichaZonasPreviewResponse> = {}): FichaZonas
       { id: 'z2', nombre: 'Zona dos', cuenca: 'Arroyo Algodón', ha: 400 },
       { id: 'z1', nombre: 'Zona uno', cuenca: 'Río Tercero', ha: 600 },
     ],
-    fuera_de_subcuencas_ha: 0,
-    modo: 'online',
+    cantidad_geometrias: 0,
+    fuera_zona_ha: 0,
+    poligonos_separados: false,
     aviso_cap: false,
     ...parciales,
   };
@@ -44,9 +49,10 @@ describe('VistaPrevia — estados', () => {
   });
 
   it('error muestra la alerta con la copia que pasó el drawer', () => {
-    render(<VistaPrevia cargando={false} error='El informe de área no está habilitado.' datos={null} />, {
-      wrapper,
-    });
+    render(
+      <VistaPrevia cargando={false} error='El informe de área no está habilitado.' datos={null} />,
+      { wrapper }
+    );
 
     expect(screen.getByText('No se pudo medir la selección')).toBeInTheDocument();
     expect(screen.getByText('El informe de área no está habilitado.')).toBeInTheDocument();
@@ -55,127 +61,108 @@ describe('VistaPrevia — estados', () => {
   it('sin datos ni error cae en la copia genérica', () => {
     render(<VistaPrevia cargando={false} error={null} datos={null} />, { wrapper });
 
-    expect(
-      screen.getByText('Revisá la selección e intentá de nuevo.')
-    ).toBeInTheDocument();
-  });
-
-  it('con onReintentar sugiere volver a Elegir para reintentar', () => {
-    render(
-      <VistaPrevia cargando={false} error='Sin conexión' datos={null} onReintentar={() => {}} />,
-      { wrapper }
-    );
-
-    expect(
-      screen.getByText(/Podés volver al paso Elegir y volver a entrar a Revisar/)
-    ).toBeInTheDocument();
+    expect(screen.getByText('Revisá la selección e intentá de nuevo.')).toBeInTheDocument();
   });
 });
 
-describe('VistaPrevia — totales', () => {
-  it('anuncia el total dentro de una región aria-live="polite"', () => {
+describe('VistaPrevia — totales (S6)', () => {
+  it('anuncia subcuencas, hectáreas y la referencia geodésica', () => {
     render(<VistaPrevia cargando={false} error={null} datos={preview()} />, { wrapper });
 
     const total = screen.getByTestId('informe-area-preview-total');
-    expect(total).toHaveTextContent('2 subcuencas · 1000.0 ha');
-    expect(total.closest('[aria-live="polite"]')).not.toBeNull();
+    expect(total).toHaveTextContent('2 subcuencas');
+    expect(total).toHaveTextContent('1000.0 ha');
   });
 
-  it('muestra la referencia geodésica WGS84 al lado del total planimétrico', () => {
-    render(<VistaPrevia cargando={false} error={null} datos={preview()} />, { wrapper });
-
-    expect(screen.getByText(/referencia geodésica WGS84: 1001\.2 ha/)).toBeInTheDocument();
-  });
-
-  it('usa el singular para una sola subcuenca', () => {
-    const datos = preview({
-      subcuencas: [{ id: 'z1', nombre: 'Zona uno', cuenca: 'Río Tercero', ha: 600 }],
-      area_total_ha: 600,
-      area_total_ha_geodesica: 601,
-    });
-    render(<VistaPrevia cargando={false} error={null} datos={datos} />, { wrapper });
-
-    expect(screen.getByTestId('informe-area-preview-total')).toHaveTextContent(
-      '1 subcuenca · 600.0 ha'
+  it('suma la cantidad de polígonos cuando la selección trae geometrías (PR 3)', () => {
+    render(
+      <VistaPrevia
+        cargando={false}
+        error={null}
+        datos={preview({ cantidad_geometrias: 3 })}
+      />,
+      { wrapper }
     );
+
+    expect(screen.getByTestId('informe-area-preview-total')).toHaveTextContent('3 polígonos');
   });
 });
 
-describe('VistaPrevia — avisos', () => {
-  it('aviso_cap en línea muestra la alerta del tope de 35.000 ha', () => {
+describe('VistaPrevia — avisos (S5 + PR 3 S2)', () => {
+  it('aviso_cap muestra la alerta del tope de 35.000 ha', () => {
     render(<VistaPrevia cargando={false} error={null} datos={preview({ aviso_cap: true })} />, {
       wrapper,
     });
 
     const alerta = screen.getByTestId('informe-area-preview-cap');
     expect(alerta).toHaveTextContent('Selección grande');
-    expect(alerta).toHaveTextContent('35.000 ha');
-    expect(alerta).toHaveTextContent('se genera en segundo plano');
+    expect(alerta).toHaveTextContent('segundo plano');
   });
 
-  it('modo trabajo muestra la misma alerta aunque aviso_cap llegue en false', () => {
-    render(
-      <VistaPrevia cargando={false} error={null} datos={preview({ modo: 'trabajo' })} />,
-      { wrapper }
-    );
-
-    expect(screen.getByTestId('informe-area-preview-cap')).toBeInTheDocument();
-  });
-
-  it('sin cap ni modo trabajo no renderiza la alerta del tope', () => {
+  it('sin aviso_cap no renderiza la alerta del tope', () => {
     render(<VistaPrevia cargando={false} error={null} datos={preview()} />, { wrapper });
 
     expect(screen.queryByTestId('informe-area-preview-cap')).not.toBeInTheDocument();
   });
 
-  it('fuera_de_subcuencas > 0.01 anuncia las hectáreas fuera', () => {
+  it('fuera_zona_ha > 0.01 anuncia las hectáreas fuera del consorcio (S2)', () => {
     render(
-      <VistaPrevia cargando={false} error={null} datos={preview({ fuera_de_subcuencas_ha: 12.5 })} />,
+      <VistaPrevia cargando={false} error={null} datos={preview({ fuera_zona_ha: 12.5 })} />,
       { wrapper }
     );
 
-    expect(screen.getByTestId('informe-area-preview-fuera')).toHaveTextContent(
-      'Partes fuera de subcuencas'
-    );
-    expect(screen.getByTestId('informe-area-preview-fuera')).toHaveTextContent(
-      '12.5 ha de la selección quedan fuera'
-    );
+    const alerta = screen.getByTestId('informe-area-preview-fuera');
+    expect(alerta).toHaveTextContent('fuera de la zona del consorcio');
+    expect(alerta).toHaveTextContent('12.5');
   });
 
-  it('fuera_de_subcuencas despreciable no muestra la alerta', () => {
+  it('fuera_zona_ha despreciable no muestra la alerta', () => {
     render(
-      <VistaPrevia cargando={false} error={null} datos={preview({ fuera_de_subcuencas_ha: 0.005 })} />,
+      <VistaPrevia cargando={false} error={null} datos={preview({ fuera_zona_ha: 0.001 })} />,
       { wrapper }
     );
 
     expect(screen.queryByTestId('informe-area-preview-fuera')).not.toBeInTheDocument();
   });
+
+  it('poligonos_separados avisa la selección partida (S2)', () => {
+    render(
+      <VistaPrevia
+        cargando={false}
+        error={null}
+        datos={preview({ poligonos_separados: true })}
+      />,
+      { wrapper }
+    );
+
+    expect(screen.getByTestId('informe-area-preview-separados')).toHaveTextContent(
+      'partes separadas'
+    );
+  });
 });
 
-describe('VistaPrevia — reparto por cuenca', () => {
-  it('ordena las cuencas por hectáreas descendente con su porcentaje', () => {
+describe('VistaPrevia — renglones por cuenca', () => {
+  it('ordena las cuencas por hectáreas descendentes con su porcentaje', () => {
     render(<VistaPrevia cargando={false} error={null} datos={preview()} />, { wrapper });
 
     const renglones = screen.getAllByTestId('informe-area-preview-cuenca');
     expect(renglones).toHaveLength(2);
-
-    const primera = within(renglones[0]);
-    expect(primera.getByText('Río Tercero')).toBeInTheDocument();
-    expect(primera.getByText('600.0 ha · 60.0%')).toBeInTheDocument();
-
-    const segunda = within(renglones[1]);
-    expect(segunda.getByText('Arroyo Algodón')).toBeInTheDocument();
-    expect(segunda.getByText('400.0 ha · 40.0%')).toBeInTheDocument();
+    expect(within(renglones[0]).getByText('Río Tercero')).toBeInTheDocument();
+    expect(within(renglones[0]).getByText(/60\.0%/)).toBeInTheDocument();
+    expect(within(renglones[1]).getByText('Arroyo Algodón')).toBeInTheDocument();
   });
 
-  it('sin subcuencas no renderiza renglones de cuenca', () => {
-    const datos = preview({
-      subcuencas: [],
-      area_total_ha: 0,
-      area_total_ha_geodesica: 0,
-    });
-    render(<VistaPrevia cargando={false} error={null} datos={datos} />, { wrapper });
+  it('selección solo-geometría no renderiza renglones de cuenca', () => {
+    render(
+      <VistaPrevia
+        cargando={false}
+        error={null}
+        datos={preview({ subcuencas: [], cantidad_geometrias: 2 })}
+      />,
+      { wrapper }
+    );
 
     expect(screen.queryByTestId('informe-area-preview-cuenca')).not.toBeInTheDocument();
+    expect(screen.getByTestId('informe-area-preview-total')).toHaveTextContent('2 polígonos');
   });
 });

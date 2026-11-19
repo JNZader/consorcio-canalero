@@ -88,7 +88,7 @@ const elevado = vi.hoisted(() => {
   return {
     FichaApiError,
     InformesAreaApiError,
-    fetchZonasPreview: vi.fn(),
+    medirInformeArea: vi.fn(),
     fetchInformeZonas: vi.fn(),
     crearInformeArea: vi.fn(),
     listarInformesArea: vi.fn(),
@@ -100,7 +100,6 @@ const elevado = vi.hoisted(() => {
 
 vi.mock('../../../src/lib/api/ficha', () => ({
   FichaApiError: elevado.FichaApiError,
-  fetchZonasPreview: elevado.fetchZonasPreview,
   fetchInformeZonas: elevado.fetchInformeZonas,
 }));
 
@@ -109,6 +108,7 @@ vi.mock('../../../src/lib/api/informesArea', async (importOriginal) => {
   return {
     ...actual,
     InformesAreaApiError: elevado.InformesAreaApiError,
+    medirInformeArea: elevado.medirInformeArea,
     crearInformeArea: elevado.crearInformeArea,
     listarInformesArea: elevado.listarInformesArea,
     descargarInformeAreaPdf: elevado.descargarInformeAreaPdf,
@@ -134,6 +134,13 @@ vi.mock('../../../src/hooks/useBasins', () => ({
 vi.mock('../../../src/hooks/useDrawerHistoryClose', () => ({
   useDrawerHistoryClose: vi.fn(),
 }));
+
+const lectorKml = vi.hoisted(() => ({ leerArchivoKml: vi.fn() }));
+
+vi.mock('../../../src/lib/geo/leerKml', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../src/lib/geo/leerKml')>();
+  return { ...actual, leerArchivoKml: lectorKml.leerArchivoKml };
+});
 
 vi.mock('../../../src/components/map2d/MapWorkspace', () => ({
   useMapWorkspaceDesktop: elevado.useMapWorkspaceDesktop,
@@ -161,8 +168,9 @@ const PREVIEW_ONLINE = {
   area_total_ha: 600,
   area_total_ha_geodesica: 601.2,
   subcuencas: [{ id: 'z-a1', nombre: 'Alta 1', cuenca: 'Río Tercero', ha: 600 }],
-  fuera_de_subcuencas_ha: 0,
-  modo: 'online',
+  cantidad_geometrias: 0,
+  fuera_zona_ha: 0,
+  poligonos_separados: false,
   aviso_cap: false,
 } as const;
 
@@ -176,6 +184,8 @@ function filaInforme(parciales: Partial<import('../../../src/lib/api/informesAre
     desde_cache: false,
     area_ha: null,
     cantidad_zonas: 0,
+    cantidad_geometrias: 0,
+    fuera_zona_ha: null,
     error: null,
     vence_at: '2027-02-17T12:00:00Z',
     created_at: '2026-11-18T12:00:00Z',
@@ -194,7 +204,8 @@ function pickEnMapa(id: string, nombre: string, additive = false) {
 const contador = () => screen.getByTestId('informe-area-contador').textContent;
 
 beforeEach(() => {
-  elevado.fetchZonasPreview.mockReset();
+  elevado.medirInformeArea.mockReset();
+  lectorKml.leerArchivoKml.mockReset();
   elevado.fetchInformeZonas.mockReset();
   elevado.useMapWorkspaceDesktop.mockReset().mockReturnValue(true);
   elevado.crearInformeArea.mockReset();
@@ -312,7 +323,7 @@ describe('InformeAreaDrawer — paso Elegir', () => {
 describe('InformeAreaDrawer — paso Revisar', () => {
   it('pide la preview de la selección y muestra el total de la unión', async () => {
     const user = userEvent.setup();
-    elevado.fetchZonasPreview.mockResolvedValue({ ...PREVIEW_ONLINE });
+    elevado.medirInformeArea.mockResolvedValue({ ...PREVIEW_ONLINE });
     renderDrawer();
 
     pickEnMapa('z-a1', 'Alta 1');
@@ -322,17 +333,16 @@ describe('InformeAreaDrawer — paso Revisar', () => {
     expect(screen.getByTestId('informe-area-preview-total')).toHaveTextContent(
       '1 subcuenca · 600.0 ha'
     );
-    const [pedido] = elevado.fetchZonasPreview.mock.calls[0];
-    expect(pedido).toEqual({ zona_ids: ['z-a1'] });
+    const [pedido] = elevado.medirInformeArea.mock.calls[0];
+    expect(pedido).toEqual({ zona_ids: ['z-a1'], geometrias: [] });
 
     expect(screen.getByRole('button', { name: 'Generar informe' })).toBeEnabled();
   });
 
-  it('modo trabajo ya no bloquea: el aviso anuncia el camino en segundo plano (PR 2)', async () => {
+  it('aviso_cap ya no bloquea: el aviso anuncia el camino en segundo plano (PR 2)', async () => {
     const user = userEvent.setup();
-    elevado.fetchZonasPreview.mockResolvedValue({
+    elevado.medirInformeArea.mockResolvedValue({
       ...PREVIEW_ONLINE,
-      modo: 'trabajo',
       aviso_cap: true,
     });
     renderDrawer();
@@ -347,10 +357,10 @@ describe('InformeAreaDrawer — paso Revisar', () => {
     expect(screen.getByRole('button', { name: 'Generar informe' })).toBeEnabled();
   });
 
-  it('un 503 funcionalidad_no_disponible muestra la copia de entorno deshabilitado', async () => {
+  it('un 503 del informe muestra la copia del servidor y deshabilita Generar', async () => {
     const user = userEvent.setup();
-    elevado.fetchZonasPreview.mockRejectedValue(
-      new elevado.FichaApiError(503, 'funcionalidad_no_disponible', 'detalle del servidor')
+    elevado.medirInformeArea.mockRejectedValue(
+      new elevado.InformesAreaApiError(503, 'error_desconocido', 'El servicio no está disponible.')
     );
     renderDrawer();
 
@@ -358,16 +368,15 @@ describe('InformeAreaDrawer — paso Revisar', () => {
     await user.click(screen.getByRole('button', { name: 'Revisar selección' }));
 
     expect(
-      await screen.findByText('El informe de área no está habilitado en este entorno.')
+      await screen.findByText('El servicio no está disponible.')
     ).toBeInTheDocument();
-    expect(screen.queryByText('detalle del servidor')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Generar informe' })).toBeDisabled();
   });
 });
 
 describe('InformeAreaDrawer — paso Generar (PR 2: lanzar el informe en segundo plano)', () => {
   async function llegarAGenerar(user: ReturnType<typeof userEvent.setup>) {
-    elevado.fetchZonasPreview.mockResolvedValue({ ...PREVIEW_ONLINE });
+    elevado.medirInformeArea.mockResolvedValue({ ...PREVIEW_ONLINE });
     renderDrawer();
     pickEnMapa('z-a1', 'Alta 1');
     await user.click(screen.getByRole('button', { name: 'Revisar selección' }));
@@ -403,6 +412,7 @@ describe('InformeAreaDrawer — paso Generar (PR 2: lanzar el informe en segundo
       expect(elevado.crearInformeArea).toHaveBeenCalledWith({
         nombre: 'Cuenca norte',
         zona_ids: ['z-a1'],
+        geometrias: [],
         desglose: true,
       })
     );
@@ -521,10 +531,9 @@ describe('InformeAreaDrawer — paso Generar (PR 2: lanzar el informe en segundo
 
   it('la preview sobre 150.000 ha deshabilita crear con el aviso del tope', async () => {
     const user = userEvent.setup();
-    elevado.fetchZonasPreview.mockResolvedValue({
+    elevado.medirInformeArea.mockResolvedValue({
       ...PREVIEW_ONLINE,
       area_total_ha: 150_001,
-      modo: 'trabajo',
       aviso_cap: true,
     });
     renderDrawer();
@@ -541,7 +550,7 @@ describe('InformeAreaDrawer — paso Generar (PR 2: lanzar el informe en segundo
 
   it('un informe que falla muestra el motivo guardado y Volver a intentar re-crea', async () => {
     const user = userEvent.setup();
-    elevado.fetchZonasPreview.mockResolvedValue({ ...PREVIEW_ONLINE });
+    elevado.medirInformeArea.mockResolvedValue({ ...PREVIEW_ONLINE });
     elevado.crearInformeArea.mockResolvedValue(filaInforme({ estado: 'pending' }));
     elevado.listarInformesArea.mockResolvedValue({
       items: [filaInforme({ estado: 'pending' })],
@@ -588,7 +597,7 @@ describe('InformeAreaDrawer — Mis informes', () => {
     const user = userEvent.setup();
     // Set BEFORE mounting: the drawer mounts the list query on open, and its
     // 30 s staleTime means the panel reads that first answer, not a refetch.
-    elevado.fetchZonasPreview.mockResolvedValue({ ...PREVIEW_ONLINE });
+    elevado.medirInformeArea.mockResolvedValue({ ...PREVIEW_ONLINE });
     elevado.listarInformesArea.mockResolvedValue({
       items: [filaInforme({ estado: 'completed', nombre: 'Viejo confiable' })],
       total: 1,
@@ -610,6 +619,103 @@ describe('InformeAreaDrawer — Mis informes', () => {
     // El flujo sobrevivió: sigue en Revisar con la selección intacta.
     expect(screen.getByTestId('informe-area-preview')).toBeInTheDocument();
     expect(contador()).toBe('1/60 subcuencas');
+  });
+});
+
+describe('InformeAreaDrawer — selección mixta (PR 3)', () => {
+  it('la pestaña Archivo suma polígonos a la selección y viajan a la preview', async () => {
+    const user = userEvent.setup();
+    elevado.medirInformeArea.mockResolvedValue({
+      ...PREVIEW_ONLINE,
+      cantidad_geometrias: 1,
+      poligonos_separados: true,
+      fuera_zona_ha: 42.5,
+    });
+    lectorKml.leerArchivoKml.mockResolvedValue([
+      {
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [-62, -32],
+              [-61.9, -32],
+              [-61.9, -31.9],
+              [-62, -31.9],
+              [-62, -32],
+            ],
+          ],
+        },
+        ha: 9500,
+        vertices: 5,
+        nombre: 'campo importado',
+      },
+    ]);
+    renderDrawer();
+
+    // Las cuatro pestañas del paso Elegir.
+    expect(screen.getByRole('tab', { name: 'Mapa' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Lista' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Dibujar' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Archivo' })).toBeInTheDocument();
+
+    // Un KML de un solo polígono: directo a la selección, visible en chips.
+    await user.click(screen.getByRole('tab', { name: 'Archivo' }));
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(input, new File(['<kml/>'], 'campo.kml'));
+    expect(await screen.findByTestId('informe-area-chip-geometria')).toHaveTextContent(
+      /campo\.kml · Polígono 1/
+    );
+    // Una selección SOLO de geometría habilita Revisar (S3: no hace falta zona).
+    expect(screen.getByRole('button', { name: 'Revisar selección' })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: 'Revisar selección' }));
+    expect(await screen.findByTestId('informe-area-preview')).toBeInTheDocument();
+    expect(screen.getByTestId('informe-area-preview-total')).toHaveTextContent('1 polígono');
+
+    const [pedido] = elevado.medirInformeArea.mock.calls[0];
+    expect(pedido.zona_ids).toEqual([]);
+    expect(pedido.geometrias).toHaveLength(1);
+    expect(pedido.geometrias[0].type).toBe('Polygon');
+
+    // Los avisos de S2 llegan de la respuesta del backend.
+    expect(screen.getByTestId('informe-area-preview-separados')).toBeInTheDocument();
+    expect(screen.getByTestId('informe-area-preview-fuera')).toHaveTextContent('42.5');
+  });
+
+  it('quitar todas limpia zonas y geometrías juntas', async () => {
+    const user = userEvent.setup();
+    lectorKml.leerArchivoKml.mockResolvedValue([
+      {
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [-62, -32],
+              [-61.9, -32],
+              [-61.9, -31.9],
+              [-62, -31.9],
+              [-62, -32],
+            ],
+          ],
+        },
+        ha: 100,
+        vertices: 5,
+        nombre: null,
+      },
+    ]);
+    renderDrawer();
+
+    pickEnMapa('z-a1', 'Alta 1');
+    await user.click(screen.getByRole('tab', { name: 'Archivo' }));
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(input, new File(['<kml/>'], 'uno.kml'));
+
+    expect(await screen.findByTestId('informe-area-chip-geometria')).toBeInTheDocument();
+    expect(screen.getByTestId('informe-area-chip')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Quitar todas' }));
+    expect(screen.getByTestId('informe-area-chips-vacio')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Revisar selección' })).toBeDisabled();
   });
 });
 
