@@ -4,10 +4,12 @@ import { describe, expect, it } from 'vitest';
 /**
  * UI-04 bleed-stop. MapLibre paint, admin maps, and Google brand SVGs stay hex.
  * App chrome (Header/Footer/Login/…) must not grow new #rrggbb literals.
+ * `campo` joined the exemption in PR 6: CampoPage's MapLibre paint blocks
+ * are a palette — the same class of file this rule exempts for map2d/admin.
  */
 const HEX = /#[0-9A-Fa-f]{3,8}\b/;
 const SKIP =
-  /\/(map2d|terrain|map|admin|report-form|verification)\/|RasterLegend\.tsx$/;
+  /\/(map2d|terrain|map|admin|report-form|verification|campo)\/|RasterLegend\.tsx$/;
 
 describe('UI-04 no new hex in app chrome', () => {
   it('forbids #rrggbb in components outside map/admin paint', () => {
