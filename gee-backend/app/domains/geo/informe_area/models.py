@@ -26,7 +26,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, LargeBinary, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -108,6 +108,18 @@ class InformeArea(UUIDMixin, TimestampMixin, Base):
         DateTime(timezone=True),
         nullable=False,
         comment="Retention deadline; the daily sweep deletes past it (S11)",
+    )
+    # T2 storage decision: DB bytea over a filesystem path under the geo
+    # volume. The PDF is ≤ 5 MB (S9), the retention sweep already deletes the
+    # row (a file would need a second, orphan-prone cleanup), and BOTH the
+    # worker (writer) and the API (reader) see the bytes with zero volume
+    # coupling. ``deferred`` keeps the bytea OUT of every listing/cache-probe
+    # SELECT — it loads only when the download path touches the attribute.
+    pdf_bytes: Mapped[bytes | None] = mapped_column(
+        LargeBinary,
+        deferred=True,
+        nullable=True,
+        comment="Rendered PDF (bytea, ≤5MB per S9); deferred so listings never load it",
     )
 
     def __repr__(self) -> str:

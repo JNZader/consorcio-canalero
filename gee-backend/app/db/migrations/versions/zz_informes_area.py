@@ -81,6 +81,10 @@ def upgrade() -> None:
         sa.Column("progreso", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("celery_task_id", sa.String(length=255), nullable=True),
         sa.Column("vence_at", sa.DateTime(timezone=True), nullable=False),
+        # T2: the rendered PDF lives IN the row (bytea, deferred at the ORM
+        # layer) — ≤5 MB per S9, deleted with the row by the retention sweep,
+        # visible to worker and API without volume coupling.
+        sa.Column("pdf_bytes", postgresql.BYTEA(), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),

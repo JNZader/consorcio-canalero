@@ -28,9 +28,12 @@ anybody else gets the same 404 as for a missing id.
 
 from __future__ import annotations
 
+import re
+import unicodedata
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, NamedTuple
+from urllib.parse import quote
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -70,12 +73,15 @@ class SeleccionResuelta(NamedTuple):
     vertices_simplificados: int
     nombres: list[str]
     cuencas: list[str]
+    # Union GeoJSON (4326, un-snapped) — T2's static maps clip against it.
+    geojson: str = ""
 
 
 # Per-zone rows of the selection — PR 1's own SQL, reused verbatim so the
 # informe and the ficha cannot disagree about what a zona is. The union SQL
 # below is NOT ``_ZONAS_UNION_SQL`` because it must also hash and measure in
-# the same pass; it is its exact union expression plus the normalization tail.
+# the same pass; it is its exact union expression plus the normalization tail
+# (and, since T2, it also emits the union GeoJSON the maps render).
 _SELECCION_SQL = text(
     """
     WITH seleccion AS (
@@ -89,14 +95,15 @@ _SELECCION_SQL = text(
                ST_CollectionExtract(ST_MakeValid(ST_Union(geom_32720)), 3) AS g32720
         FROM seleccion
     ), normalizada AS (
-        SELECT ST_SnapToGrid(g4326, 0.0000001) AS snap, g32720 FROM unida
+        SELECT ST_SnapToGrid(g4326, 0.0000001) AS snap, g4326, g32720 FROM unida
     )
     SELECT encode(
                sha256(ST_AsBinary(snap) || convert_to(:ids_ordenados, 'UTF8')),
                'hex'
            ) AS hash_seleccion,
            ST_Area(g32720) / 10000.0 AS area_ha,
-           ST_NPoints(ST_SimplifyPreserveTopology(g32720, :tolerancia)) AS vertices
+           ST_NPoints(ST_SimplifyPreserveTopology(g32720, :tolerancia)) AS vertices,
+           ST_AsGeoJSON(g4326) AS geojson
     FROM normalizada
     """
 )
@@ -186,7 +193,44 @@ def resolver_seleccion(db: Session, zona_ids: list[uuid.UUID]) -> SeleccionResue
         vertices_simplificados=int(fila.vertices or 0),
         nombres=[f.nombre for f in filas],
         cuencas=sorted({f.cuenca for f in filas}),
+        geojson=fila.geojson or "",
     )
+
+
+# Stored drainage-need high-risk hectares per zone — the same rows
+# ``_ALTO_CRITICO_SQL`` reads for flood_risk in the ficha (the DEM pipeline
+# writes both tipos through ``extract_composite_zonal_stats``), read here so
+# the PDF's section 3 can carry the same per-subcuenca structure as section 2
+# without touching the ficha's package.
+_DRENAJE_ALTO_SQL = text(
+    """
+    SELECT zona_id, area_high_risk_ha
+    FROM composite_zonal_stats
+    WHERE tipo = 'drainage_need' AND zona_id = ANY(CAST(:ids AS uuid[]))
+    """
+)
+
+
+def pct_drenaje_por_zona(
+    db: Session, zonas: list[tuple[uuid.UUID, float]]
+) -> dict[uuid.UUID, float]:
+    """Per-zone drainage Alto+Crítico share from stored composite rows.
+
+    Same clamp and same None-means-absent contract as the ficha's
+    ``pct_alto_critico``: stored ha over the zone's own ha, clamped to
+    [0, 100]; zones without a stored row are simply absent.
+    """
+    ids = [str(zona_id) for zona_id, _ha in zonas]
+    with ficha_service._traducir_fallas_db():  # noqa: SLF001 — PR 1 reuse (S12)
+        filas = db.execute(_DRENAJE_ALTO_SQL, {"ids": ids}).all()
+    ha_por_id = dict(zonas)
+    return {
+        fila.zona_id: round(
+            min(100.0, max(0.0, float(fila.area_high_risk_ha) / ha_por_id[fila.zona_id] * 100.0)), 2
+        )
+        for fila in filas
+        if fila.area_high_risk_ha is not None and ha_por_id.get(fila.zona_id, 0.0) > 0.0
+    }
 
 
 def calcular_version_clave(db: Session, hash_seleccion: str) -> str:
@@ -283,13 +327,26 @@ def listar_informes(db: Session, *, usuario: Any) -> tuple[list[InformeArea], in
     return repo.listar(db, usuario_id=usuario.id)
 
 
-def descargar_pdf(db: Session, informe_id: uuid.UUID, *, usuario: Any) -> None:
-    """Content path wired, bytes pending T2.
+def _nombre_archivo(nombre: str) -> tuple[str, str]:
+    """(ascii fallback, utf-8 filename) for the Content-Disposition header.
+
+    Spanish names carry accents the ASCII fallback flattens; the ``filename*``
+    half keeps the original spelling for clients that honor RFC 5987.
+    """
+    plano = unicodedata.normalize("NFKD", nombre).encode("ascii", "ignore").decode()
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", plano).strip("-").lower() or "informe-area"
+    ascii_name = f"informe-{slug[:60]}.pdf"
+    utf8_name = quote(f"{nombre.strip() or 'informe-area'}.pdf")
+    return ascii_name, utf8_name
+
+
+def descargar_pdf(db: Session, informe_id: uuid.UUID, *, usuario: Any) -> tuple[bytes, str]:
+    """Return ``(pdf_bytes, content_disposition_filename)`` for a completed row.
 
     Privacy first, then state: pending/running → 409 en progreso; failed →
-    409 with the stored readable reason; completed → the typed 503 that T2's
-    renderer replaces with the actual ``Response``. Returning ``None`` while
-    the route layer owns the error keeps the T2 seam one function deep.
+    409 with the stored readable reason; completed with bytes → the PDF;
+    completed WITHOUT bytes (a row force-completed before the renderer ran,
+    or a T1-era row) → the typed 503, never a fabricated empty document.
     """
     row = obtener_informe(db, informe_id, usuario=usuario)
     estado = row.estado.value if hasattr(row.estado, "value") else str(row.estado)
@@ -297,4 +354,9 @@ def descargar_pdf(db: Session, informe_id: uuid.UUID, *, usuario: Any) -> None:
         raise errors.pdf_en_progreso()
     if estado == "failed":
         raise errors.informe_fallido(row.error)
-    raise errors.pdf_no_disponible()
+    if not row.pdf_bytes:
+        raise errors.pdf_no_disponible()
+    ascii_name, utf8_name = _nombre_archivo(row.nombre)
+    return bytes(
+        row.pdf_bytes
+    ), f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{utf8_name}"

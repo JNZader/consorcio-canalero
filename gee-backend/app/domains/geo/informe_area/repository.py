@@ -120,6 +120,7 @@ class InformeAreaRepository:
         progreso: int | None = None,
         resultado: dict | None = None,
         error: str | None = None,
+        pdf_bytes: bytes | None = None,
     ) -> bool:
         """Compare-and-set a transition; False means the row moved on."""
         valores: dict[str, object] = {"updated_at": func.now()}
@@ -131,6 +132,8 @@ class InformeAreaRepository:
             valores["resultado"] = resultado
         if error is not None:
             valores["error"] = error
+        if pdf_bytes is not None:
+            valores["pdf_bytes"] = pdf_bytes
         result = db.execute(
             update(InformeArea)
             .where(InformeArea.id == informe_id, InformeArea.estado == expected_estado)

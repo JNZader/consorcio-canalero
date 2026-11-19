@@ -17,6 +17,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import current_active_user
@@ -128,19 +129,23 @@ def obtener_informe(
     summary="Descargar el PDF del informe (creador o admin)",
     responses={
         409: {"description": "En progreso o fallido"},
-        503: {"description": "PDF aún no disponible (T2)"},
+        503: {"description": "Completado sin PDF renderizado"},
     },
 )
 def descargar_pdf(
     informe_id: uuid.UUID,
     db: Session = Depends(get_db),
     usuario: Any = Depends(current_active_user),
-) -> None:
-    """Content path wired; the bytes arrive with T2's builder (S6/S7).
+) -> Response:
+    """``application/pdf`` with the stored bytes, filename from the row's nombre.
 
-    Until then every reachable state answers a TYPED error: 409 en progreso,
-    409 fallido with the stored reason, 503 pdf_aun_no_disponible once the
-    row is completed.
+    A completed row whose PDF never rendered (force-completed or pre-T2)
+    still answers the typed 503 — the desglose lives in ``resultado``, but a
+    download must never hand back a fabricated empty document.
     """
-    service.descargar_pdf(db, informe_id, usuario=usuario)
-    return None  # pragma: no cover — descargar_pdf always raises until T2
+    contenido, disposition = service.descargar_pdf(db, informe_id, usuario=usuario)
+    return Response(
+        content=contenido,
+        media_type="application/pdf",
+        headers={"Content-Disposition": disposition},
+    )
