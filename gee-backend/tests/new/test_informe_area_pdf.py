@@ -146,7 +146,14 @@ def _seed_zona(db: Session, nombre: str, cuenca: str, x0: float, y0: float) -> u
 
 
 def _seed_suelos(db: Session) -> None:
-    """Soils table (if the session's world lacks it) + one 'II' band covering the world."""
+    """Soils table (if the session's world lacks it) + one 'II' band covering the world.
+
+    PR 4 (S3): section 4 reads the IDECOR 1:50.000 cartography, so the
+    world ALSO seeds ``idecor_suelos_50mil`` with a class-'II' unit over
+    the same extent — the KPI ``pct_suelos_i_iii == 100`` then holds
+    through the NEW dataset (the migration's own DDL, applied committed so
+    the Celery task's separate session can see it; dropped in ``_limpiar``).
+    """
     db.execute(
         text(
             "CREATE TABLE IF NOT EXISTS suelos_catastro ("
@@ -168,6 +175,21 @@ def _seed_suelos(db: Session) -> None:
             "VALUES (:sim, 'II', ST_GeomFromText(:wkt, 4326))"
         ),
         {"sim": "T2-II", "wkt": wkt},
+    )
+    from app.db.migrations.versions import zz_idecor_suelos_50mil as migracion_suelos
+
+    for statement in migracion_suelos.UPGRADE_STATEMENTS:
+        db.execute(text(statement))
+    db.execute(
+        text(
+            "INSERT INTO idecor_suelos_50mil "
+            "(id, simbolo, cu, clase, ip, au_1m, au_2m, serie_1, porc_1, nombre, "
+            " tipo_unida, pdf_simbolo, pdf_serie_1, geometria) "
+            "VALUES (9001, 'T2U', 'IIc', 'II', 90, 158, 292, 'SERIE T2', 100, "
+            "        'Consociación SERIE T2', 'Consociación', 'T2U', 'SERIE_T2', "
+            "        ST_GeomFromText(:wkt, 4326))"
+        ),
+        {"wkt": wkt},
     )
 
 
@@ -279,6 +301,9 @@ def _limpiar(factory, *, usuario_id, zona_ids, informe_ids, rasters) -> None:
                 {"ids": [str(z) for z in zona_ids]},
             )
         db.execute(text("DELETE FROM suelos_catastro WHERE simbolo = 'T2-II'"))
+        # PR 4 world: the seeded IDECOR carta row and its table leave with
+        # the test (the table is created by _seed_suelos on demand).
+        db.execute(text("DROP TABLE IF EXISTS idecor_suelos_50mil"))
         db.execute(delete(User).where(User.id == usuario_id))
         db.commit()
 

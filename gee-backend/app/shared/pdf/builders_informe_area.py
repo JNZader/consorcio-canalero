@@ -13,7 +13,7 @@ Section order is FIXED (S6) and the tests assert it in extracted text:
 2. Riesgo hídrico (frase, mapa + leyenda + escala + norte, tabla clase·ha·%,
    nota de método, desglose por subcuenca)
 3. Necesidad de drenaje (igual estructura que 2)
-4. Suelos (catastro ``suelos_cu`` vigente; PR 4 lo reemplaza)
+4. Suelos (carta IDECOR 1:50.000 — PR 4: unidades, series, IP, agua útil)
 5. Lluvia (normales mensuales en barras — ReportLab primitives, no chart lib)
 6. Consideraciones (cobertura por capa, límites, descargo)
 7. Fuentes (capa · fecha · resolución · origen)
@@ -79,8 +79,14 @@ _FRASE_DRENAJE = (
     "obras de drenaje en cada superficie."
 )
 _FRASE_SUELOS = (
-    "Capacidad de uso de los suelos según el catastro INTA vigente "
-    "(suelos_cu), agrupada por clase romana (I a VIII)."
+    "Carta de suelos 1:50.000 (IDECOR 2025): unidades cartográficas con sus "
+    "series constituyentes, clase de capacidad de uso, índice de "
+    "productividad (IP) y agua útil a 1 y 2 m de profundidad."
+)
+_FRASE_SUELOS_SIN_DATOS = (
+    "La carta de suelos 1:50.000 de IDECOR no está cargada en este "
+    "despliegue: ejecutá el ETL app.domains.geo.etl.idecor_suelos_50mil "
+    "para habilitar la sección."
 )
 _FRASE_LLUVIA = "Normales mensuales de precipitación (mm) promediadas sobre la selección."
 
@@ -523,33 +529,131 @@ def _seccion_suelos(
     estilos: dict[str, Any],
 ) -> list[Flowable]:
     flowables: list[Flowable] = [Paragraph("4. Suelos", estilos["subtitle"])]
+
+    dataset = datos.get("suelos")
+    if not dataset or not dataset.get("unidades"):
+        # S7: a deployment without the IDECOR ETL still gets its informe —
+        # the section says so and moves on.
+        flowables.append(Paragraph(_FRASE_SUELOS_SIN_DATOS, estilos["body"]))
+        flowables.append(Spacer(1, 3 * mm))
+        desglose = datos.get("desglose")
+        if desglose:
+            flowables.append(
+                _tabla_desglose(
+                    desglose,
+                    [
+                        ("Subcuenca", "nombre", str),
+                        ("Cuenca", "cuenca", str),
+                        ("Superficie (ha)", "ha", fmt_ha),
+                    ],
+                    branding,
+                )
+            )
+        flowables.append(PageBreak())
+        return flowables
+
     flowables.append(Paragraph(_FRASE_SUELOS, estilos["body"]))
     flowables.append(Spacer(1, 2 * mm))
 
-    dataset = datos.get("suelos")
-    clases = (dataset or {}).get("clases") or []
-    # The dataset's own order (I..VIII, then sin clasificar/sin dato) is the
-    # canonical one — no invented zero rows for absent classes.
-    orden_suelos = [{"label": c["clase"]} for c in clases]
-    flowables.extend(
-        _tabla_clases(
-            dataset,
-            orden_suelos,
+    # Main table: one row per cartographic unit (S3: símbolo · series ·
+    # clase · IP · agua útil · ha · %). Wide units list → the 12 largest
+    # plus a count note, so the section stays inside its page budget.
+    unidades = dataset["unidades"]
+    mostradas = unidades[:12]
+    filas_unidades: list[list[str]] = []
+    for unidad in mostradas:
+        filas_unidades.append(
+            [
+                _esc(str(unidad.get("simbolo") or "—")),
+                _esc(str(unidad.get("series") or "—")),
+                _esc(str(unidad.get("clase") or "—")),
+                str(unidad.get("ip") if unidad.get("ip") is not None else "—"),
+                str(unidad.get("au_1m") if unidad.get("au_1m") is not None else "—"),
+                str(unidad.get("au_2m") if unidad.get("au_2m") is not None else "—"),
+                fmt_ha(unidad.get("ha")),
+                fmt_pct(unidad.get("pct")),
+            ]
+        )
+    cubierto = sum(float(u.get("ha") or 0.0) for u in unidades)
+    area_ha = float(dataset.get("area_ha") or 0.0)
+    filas_unidades.append(
+        [
+            "Total con carta 1:50.000",
+            "",
+            "",
+            "",
+            "",
+            "",
+            fmt_ha(cubierto),
+            fmt_pct(cubierto / area_ha * 100.0 if area_ha else 0.0),
+        ]
+    )
+    sin_cobertura = max(0.0, area_ha - cubierto)
+    if sin_cobertura > 0.05:
+        filas_unidades.append(
+            [
+                "Sin carta 1:50.000",
+                "",
+                "",
+                "",
+                "",
+                "",
+                fmt_ha(sin_cobertura),
+                fmt_pct(sin_cobertura / area_ha * 100.0 if area_ha else 0.0),
+            ]
+        )
+    filas_unidades.append(
+        ["Total de la selección", "", "", "", "", "", fmt_ha(area_ha), fmt_pct(100.0)]
+    )
+
+    flowables.append(
+        build_data_table(
+            [
+                "Unidad",
+                "Series (%)",
+                "Clase",
+                "IP",
+                "AU 1 m (mm)",
+                "AU 2 m (mm)",
+                "Superficie (ha)",
+                "% de la selección",
+            ],
+            filas_unidades,
             branding,
-            titulo_total="Total con catastro",
         )
     )
+    if len(unidades) > len(mostradas):
+        flowables.append(Spacer(1, 1 * mm))
+        flowables.append(
+            Paragraph(
+                f"Se listan las {len(mostradas)} mayores de {len(unidades)} "
+                "unidades cartográficas.",
+                estilos["small"],
+            )
+        )
     flowables.append(Spacer(1, 2 * mm))
+
+    ip = dataset.get("ip_ponderado")
+    partes_resumen: list[str] = []
+    if ip is not None:
+        clases_i_iii = _pct_clases(dataset, ("I", "II", "III"))
+        partes_resumen.append(f"IP ponderado por superficie: {fmt_num(ip, 1)}.")
+        if clases_i_iii is not None:
+            partes_resumen.append(f"Clases I–III: {fmt_pct(clases_i_iii)} de la selección.")
+    flowables.append(Paragraph(" ".join(partes_resumen), estilos["body"]))
     flowables.append(
         Paragraph(
-            "Agrupado por prefijo romano (IVws → IV). «Sin dato» es la "
-            "superficie que el catastro no cubre; «sin clasificar» es "
-            "superficie catastrada sin clase de capacidad.",
+            "AU = agua útil estimada por el INTA a la profundidad indicada. "
+            "Fuente: IDECOR · carta de suelos 1:50.000 (2025), WFS "
+            "idecor:carta_suelo_50mil_2025 · licencia CC BY 4.0.",
             estilos["small"],
         )
     )
     flowables.append(Spacer(1, 3 * mm))
 
+    # Per-subcuenca breakdown: dominant class + weighted IP + coverage of
+    # the carta inside each zone (S10).
+    por_zona = dataset.get("por_zona") or {}
     desglose = datos.get("desglose")
     if desglose:
         nota = _nota_resumen_zonas(desglose, estilos)
@@ -558,20 +662,38 @@ def _seccion_suelos(
             flowables.append(Spacer(1, 1 * mm))
         flowables.append(Paragraph("Desglose por subcuenca", estilos["body"]))
         flowables.append(Spacer(1, 1 * mm))
-        columnas = [
-            ("Subcuenca", "nombre", str),
-            ("Cuenca", "cuenca", str),
-            ("Superficie (ha)", "ha", fmt_ha),
-            ("Clase dominante", "clase_suelo_dominante", str),
+        top = _top_zonas(desglose)
+
+        def _fila_suelos_zona(fila: dict[str, Any]) -> list[str]:
+            extra = por_zona.get(str(fila.get("zona_id")) or "") or {}
+            return [
+                str(fila.get("nombre") or "—"),
+                str(fila.get("cuenca") or "—"),
+                fmt_ha(fila.get("ha")),
+                str(extra.get("clase_dominante") or "—"),
+                fmt_num(extra["ip_ponderado"], 1) if extra.get("ip_ponderado") is not None else "—",
+                fmt_pct(extra["cobertura_pct"]) if extra.get("cobertura_pct") is not None else "—",
+            ]
+
+        encabezados = [
+            "Subcuenca",
+            "Cuenca",
+            "Superficie (ha)",
+            "Clase dominante",
+            "IP ponderado",
+            "% con carta",
         ]
-        flowables.append(_tabla_desglose(_top_zonas(desglose), columnas, branding))
+        filas_zonas = [_fila_suelos_zona(f) for f in top]
+        flowables.append(build_data_table(encabezados, filas_zonas, branding))
         if len(desglose) > ZONAS_INLINE_MAX:
             flowables.append(Spacer(1, 2 * mm))
             flowables.append(
                 Paragraph(f"Detalle completo ({len(desglose)} subcuencas):", estilos["body"])
             )
             flowables.append(Spacer(1, 1 * mm))
-            flowables.append(_tabla_desglose(desglose, columnas, branding))
+            flowables.append(
+                build_data_table(encabezados, [_fila_suelos_zona(f) for f in desglose], branding)
+            )
     flowables.append(PageBreak())
     return flowables
 
@@ -675,7 +797,9 @@ def _seccion_consideraciones(
         "Fuentes)."
     )
     limites.append(
-        "Suelos: catastro vectorial vigente sin fecha de versión registrada en el sistema."
+        "Suelos: carta IDECOR 1:50.000 bajada por ETL; la fecha de bajada "
+        "queda en Fuentes. Una sección sin datos significa que el ETL no "
+        "corrió en este despliegue."
     )
     limites.append(
         "Mapas: render simbólico sobre fondo blanco, sin imagen satelital en esta versión."

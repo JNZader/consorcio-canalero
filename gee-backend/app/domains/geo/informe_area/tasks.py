@@ -137,14 +137,27 @@ def _fuentes_informe(db, precip_fuente: str, precip_periodo: str) -> list[dict]:
             }
         )
 
-    fuentes.append(
-        {
-            "capa": "Suelos (capacidad de uso)",
-            "fecha": "—",
-            "resolucion": "vectorial",
-            "origen": "catastro INTA (suelos_catastro)",
-        }
-    )
+    # Suelos: section 4 reads the IDECOR 1:50.000 cartography (PR 4, S3).
+    # The row exists only when the ETL actually ran — the same "absent from
+    # this deployment is absent from the table" rule as every other row.
+    if (
+        db.execute(text("SELECT to_regclass('idecor_suelos_50mil')")).scalar_one_or_none()
+        is not None
+    ):
+        fecha_suelos = db.execute(
+            text("SELECT max(fecha_de_bajada)::date::text FROM idecor_suelos_50mil")
+        ).scalar_one_or_none()
+        if fecha_suelos:
+            fuentes.append(
+                {
+                    "capa": "Suelos 1:50.000 (IDECOR)",
+                    "fecha": str(fecha_suelos),
+                    "resolucion": "vectorial · escala 1:50.000",
+                    "origen": (
+                        "IDECOR · carta_suelo_50mil_2025 (WFS) · INTA series · licencia CC BY 4.0"
+                    ),
+                }
+            )
     return fuentes
 
 
@@ -157,7 +170,6 @@ def generar_informe_area(informe_id: str) -> dict:
     import json
     from datetime import datetime, timezone
 
-    from app.domains.geo import ficha_errors
     from app.domains.geo import ficha_service
     from app.domains.geo.informe_area import service
     from app.domains.geo.informe_area.repository import InformeAreaRepository
@@ -252,15 +264,17 @@ def generar_informe_area(informe_id: str) -> dict:
             drenaje = ficha_service._raster_dataset(  # noqa: SLF001
                 db, "drainage_need", union_geom, area_m2
             ).model_dump()
-            try:
-                suelos = ficha_service._suelos_dataset(  # noqa: SLF001
-                    db, seleccion.geojson, seleccion.area_ha
-                ).model_dump()
-            except ficha_errors.FichaError:
-                # Empty/uninstalled soils product: the ficha 503s (it is a
-                # hard dependency THERE); the informe reports sin cobertura
-                # and keeps serving the rest (S6 §6 cobertura por capa).
-                suelos = None
+            # Section 4's data (S3): IDECOR 1:50.000 cartography. The
+            # dataset itself degrades to None on a missing/failed table
+            # (S7 — «sin datos», the report never fails); the ficha's
+            # suelos_cu no longer feeds the informe, and the desglose's
+            # clase_suelo_dominante (suelos_catastro) stays as PR 1 built
+            # it — PR 3 owns that surface.
+            suelos = service.suelos_idecor_dataset(db, seleccion.geojson, seleccion.area_ha)
+            if suelos is not None:
+                suelos["por_zona"] = service.suelos_idecor_por_zona(
+                    db, [(z.zona_id, z.ha) for z in zonas]
+                )
             lluvia = ficha_service._precipitacion_dataset(  # noqa: SLF001
                 db, union_geom, area_m2
             ).model_dump()
@@ -345,6 +359,16 @@ def generar_informe_area(informe_id: str) -> dict:
                 "desglose": desglose,
                 "umbral_alto_critico": umbral,
                 "kpis": calcular_kpis(datos),
+                "suelos_idecor": (
+                    {
+                        "cobertura": suelos.get("cobertura"),
+                        "cobertura_ratio": suelos.get("cobertura_ratio"),
+                        "unidades": len(suelos.get("unidades") or []),
+                        "ip_ponderado": suelos.get("ip_ponderado"),
+                    }
+                    if suelos
+                    else None
+                ),
                 # GEE-dependent pieces (Sentinel-2 miniature) land later;
                 # each degradation is APPENDED here, never fails the report.
                 "degradado": degradado,

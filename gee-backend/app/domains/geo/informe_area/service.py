@@ -32,10 +32,11 @@ import re
 import unicodedata
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, Sequence
 from urllib.parse import quote
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -114,9 +115,9 @@ _SELECCION_SQL = text(
 # the CHIRPS normals the ETL also stamps ``metadata_extra.version``, which
 # wins when present because it is what ``get_latest_precip_normals_by_month``
 # orders by. ``composite_zonal_stats.fecha_calculo`` versions the stored
-# desglose figures. ``suelos_catastro`` has NO version signal anywhere in the
-# schema (no updated_at, no layer row) — that gap is reported, not papered
-# over with a lie like max(id).
+# desglose figures. PR 4 adds the IDECOR soils download stamp: a re-run of
+# the ETL changes the clave, which is the layer-refresh invalidation for a
+# table that lives outside ``geo_layers``.
 _VERSIONES_SQL = text(
     """
     SELECT
@@ -130,6 +131,15 @@ _VERSIONES_SQL = text(
              WHERE tipo = 'flood_risk') AS composite
     """
 )
+
+#: The IDECOR soils stamp is a SEPARATE statement guarded in Python: a
+#: ``CASE WHEN to_regclass(...)`` inside one SQL string does NOT protect
+#: anything, because PostgreSQL resolves every table reference at plan
+#: time regardless of which branch runs. The table is created by this PR's
+#: migration, and the box applies migrations manually — the create path
+#: must keep working on a database that does not have it yet.
+_VERSIONES_SUELOS_SQL = text("SELECT max(fecha_de_bajada)::text FROM idecor_suelos_50mil")
+_TABLA_SUELOS_IDECOR = "idecor_suelos_50mil"
 
 
 def resolver_seleccion(db: Session, zona_ids: list[uuid.UUID]) -> SeleccionResuelta:
@@ -211,6 +221,205 @@ _DRENAJE_ALTO_SQL = text(
 )
 
 
+# ── Suelos IDECOR 1:50.000 (PR 4, S3) ────────────────────────────────────────
+
+#: Clipped hectares per carta unit + the unit's own attributes. The
+#: intersection is measured in EPSG:32720 (the informe/ficha area standard),
+#: polygons repaired and collection-extracted so a sliver can never
+#: contribute a line/point artifact to the area sum.
+_SUELOS_IDECOR_SQL = text(
+    """
+    WITH sel AS (SELECT ST_GeomFromGeoJSON(:geojson) AS g4326),
+    fila AS (
+        SELECT s.id, s.simbolo, s.clase, s.cu, s.ip, s.au_1m, s.au_2m,
+               s.serie_1, s.porc_1, s.serie_2, s.porc_2,
+               s.serie_3, s.porc_3, s.serie_4, s.porc_4,
+               s.nombre, s.tipo_unida, s.pdf_simbolo,
+               ST_Area(ST_CollectionExtract(
+                   ST_Intersection(ST_Transform(ST_MakeValid(s.geometria), 32720),
+                                   ST_Transform(ST_MakeValid(sel.g4326), 32720)), 3)
+               ) / 10000.0 AS ha
+        FROM idecor_suelos_50mil s, sel
+        WHERE ST_Intersects(s.geometria, sel.g4326)
+    )
+    SELECT * FROM fila WHERE ha > 0.00001
+    """
+)
+
+#: Same clip, one geometry parameter per zone — the per-subcuenca breakdown
+#: (S10) resolved in ONE round trip instead of one query per zone.
+_SUELOS_IDECOR_ZONAS_SQL = text(
+    """
+    WITH z AS (
+        SELECT id AS zona_id, geometria FROM zonas_operativas
+        WHERE id = ANY(CAST(:ids AS uuid[]))
+    ),
+    fila AS (
+        SELECT z.zona_id, s.clase, s.ip,
+               ST_Area(ST_CollectionExtract(
+                   ST_Intersection(ST_Transform(ST_MakeValid(s.geometria), 32720),
+                                   ST_Transform(ST_MakeValid(z.geometria), 32720)), 3)
+               ) / 10000.0 AS ha
+        FROM idecor_suelos_50mil s, z
+        WHERE ST_Intersects(s.geometria, z.geometria)
+    )
+    SELECT * FROM fila WHERE ha > 0.00001
+    """
+)
+
+
+def _series_unidad(fila: Any) -> str | None:
+    """«SERIE 90 %; OTRA 10 %» — the populated (serie, porc) pairs of a unit."""
+    partes = []
+    for n in (1, 2, 3, 4):
+        serie = getattr(fila, f"serie_{n}")
+        if not serie:
+            continue
+        porc = getattr(fila, f"porc_{n}")
+        partes.append(f"{serie} {porc} %" if porc is not None else serie)
+    return "; ".join(partes) if partes else None
+
+
+def _agregar_por_unidad(
+    filas: Sequence[Any], area_ha: float
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], float | None]:
+    """Rows → (unidades sorted by ha, roman-class aggregate, area-weighted IP).
+
+    Multi-part units arrive as several rows sharing one ``simbolo``; they
+    pool BEFORE any percentage exists, exactly like the ficha pools
+    capability prefixes. The IP mean is area-weighted over rows that carry
+    an IP; rows without one join no denominator (the honest mean of what
+    was measured, never a zero-pulled average).
+    """
+    por_simbolo: dict[str, dict[str, Any]] = {}
+    por_clase: dict[str, float] = {}
+    ip_ha = 0.0
+    ip_suma = 0.0
+    for fila in filas:
+        ha = float(fila.ha)
+        unidad = por_simbolo.setdefault(
+            str(fila.simbolo),
+            {
+                "simbolo": str(fila.simbolo),
+                "clase": fila.clase,
+                "cu": fila.cu,
+                "ip": fila.ip,
+                "au_1m": fila.au_1m,
+                "au_2m": fila.au_2m,
+                "nombre": fila.nombre,
+                "tipo_unida": fila.tipo_unida,
+                "pdf_simbolo": fila.pdf_simbolo,
+                "series": _series_unidad(fila),
+                "ha": 0.0,
+            },
+        )
+        unidad["ha"] = round(unidad["ha"] + ha, 4)
+        clase = (fila.clase or "").strip() or "sin clasificar"
+        por_clase[clase] = por_clase.get(clase, 0.0) + ha
+        if fila.ip is not None:
+            ip_ha += ha
+            ip_suma += ha * float(fila.ip)
+
+    unidades = sorted(por_simbolo.values(), key=lambda u: -u["ha"])
+    for unidad in unidades:
+        unidad["pct"] = round(unidad["ha"] / area_ha * 100.0, 2) if area_ha > 0 else 0.0
+
+    clases = [
+        {
+            "clase": clase,
+            "ha": round(ha, 4),
+            "pct": round(ha / area_ha * 100.0, 2) if area_ha > 0 else 0.0,
+        }
+        for clase, ha in sorted(por_clase.items())
+    ]
+    ip_ponderado = round(ip_suma / ip_ha, 1) if ip_ha > 0 else None
+    return unidades, clases, ip_ponderado
+
+
+def suelos_idecor_dataset(db: Session, geojson_4326: str, area_ha: float) -> dict[str, Any] | None:
+    """Section 4's dataset: per-unit hectares + class aggregate + weighted IP.
+
+    ``None`` (→ the section renders «sin datos», S7) when the table is
+    missing or empty — a deployment without the IDECOR ETL still gets its
+    informe. Any other DB failure also degrades to ``None``: the soils
+    cartography is a REPORTED layer, never a hard dependency of the job.
+    The read runs inside a SAVEPOINT — PostgreSQL poisons the whole
+    transaction on the first error, so swallowing the exception alone
+    would leave an aborted session for every later query of the task.
+    """
+    try:
+        with db.begin_nested():
+            filas = db.execute(_SUELOS_IDECOR_SQL, {"geojson": geojson_4326}).all()
+    except SQLAlchemyError:
+        logger.warning("informe_area.suelos_idecor_no_disponible", exc_info=True)
+        return None
+    if not filas:
+        return None
+
+    unidades, clases, ip_ponderado = _agregar_por_unidad(filas, area_ha)
+    cubierto_ha = sum(u["ha"] for u in unidades)
+    residual_ha = max(0.0, area_ha - cubierto_ha)
+    ratio = min(1.0, cubierto_ha / area_ha) if area_ha > 0 else 0.0
+    if cubierto_ha <= 0:
+        cobertura = "sin_cobertura"
+    elif ratio >= 0.99:
+        cobertura = "total"
+    else:
+        cobertura = "parcial"
+    return {
+        "cobertura": cobertura,
+        "cobertura_ratio": round(ratio, 4),
+        "clases": clases,
+        "unidades": unidades,
+        "ip_ponderado": ip_ponderado,
+        "sin_cobertura_ha": round(residual_ha, 4),
+    }
+
+
+def suelos_idecor_por_zona(
+    db: Session, zonas: list[tuple[uuid.UUID, float]]
+) -> dict[str, dict[str, Any]]:
+    """Per-zone coverage / dominant class / weighted IP (S10 breakdown).
+
+    Zones whose intersecting area is zero stay ABSENT — the PDF shows «—»,
+    never a fabricated 0 % coverage.
+    """
+    ids = [str(zona_id) for zona_id, _ha in zonas]
+    try:
+        with db.begin_nested():
+            filas = db.execute(_SUELOS_IDECOR_ZONAS_SQL, {"ids": ids}).all()
+    except SQLAlchemyError:
+        logger.warning("informe_area.suelos_idecor_zonas_no_disponible", exc_info=True)
+        return {}
+
+    acumulado: dict[str, dict[str, Any]] = {}
+    for fila in filas:
+        clave = str(fila.zona_id)
+        zona = acumulado.setdefault(clave, {"clases": {}, "ip_ha": 0.0, "ip_suma": 0.0})
+        clase = (fila.clase or "").strip() or "sin clasificar"
+        zona["clases"][clase] = zona["clases"].get(clase, 0.0) + float(fila.ha)
+        if fila.ip is not None:
+            zona["ip_ha"] += float(fila.ha)
+            zona["ip_suma"] += float(fila.ha) * float(fila.ip)
+
+    ha_por_id = {str(zona_id): ha for zona_id, ha in zonas}
+    resultado: dict[str, dict[str, Any]] = {}
+    for clave, zona in acumulado.items():
+        ha_zona = ha_por_id.get(clave, 0.0)
+        cubierto = sum(zona["clases"].values())
+        dominante = max(zona["clases"], key=lambda c: (zona["clases"][c], c))
+        resultado[clave] = {
+            "clase_dominante": dominante,
+            "ip_ponderado": (
+                round(zona["ip_suma"] / zona["ip_ha"], 1) if zona["ip_ha"] > 0 else None
+            ),
+            "cobertura_pct": round(min(100.0, cubierto / ha_zona * 100.0), 2)
+            if ha_zona > 0
+            else None,
+        }
+    return resultado
+
+
 def pct_drenaje_por_zona(
     db: Session, zonas: list[tuple[uuid.UUID, float]]
 ) -> dict[uuid.UUID, float]:
@@ -237,6 +446,14 @@ def calcular_version_clave(db: Session, hash_seleccion: str) -> str:
     """hash_seleccion + per-layer versions + version_plantilla (S4)."""
     with ficha_service._traducir_fallas_db():  # noqa: SLF001 — PR 1 reuse (S12)
         fila = db.execute(_VERSIONES_SQL).one()
+        suelos_idecor: str | None = None
+        if (
+            db.execute(
+                text("SELECT to_regclass(:tabla)"), {"tabla": _TABLA_SUELOS_IDECOR}
+            ).scalar_one_or_none()
+            is not None
+        ):
+            suelos_idecor = db.execute(_VERSIONES_SUELOS_SQL).scalar()
     partes = [
         hash_seleccion,
         f"plantilla={settings.informe_area_version_plantilla}",
@@ -244,6 +461,7 @@ def calcular_version_clave(db: Session, hash_seleccion: str) -> str:
         f"drainage_need={fila.drainage_need or '-'}",
         f"precip_normal={fila.precip_normal or '-'}",
         f"composite={fila.composite or '-'}",
+        f"suelos_idecor={suelos_idecor or '-'}",
     ]
     return "|".join(partes)
 
