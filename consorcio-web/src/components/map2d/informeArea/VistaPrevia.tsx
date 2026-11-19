@@ -89,11 +89,11 @@ export function VistaPrevia({ cargando, error, datos, onReintentar }: VistaPrevi
         <Alert
           color="yellow"
           variant="light"
-          title="Selección muy grande"
+          title="Selección grande"
           data-testid="informe-area-preview-cap"
         >
-          La selección supera el tope en línea de 35.000 ha. Hoy podés ver esta vista previa; el
-          informe completo llega con el PR 2.
+          La selección supera el tope en línea de 35.000 ha. El informe se genera en segundo plano
+          (hasta 150.000 ha) y lo descargás desde «Mis informes» cuando esté listo.
         </Alert>
       ) : null}
 
