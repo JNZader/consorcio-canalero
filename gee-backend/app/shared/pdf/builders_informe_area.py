@@ -188,6 +188,9 @@ def _tabla_clases(
         )
         return flowables
 
+    # clases non-empty ⇒ dataset is a real dict here; narrow once for mypy.
+    assert dataset is not None
+
     por_clase = {c["clase"]: c for c in clases}
     filas: list[list[str]] = []
     cubierto = 0.0
@@ -199,7 +202,9 @@ def _tabla_clases(
         cubierto += float(fila.get("ha") or 0.0)
         filas.append([str(cfg["label"]), fmt_ha(fila.get("ha")), fmt_pct(fila.get("pct"))])
 
-    area_ha = float(dataset.get("area_ha") or 0.0)  # injected by the task
+    area_ha = (
+        float(dataset["area_ha"]) if dataset.get("area_ha") is not None else 0.0
+    )  # injected by the task
     sin_cobertura = max(0.0, area_ha - cubierto)
     filas.append(
         [titulo_total, fmt_ha(cubierto), fmt_pct(cubierto / area_ha * 100.0 if area_ha else 0.0)]
@@ -494,9 +499,9 @@ def _seccion_clase(
     flowables.append(Spacer(1, 3 * mm))
 
     if desglose and desglose_columnas:
-        nota = _nota_resumen_zonas(desglose, estilos)
-        if nota is not None:
-            flowables.append(nota)
+        nota_zonas = _nota_resumen_zonas(desglose, estilos)
+        if nota_zonas is not None:
+            flowables.append(nota_zonas)
             flowables.append(Spacer(1, 1 * mm))
         flowables.append(Paragraph("Desglose por subcuenca", estilos["body"]))
         flowables.append(Spacer(1, 1 * mm))

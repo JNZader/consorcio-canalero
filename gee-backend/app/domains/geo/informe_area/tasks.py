@@ -304,9 +304,9 @@ def generar_informe_area(informe_id: str) -> dict:
                 calcular_kpis,
             )
 
-            for dataset in (riesgo, drenaje, suelos, lluvia):
-                if dataset is not None:
-                    dataset["area_ha"] = seleccion.area_ha
+            for ds in (riesgo, drenaje, suelos, lluvia):
+                if ds is not None:
+                    ds["area_ha"] = seleccion.area_ha
 
             datos = {
                 "nombre": row.nombre,

@@ -229,11 +229,11 @@ def _leyenda_clases(
 
     ancho_total = img.width
     filas: list[list[int]] = [[]]
-    used = 0
+    used = 0.0
     for i, ancho_item in enumerate(anchos):
         if used and used + gap + ancho_item > ancho_total - 24:
             filas.append([])
-            used = 0
+            used = 0.0
         filas[-1].append(i)
         used += ancho_item + (gap if len(filas[-1]) > 1 else 0)
 
@@ -244,7 +244,7 @@ def _leyenda_clases(
     draw.line([(0, img.height), (ancho_total, img.height)], fill=_GRIS_SUAVE, width=1)
     y = img.height + 8
     for fila in filas:
-        x = 16
+        x = 16.0
         for i in fila:
             etiqueta, detalle = items[i]
             draw.rectangle(
