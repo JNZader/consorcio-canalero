@@ -292,9 +292,12 @@ def tablas_canales(test_engine):
         if "canal_consorcio" in creadas:
             conn.exec_driver_sql(m20.CREATE_CANAL_CONSORCIO_GEOM_INDEX)
     yield
-    with test_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-        for tabla in reversed(creadas):
-            conn.exec_driver_sql(f'DROP TABLE IF EXISTS "{tabla}" CASCADE')
+    # Deliberately NO teardown DROP. The test's db session (a fixture that
+    # finalizes AFTER this one) holds ACCESS SHARE locks on rows it read —
+    # an autocommit DROP TABLE from another connection blocks on ACCESS
+    # EXCLUSIVE forever (the 30m hang at 69% in CI, 2026-11-19). The tables
+    # stay EMPTY; test_load_canales_consorcio's fixture now guards its own
+    # CREATE with to_regclass so a pre-existing empty table is fine.
 
 
 @pytest.fixture
