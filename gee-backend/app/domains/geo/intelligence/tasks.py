@@ -63,6 +63,7 @@ def task_calculate_hci_all_zones(
     deps = _get_deps()
     db = _get_db()
     try:
+        historial, historial_fijo = float(historial_inundacion), True
         zonas, total = deps["intel_repo"].get_zonas(db, page=1, limit=1000)
         if not zonas:
             return {"status": "skipped", "reason": "No zones available"}
@@ -90,8 +91,18 @@ def task_calculate_hci_all_zones(
                 results.append(result)
             except Exception:
                 logger.error("hci.zone_failed", zona_id=str(zona.id), exc_info=True)
-        logger.info("hci.batch_done", total=len(results))
-        return {"status": "completed", "zonas_calculadas": len(results)}
+        logger.info(
+            "hci.batch_done",
+            total=len(results),
+            historial_inundacion=round(historial, 4),
+            historial_fijo=historial_fijo,
+        )
+        return {
+            "status": "completed",
+            "zonas_calculadas": len(results),
+            "historial_inundacion": round(historial, 4),
+            "historial_fijo": historial_fijo,
+        }
     except Exception:
         logger.error("hci.batch_failed", exc_info=True)
         raise
@@ -180,6 +191,82 @@ def _zonal_mean_normalized(
     except Exception:
         logger.warning("hci.raster_extraction_failed", raster=raster_path, exc_info=True)
         return default
+
+
+# ---------------------------------------------------------------------------
+# One-shot composite recompute (#738 / PR 5 S9)
+# ---------------------------------------------------------------------------
+
+
+def _latest_registered_raster(db, tipo: str) -> str | None:
+    """Newest registered composite raster path of ``tipo`` (ficha pattern)."""
+    from app.domains.geo.models import GeoLayer
+
+    layer = (
+        db.query(GeoLayer)
+        .filter(GeoLayer.tipo == tipo)
+        .order_by(GeoLayer.created_at.desc(), GeoLayer.id.desc())
+        .first()
+    )
+    if layer is None or not layer.archivo_path:
+        return None
+    return layer.archivo_path
+
+
+@celery_app.task(queue="geo", name="geo.intelligence.recompute_composite_stats")
+def task_recompute_composite_stats() -> dict:
+    """Recompute ``composite_zonal_stats`` under the legend (#738, S9).
+
+    The threshold unification makes every stored row stale: pre-#738 rows
+    counted ``score > 70`` while the legend (and the informe's tables) count
+    from the start of Alto. This one-shot re-runs the DEM pipeline's own
+    store step (``store_composite_zonal_stats_impl`` — delete-then-insert over
+    every zone, both tipos) against the NEWEST REGISTERED rasters, so the
+    stored ``ha_alto``/``ha_critico``/``area_high_risk_ha`` figures match the
+    legend the user reads. Run once after the migration; re-running is
+    idempotent (same rasters → same rows).
+    """
+    from datetime import date as date_mod
+
+    from app.domains.geo import composites
+    from app.domains.geo.intelligence.models import CompositeZonalStats
+    from app.domains.geo.tasks_composite_support import store_composite_zonal_stats_impl
+
+    deps = _get_deps()
+    db = _get_db()
+    try:
+        flood_path = _latest_registered_raster(db, "flood_risk")
+        drainage_path = _latest_registered_raster(db, "drainage_need")
+    finally:
+        db.close()
+    if not flood_path or not drainage_path:
+        razon = (
+            "no hay raster flood_risk registrado"
+            if not flood_path
+            else "no hay raster drainage_need registrado"
+        )
+        logger.warning("composite_recompute.sin_raster", motivo=razon)
+        return {"status": "skipped", "reason": razon}
+
+    count = store_composite_zonal_stats_impl(
+        area_id="recompute-738",
+        flood_output=flood_path,
+        drainage_output=drainage_path,
+        composites=composites,
+        intel_repo=deps["intel_repo"],
+        flood_weights=dict(composites.DEFAULT_FLOOD_WEIGHTS),
+        drainage_weights=dict(composites.DEFAULT_DRAINAGE_WEIGHTS),
+        get_db=_get_db,
+        composite_zonal_stats_model=CompositeZonalStats,
+    )
+    logger.info("composite_recompute.hecho", filas=count)
+    return {
+        "status": "completed",
+        "filas": count,
+        "flood_risk": flood_path,
+        "drainage_need": drainage_path,
+        "fecha": date_mod.today().isoformat(),
+    }
 
 
 # ---------------------------------------------------------------------------

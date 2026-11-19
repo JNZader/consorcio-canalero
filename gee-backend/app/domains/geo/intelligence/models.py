@@ -425,7 +425,21 @@ class CompositeZonalStats(UUIDMixin, TimestampMixin, Base):
         Float,
         nullable=False,
         default=0.0,
-        comment="Area in hectares where score > 70",
+        comment=(
+            "Compatibility name: hectares in the legend's high-risk classes "
+            "(= ha_alto + ha_critico) since #738. Legacy rows written before the "
+            "recompute keep the pre-#738 score>70 figure until the task re-runs."
+        ),
+    )
+    ha_alto: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+        comment="Hectares in the legend's Alto class [55, 75) for flood_risk",
+    )
+    ha_critico: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+        comment="Hectares in the legend's Crítico class [75, 100] for flood_risk",
     )
     weights_used: Mapped[Optional[dict]] = mapped_column(
         JSON,
