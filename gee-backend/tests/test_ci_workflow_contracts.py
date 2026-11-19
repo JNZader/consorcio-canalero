@@ -72,9 +72,7 @@ def _line_range(target: str) -> tuple[str, int, int]:
     return match.group("path"), int(match.group("start")), int(match.group("end"))
 
 
-NGINX_RUNTIME_IMAGE = (
-    "nginx:1.30.7-alpine3.24@sha256:4d1d4ce08432dc7dfe4af762cb224ce6b5273ae878f41e020ea2425d02ea91a4"
-)
+NGINX_RUNTIME_IMAGE = "nginx:1.30.7-alpine3.24@sha256:4d1d4ce08432dc7dfe4af762cb224ce6b5273ae878f41e020ea2425d02ea91a4"
 PYTHON_RUNTIME_IMAGE = "python:3.15.2-slim-trixie@sha256:e97b88e416c3c01eb427b21fd8cd3ebf006e6ee38afcfcc3cae1c54ee2ab0a75"
 SETUPTOOLS_RUNTIME_PIN = '"setuptools==80.10.2"'
 WHEEL_RUNTIME_PIN = '"wheel==0.46.3"'
