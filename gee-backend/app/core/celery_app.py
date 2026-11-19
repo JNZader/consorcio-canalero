@@ -159,11 +159,13 @@ celery_app.conf.update(
             "schedule": crontab(minute="45", hour="4"),
             "options": {"queue": "celery"},
         },
-        # Daily sweep of expired area reports (S11: vence 90 días).
+        # Daily sweep of expired area reports (S11: vence 90 días). Queue
+        # "celery", not "geo": the geo queue is reserved for tasks that need
+        # the geo worker (test_celery_beat enforces it); this sweep is DB-only.
         "limpiar-informes-area-vencidos": {
             "task": "geo.informe_area.limpiar_vencidos",
             "schedule": crontab(minute="5", hour="4"),
-            "options": {"queue": "geo"},
+            "options": {"queue": "celery"},
         },
         "publish-celery-outbox": {
             "task": "outbox.publish_pending",

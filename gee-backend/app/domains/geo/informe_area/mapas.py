@@ -76,7 +76,7 @@ def _fuente(tamano: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
         return ImageFont.load_default()
 
 
-def _ancho_texto(draw: ImageDraw.ImageDraw, texto: str, font: Any) -> int:
+def _ancho_texto(draw: ImageDraw.ImageDraw, texto: str, font: Any) -> float:
     caja = draw.textbbox((0, 0), texto, font=font)
     return caja[2] - caja[0]
 

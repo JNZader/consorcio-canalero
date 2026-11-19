@@ -118,7 +118,10 @@ def pdf_no_disponible() -> InformeAreaError:
 _ESTADOS_DELIBERADOS = frozenset({"pdf_aun_no_disponible"})
 
 
-def _manejador(_: Any, exc: InformeAreaError) -> JSONResponse:
+def _manejador(_: Any, exc: Exception) -> JSONResponse:
+    # Starlette types handlers as (Request, Exception); mypy rejects a
+    # narrower exc type at add_exception_handler. Narrow inside instead.
+    assert isinstance(exc, InformeAreaError)
     if exc.status_code >= 500 and exc.codigo not in _ESTADOS_DELIBERADOS:
         logger.error("Informe de área falló", codigo=exc.codigo, exc_info=True)
     elif exc.status_code >= 500:

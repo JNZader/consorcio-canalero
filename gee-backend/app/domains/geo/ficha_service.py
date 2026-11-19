@@ -308,10 +308,12 @@ def _referencia_zonas(zona_ids: list[uuid.UUID]) -> str:
 def referencia_auditable(payload: FichaRequest) -> str:
     """``resource`` value for the audit row — never a person, never a geometry."""
     tipo = payload.tipo
+    # mypy no hace tagged-union narrowing sobre atributos Literal (pyright sí):
+    # el string-check de arriba ya garantiza el miembro del union en runtime.
     if tipo == "parcela":
-        return f"tipo=parcela,ref={payload.nomenclatura}"
+        return f"tipo=parcela,ref={payload.nomenclatura}"  # type: ignore[union-attr]
     if tipo == "parcelas":
-        return _referencia_parcelas(payload.nomenclaturas)
+        return _referencia_parcelas(payload.nomenclaturas)  # type: ignore[union-attr]
     if tipo == "poligono":
         return f"tipo=poligono,ref=geom:{_huella_geometria(payload.geometry)}"
     if tipo == "canal_buffer":
