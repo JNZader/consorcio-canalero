@@ -10,6 +10,12 @@
  * own audit) and pre-existing violations elsewhere are not this change's to
  * fix.
  *
+ * PR 2 added two surfaces to the drawer, both audited here: the Generar step
+ * re-wired into the background-job launcher (nombre + SegmentedControl +
+ * inline aria-live progress) and the «Mis informes» table (Badge estados,
+ * Progress aria-hidden, download buttons). Elegir (Lista) carries over from
+ * PR 1 unchanged.
+ *
  * WebKit is skipped on hosts without its system libraries: the launch fails
  * before any test logic runs (pre-existing limitation of this box — see the
  * baseline note in the task report), and a skip says that honestly.
@@ -73,41 +79,86 @@ const dataset = {
   cobertura_ratio: 1,
 };
 
-const FICHA_ZONAS = {
-  tipo: 'zonas',
-  area_ha: 1801.0,
-  suelos: dataset,
-  flood_risk: dataset,
-  drainage_need: dataset,
-  precipitacion_mensual: {
-    cobertura: 'total',
-    low_confidence: false,
-    pixel_count: 800,
-    cobertura_ratio: 1,
-    unidad: 'mm',
-    serie: Array.from({ length: 12 }, (_, mes) => ({ mes: mes + 1, mm: 50 + mes * 3 })),
-    anual_mm: 850,
-  },
-  desglose_por_subcuenca: [
-    {
-      zona_id: 'z-algodon',
-      nombre: 'Arroyo Algodón',
-      ha: 900.5,
-      pct_alto_critico: 23.4,
-      clase_suelo_dominante: 'III',
-      lluvia_anual_mm: 842,
-    },
-    {
-      zona_id: 'z-litin',
-      nombre: 'Arroyo Litín',
-      ha: 900.5,
-      pct_alto_critico: null,
-      clase_suelo_dominante: null,
-      lluvia_anual_mm: null,
-    },
-  ],
-  umbral_alto_critico: 'legacy70',
+const PRECIPITACION = {
+  cobertura: 'total',
+  low_confidence: false,
+  pixel_count: 800,
+  cobertura_ratio: 1,
+  unidad: 'mm',
+  serie: Array.from({ length: 12 }, (_, mes) => ({ mes: mes + 1, mm: 50 + mes * 3 })),
+  anual_mm: 850,
 };
+
+// ── informes-area fixtures (PR 2; local wire mirror, same as the e2e spec) ────
+
+interface InformeFila {
+  readonly id: string;
+  readonly nombre: string;
+  readonly estado: 'pending' | 'running' | 'completed' | 'failed';
+  readonly progreso: number;
+  readonly desde_cache: boolean;
+  readonly area_ha: number | null;
+  readonly cantidad_zonas: number;
+  readonly error: string | null;
+  readonly vence_at: string;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
+function filaInforme(parciales: Partial<InformeFila> = {}): InformeFila {
+  return {
+    id: 'inf-a11y-1',
+    nombre: 'Auditoría informe',
+    estado: 'pending',
+    progreso: 40,
+    desde_cache: false,
+    area_ha: null,
+    cantidad_zonas: 0,
+    error: null,
+    vence_at: '2027-02-16T12:00:00Z',
+    created_at: '2026-11-18T12:00:00Z',
+    updated_at: '2026-11-18T12:00:00Z',
+    ...parciales,
+  };
+}
+
+/**
+ * Mock `/api/v2/geo/informes-area` (registered AFTER the catch-all, so it
+ * wins): the create answers 202 pending; from then on the list answers the
+ * launched row plus one completed and one failed row, so the Generar audit
+ * sees the inline progress and the «Mis informes» audit sees every estado
+ * rendering (Badge, dash ha, stored error, enabled/disabled download).
+ */
+async function instalarInformesArea(page: Page): Promise<void> {
+  const filas = [
+    filaInforme(),
+    filaInforme({
+      id: 'inf-a11y-viejo',
+      nombre: 'Informe viejo',
+      estado: 'completed',
+      progreso: 100,
+      area_ha: 1801.0,
+      cantidad_zonas: 2,
+    }),
+    filaInforme({
+      id: 'inf-a11y-fallo',
+      nombre: 'El que falló',
+      estado: 'failed',
+      error: 'GEE no disponible',
+    }),
+  ];
+  let creo = false;
+
+  await page.route(/\/api\/v2\/geo\/informes-area\/?$/, async (route) => {
+    if (route.request().method() === 'POST') {
+      creo = true;
+      await route.fulfill({ status: 202, json: filaInforme() });
+      return;
+    }
+    const items = creo ? filas : [];
+    await route.fulfill({ status: 200, json: { items, total: items.length } });
+  });
+}
 
 async function sembrarSesion(page: Page): Promise<void> {
   await page.addInitScript(
@@ -161,6 +212,8 @@ async function instalarMocks(page: Page): Promise<void> {
       },
     })
   );
+  // Only the PANEL's `poligono` ficha is consumed after PR 2 — Generar no
+  // longer fetches a `zonas` ficha (the datasets live in the PDF).
   await page.route(/\/api\/v2\/geo\/analisis-zona(?:\?|$)/, (route) =>
     route.fulfill({
       json: {
@@ -169,10 +222,11 @@ async function instalarMocks(page: Page): Promise<void> {
         suelos: dataset,
         flood_risk: dataset,
         drainage_need: dataset,
-        precipitacion_mensual: FICHA_ZONAS.precipitacion_mensual,
+        precipitacion_mensual: PRECIPITACION,
       },
     })
   );
+  await instalarInformesArea(page);
 }
 
 /** MapboxDraw mode read off the container class (refreshed by a mousemove). */
@@ -193,16 +247,35 @@ async function modoDraw(page: Page): Promise<string> {
   });
 }
 
+/** Assert the drawer content has NO critical/serious WCAG violations. */
+async function auditarDrawer(page: Page, paso: string): Promise<void> {
+  const resultado = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
+    .include('.mantine-Drawer-content')
+    .analyze();
+  const criticos = resultado.violations.filter(
+    (v) => v.impact === 'critical' || v.impact === 'serious'
+  );
+  expect(
+    criticos,
+    `${paso}: ${JSON.stringify(
+      criticos.map((v) => ({ id: v.id, nodes: v.nodes.length, help: v.help })),
+      null,
+      1
+    )}`
+  ).toHaveLength(0);
+}
+
 test.describe('Informe de área — auditoría del drawer', () => {
   test.skip(
     ({ browserName }) => browserName === 'webkit',
     'WebKit sin libs de sistema en este host'
   );
 
-  test('Elegir (Lista) y Generar (desglose) sin violaciones críticas o serias', async ({
+  test('Elegir (Lista), Generar (progreso) y Mis informes sin violaciones críticas o serias', async ({
     page,
   }) => {
-    test.setTimeout(90000);
+    test.setTimeout(120000);
     await sembrarSesion(page);
     await instalarMocks(page);
 
@@ -264,41 +337,36 @@ test.describe('Informe de área — auditoría del drawer', () => {
     const contenido = page.locator('.mantine-Drawer-content');
     await expect(contenido).toBeVisible();
 
-    const elegir = await new AxeBuilder({ page })
-      .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
-      .include('.mantine-Drawer-content')
-      .analyze();
-    const criticosElegir = elegir.violations.filter(
-      (v) => v.impact === 'critical' || v.impact === 'serious'
-    );
-    expect(
-      criticosElegir,
-      JSON.stringify(
-        criticosElegir.map((v) => ({ id: v.id, nodes: v.nodes.length, help: v.help })),
-        null,
-        1
-      )
-    ).toHaveLength(0);
+    await auditarDrawer(page, 'Elegir (Lista)');
 
-    // Generar: totals, coverage rows, dataset tabs and the desglose table.
+    // Generar (PR 2): the launcher. Launch a real (mocked) informe so the
+    // audit covers the inline aria-live progress, not just the empty form —
+    // that region is the step's a11y contract (S6: estado visible anunciado).
     await page.getByTestId('informe-area-siguiente').click();
+    await expect(page.getByTestId('informe-area-preview-total')).toBeVisible();
     await page.getByTestId('informe-area-generar').click();
-    await page.getByTestId('informe-area-desglose').waitFor({ state: 'visible', timeout: 10000 });
-
-    const generar = await new AxeBuilder({ page })
-      .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
-      .include('.mantine-Drawer-content')
-      .analyze();
-    const criticosGenerar = generar.violations.filter(
-      (v) => v.impact === 'critical' || v.impact === 'serious'
+    await page.getByTestId('informe-area-nombre').fill('Auditoría informe');
+    await page.getByTestId('informe-area-crear').click();
+    await expect(page.getByTestId('informe-area-progreso-inline')).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(page.getByTestId('informe-area-progreso-inline')).toContainText(
+      'Generando «Auditoría informe»'
     );
-    expect(
-      criticosGenerar,
-      JSON.stringify(
-        criticosGenerar.map((v) => ({ id: v.id, nodes: v.nodes.length, help: v.help })),
-        null,
-        1
-      )
-    ).toHaveLength(0);
+
+    await auditarDrawer(page, 'Generar (progreso inline)');
+
+    // «Mis informes» from the title button: the table renders every estado
+    // (completed + failed + the running one), the state the buttons carry.
+    await page.getByTestId('informe-area-abrir-mis-informes').click();
+    const panel = page.getByTestId('informe-area-panel-mis-informes');
+    await expect(panel).toBeVisible();
+    await expect(page.getByTestId('informe-area-mis-informes-fila')).toHaveCount(3);
+
+    await auditarDrawer(page, 'Mis informes (tabla)');
+
+    // The swap back restores the flow where it was left.
+    await page.getByTestId('informe-area-mis-informes-volver').click();
+    await expect(page.getByTestId('informe-area-stepper')).toBeVisible();
   });
 });

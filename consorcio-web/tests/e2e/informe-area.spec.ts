@@ -1,11 +1,16 @@
 /**
- * informe-area.spec.ts — informe de área PR 1, T4 (S6).
+ * informe-area.spec.ts — informe de área PR 1 (T4) + PR 2 (T4, flujo en
+ * segundo plano).
  *
- * The plan's acceptance scenario: pick two subcuencas from the ficha panel's
- * "Informe de área" flow and read the per-subcuenca breakdown, plus the
- * `modo=trabajo` notice, keyboard operability and the 60-subcuenca preview
- * render budget (p95 < 1,5 s measured against a mocked network — see the
- * p95 test for what that number does and does not measure).
+ * PR 1's acceptance scenario (pick subcuencas from the ficha panel's
+ * "Informe de área" flow) still owns Elegir/Revisar; PR 2 re-wired Generar
+ * into the LAUNCHER of a background job, so this suite now drives the whole
+ * wire contract: create POST 202 → polled list transitions
+ * (pending→running→completed) → "Informe listo" → Descargar PDF with the
+ * server's filename, plus the desde_cache instant path, the failed row with
+ * "Volver a intentar", the 150.000 ha cap copy and the «Mis informes»
+ * table. Keyboard operability of Elegir and the 60-subcuenca preview render
+ * budget (p95 < 1,5 s, mocked network) carry over from PR 1 unchanged.
  *
  * ⚠️ WHY A NEW FILE (not extending ficha-territorial.spec.ts): that spec is a
  * LIVE-PROBE suite — it POSTs the real API first and skips when the ficha flag
@@ -43,7 +48,7 @@ interface ZonaFixture {
   readonly ha: number;
 }
 
-/** Two small zonas for the happy path, two big ones for `modo=trabajo`, 60 for the p95. */
+/** Two small zonas for the happy path, two big ones for the cap copy, 60 for the p95. */
 const ZONAS: readonly ZonaFixture[] = [
   { id: 'z-tercero-algodon', nombre: 'Arroyo Algodón', cuenca: CUENCA_TERCERO, ha: 900.5 },
   { id: 'z-tercero-litin', nombre: 'Arroyo Litín', cuenca: CUENCA_TERCERO, ha: 900.5 },
@@ -130,16 +135,168 @@ const FICHA_POLIGONO = {
   precipitacion_mensual: PRECIPITACION,
 };
 
-/** Stored figures per zona (`null` where nothing is stored — the dash row). */
-const FIGURAS_POR_ID: Record<
-  string,
-  { pct: number | null; suelo: string | null; lluvia: number | null }
-> = {
-  'z-tercero-algodon': { pct: 23.4, suelo: 'III', lluvia: 842 },
-  'z-tercero-litin': { pct: null, suelo: null, lluvia: null },
-};
+// ── informes-area fixtures (PR 2) ─────────────────────────────────────────────
 
-const FIGURA_DEFAULT = { pct: 12.5, suelo: 'II', lluvia: 900 };
+/**
+ * Local mirror of `InformeAreaItem` (`lib/api/informesArea.ts` ←
+ * `schemas.InformeAreaResponse`). The spec does NOT import types from src on
+ * purpose: the fixture is the wire contract, same discipline as ZonaFixture —
+ * if the shape drifts, this mirror must be edited by hand and the diff says so.
+ */
+interface InformeFila {
+  readonly id: string;
+  readonly nombre: string;
+  readonly estado: 'pending' | 'running' | 'completed' | 'failed';
+  readonly progreso: number;
+  readonly desde_cache: boolean;
+  readonly area_ha: number | null;
+  readonly cantidad_zonas: number;
+  readonly error: string | null;
+  readonly vence_at: string;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
+function filaInforme(parciales: Partial<InformeFila> = {}): InformeFila {
+  return {
+    id: 'inf-e2e-1',
+    nombre: 'Informe Tercero norte',
+    estado: 'pending',
+    progreso: 0,
+    desde_cache: false,
+    area_ha: null,
+    cantidad_zonas: 0,
+    error: null,
+    vence_at: '2027-02-16T12:00:00Z',
+    created_at: '2026-11-18T12:00:00Z',
+    updated_at: '2026-11-18T12:00:00Z',
+    ...parciales,
+  };
+}
+
+/** Bytes with a real PDF signature: the download must cross the wire (parity). */
+const PDF_E2E = Buffer.from(
+  '%PDF-1.4\n%âãÏÓ\n(informe de área e2e)\ntrailer\n<<>>\n%%EOF\n',
+  'binary'
+);
+
+/**
+ * The disposition `service._nombre_archivo` builds: ASCII slug half + RFC 5987
+ * half with the original Spanish spelling. The client prefers the UTF-8 half,
+ * so the browser's suggested filename must be the es-AR name, not the slug.
+ */
+const DISPOSITION_E2E =
+  'attachment; filename="informe-tercero-norte.pdf"; filename*=UTF-8\'\'Informe%20Tercero%20norte.pdf';
+
+interface CreacionCapturada {
+  readonly nombre: string;
+  readonly zona_ids: readonly string[];
+  readonly desglose: boolean;
+  readonly authorization: string | null;
+}
+
+interface PeticionesInformes {
+  readonly creaciones: readonly CreacionCapturada[];
+  readonly pdfs: ReadonlyArray<{ authorization: string | null; url: string }>;
+  listados: number;
+}
+
+interface OpcionesInformes {
+  /** Rows the GET list answers BEFORE any create (drawer mount). Default: none. */
+  readonly alMontar?: readonly InformeFila[];
+  /** POST create responses by call number (1-based; the LAST one repeats). */
+  readonly crear: ReadonlyArray<InformeFila>;
+  /**
+   * Rows the GET list answers after create #n, `ms` ms after the LAST create.
+   *
+   * Sequenced by TIME, not by call ordinal: the dev server runs React
+   * StrictMode (double mount → an extra list GET), and an ordinal sequence
+   * would silently shift one phase. A wrong phase here shows up as a wrong
+   * estado on screen, which the UI assertions catch.
+   */
+  readonly listar: (n: number, ms: number) => readonly InformeFila[];
+}
+
+/**
+ * Mock the whole `/api/v2/geo/informes-area` surface: the collection route
+ * (POST create 202 / GET list) and the PDF download. Must be registered AFTER
+ * `instalarMocks` (later registration wins over its catch-all) and BEFORE
+ * navigation — pass it to `abrirDrawer` as `extra`, which guarantees both.
+ */
+async function instalarInformesArea(
+  page: Page,
+  opciones: OpcionesInformes
+): Promise<PeticionesInformes> {
+  // The INTERFACE is readonly (callers must not mutate); the handler fills
+  // mutable arrays behind it. `nCreaciones` counts create CALLS (the ordinal
+  // the mock sequences on); `registro.creaciones` is the captured bodies.
+  const creacionesCapturadas: CreacionCapturada[] = [];
+  const pdfsCapturados: { authorization: string | null; url: string }[] = [];
+  const registro: PeticionesInformes = {
+    creaciones: creacionesCapturadas,
+    pdfs: pdfsCapturados,
+    listados: 0,
+  };
+  let nCreaciones = 0;
+  let ultimaCreacion = 0;
+
+  await page.route('**/api/v2/geo/informes-area/*/pdf', async (route) => {
+    pdfsCapturados.push({
+      authorization: route.request().headers().authorization ?? null,
+      url: route.request().url(),
+    });
+    await route.fulfill({
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': DISPOSITION_E2E,
+      },
+      body: PDF_E2E,
+    });
+  });
+
+  await page.route(/\/api\/v2\/geo\/informes-area\/?$/, async (route) => {
+    const peticion = route.request();
+    if (peticion.method() === 'POST') {
+      nCreaciones += 1;
+      ultimaCreacion = Date.now();
+      const cuerpo = JSON.parse(peticion.postData() ?? '{}') as {
+        nombre?: string;
+        zona_ids?: string[];
+        desglose?: boolean;
+      };
+      creacionesCapturadas.push({
+        nombre: cuerpo.nombre ?? '',
+        zona_ids: [...(cuerpo.zona_ids ?? [])],
+        desglose: cuerpo.desglose ?? true,
+        authorization: peticion.headers().authorization ?? null,
+      });
+      const fila = opciones.crear[Math.min(nCreaciones - 1, opciones.crear.length - 1)];
+      await route.fulfill({ status: 202, json: fila });
+      return;
+    }
+    registro.listados += 1;
+    const filas =
+      nCreaciones === 0
+        ? (opciones.alMontar ?? [])
+        : opciones.listar(nCreaciones, Date.now() - ultimaCreacion);
+    await route.fulfill({ status: 200, json: { items: filas, total: filas.length } });
+  });
+
+  return registro;
+}
+
+/** Drive Elegir → Revisar → Generar (the launcher form) inside an open drawer. */
+async function llegarAGenerar(page: Page, cuenca: string, zonas: string[]): Promise<void> {
+  await abrirLista(page, cuenca);
+  for (const zona of zonas) {
+    await page.getByRole('checkbox', { name: zona }).check();
+  }
+  await page.getByTestId('informe-area-siguiente').click();
+  await expect(page.getByTestId('informe-area-preview-total')).toBeVisible();
+  await page.getByTestId('informe-area-generar').click();
+  await expect(page.getByTestId('informe-area-nombre')).toBeVisible();
+}
 
 // ── network mocks (registered LAST wins; the catch-all goes first) ───────────
 
@@ -221,44 +378,12 @@ async function instalarMocks(page: Page): Promise<void> {
     });
   });
 
-  // The ficha endpoint: the panel's `poligono` and the drawer's `zonas`.
-  await page.route(/\/api\/v2\/geo\/analisis-zona(?:\?|$)/, async (route) => {
-    const cuerpo = JSON.parse(route.request().postData() ?? '{}') as {
-      tipo?: string;
-      zona_ids?: string[];
-    };
-    if (cuerpo.tipo === 'zonas') {
-      const ids = cuerpo.zona_ids ?? [];
-      const zonas = ids.flatMap((id) => {
-        const zona = ZONA_POR_ID.get(id);
-        return zona ? [zona] : [];
-      });
-      await route.fulfill({
-        json: {
-          tipo: 'zonas',
-          area_ha: zonas.reduce((suma, zona) => suma + zona.ha, 0),
-          suelos: datasetFixture(1),
-          flood_risk: datasetFixture(1),
-          drainage_need: datasetFixture(0.97),
-          precipitacion_mensual: PRECIPITACION,
-          desglose_por_subcuenca: zonas.map((zona) => {
-            const figuras = FIGURAS_POR_ID[zona.id] ?? FIGURA_DEFAULT;
-            return {
-              zona_id: zona.id,
-              nombre: zona.nombre,
-              ha: zona.ha,
-              pct_alto_critico: figuras.pct,
-              clase_suelo_dominante: figuras.suelo,
-              lluvia_anual_mm: figuras.lluvia,
-            };
-          }),
-          umbral_alto_critico: 'legacy70',
-        },
-      });
-      return;
-    }
-    await route.fulfill({ json: FICHA_POLIGONO });
-  });
+  // The ficha endpoint: only the PANEL's `poligono` shape is still consumed
+  // after PR 2 — the drawer's Generar step no longer fetches a `zonas` ficha
+  // (the datasets live in the 7-section PDF now).
+  await page.route(/\/api\/v2\/geo\/analisis-zona(?:\?|$)/, (route) =>
+    route.fulfill({ json: FICHA_POLIGONO })
+  );
 }
 
 // ── shared flow ───────────────────────────────────────────────────────────────
@@ -321,6 +446,10 @@ async function armarDibujo(page: Page): Promise<boolean> {
  * session → mocks → /mapa → Herramientas → "Dibujar polígono" → trace a
  * triangle on the canvas → ficha panel → "Informe de área".
  *
+ * `extra` installs ADDITIONAL routes (the informes-area surface) between the
+ * base mocks and the navigation: after `instalarMocks` (so the catch-all does
+ * not swallow them) and before `goto` (so no request races the install).
+ *
  * The polygon finishes with Enter, NOT a double-click: mapbox-gl-draw 1.5 has
  * no dblclick handler — the polygon closes on the SECOND click at the previous
  * vertex, and the trailing click of a double-click then lands on an idle map,
@@ -329,9 +458,13 @@ async function armarDibujo(page: Page): Promise<boolean> {
  * click. The canvas holds focus after the click sequence, so the key reaches
  * the container.
  */
-async function abrirDrawer(page: Page): Promise<boolean> {
+async function abrirDrawer(
+  page: Page,
+  extra?: (page: Page) => Promise<void>
+): Promise<boolean> {
   await sembrarSesion(page);
   await instalarMocks(page);
+  if (extra) await extra(page);
 
   const reached = await page
     .goto(`${APP_URL}/mapa`, { waitUntil: 'domcontentloaded', timeout: 30000 })
@@ -414,63 +547,92 @@ async function tabularHasta(page: Page, selector: string, max = 40): Promise<boo
 
 // ── tests ─────────────────────────────────────────────────────────────────────
 
-test.describe('Informe de área — elegir dos subcuencas y ver el desglose', () => {
-  test('dos subcuencas por Lista → preview online → desglose con valores por zona', {
+test.describe('Informe de área — elegir, lanzar en segundo plano y descargar', () => {
+  test('dos subcuencas por Lista → create 202 → poll pending/running/completed → Informe listo → Descargar PDF', {
     tag: ['@e2e', '@medium', '@mapa', '@informe-area'],
   }, async ({ page }) => {
-    const abierto = await abrirDrawer(page);
+    test.setTimeout(120000);
+    let registro!: PeticionesInformes;
+    const abierto = await abrirDrawer(page, async (p) => {
+      registro = await instalarInformesArea(p, {
+        crear: [filaInforme()],
+        // Time-based phases: <4 s pending, <8 s running, then completed. The
+        // hook polls every 5 s, so each poll lands in the next phase.
+        listar: (_n, ms) => {
+          if (ms < 4000) return [filaInforme({ estado: 'pending', progreso: 0 })];
+          if (ms < 8000) return [filaInforme({ estado: 'running', progreso: 40 })];
+          return [
+            filaInforme({
+              estado: 'completed',
+              progreso: 100,
+              area_ha: 1801.0,
+              cantidad_zonas: 2,
+            }),
+          ];
+        },
+      });
+    });
     requireCondition(
       abierto,
       'El drawer del informe de área no abrió desde el botón del panel de la ficha'
     );
 
-    await abrirLista(page, CUENCA_TERCERO);
+    await llegarAGenerar(page, CUENCA_TERCERO, ['Arroyo Algodón', 'Arroyo Litín']);
 
-    // Two zonas, by their checkbox labels (the catalog names).
-    await page.getByRole('checkbox', { name: 'Arroyo Algodón' }).check();
-    await page.getByRole('checkbox', { name: 'Arroyo Litín' }).check();
+    // Revisar: totals of the union + the geodesic reference + modo online.
+    // (llegarAGenerar already passed through it; the totals live here too.)
+    // The create button stays locked until a nombre exists — a nameless create
+    // would only spend a rate-limit slot on a guaranteed 422.
+    await expect(page.getByTestId('informe-area-crear')).toBeDisabled();
+    await expect(page.getByRole('radio', { name: 'Total y subcuencas' })).toBeChecked();
 
-    await expect(page.getByTestId('informe-area-contador')).toHaveText('2/60 subcuencas');
-    await expect(page.getByTestId('informe-area-chip')).toHaveCount(2);
+    await page.getByTestId('informe-area-nombre').fill('Informe Tercero norte');
+    await page.getByTestId('informe-area-crear').click();
 
-    // Revisar: totals of the union + the geodesic reference + modo online
-    // (no cap alert, Generar enabled).
-    await page.getByTestId('informe-area-siguiente').click();
-    const total = page.getByTestId('informe-area-preview-total');
-    await expect(total).toBeVisible();
-    await expect(total).toHaveText('2 subcuencas · 1801.0 ha');
-    await expect(page.getByTestId('informe-area-revisar')).toContainText(
-      'referencia geodésica WGS84: 1803.7 ha'
-    );
-    await expect(page.getByTestId('informe-area-preview-cap')).toHaveCount(0);
-    await expect(page.getByTestId('informe-area-generar')).toBeEnabled();
+    // The wire contract of the create (S2): nombre, the picked zonas, the
+    // SegmentedControl's depth, and the bearer in the header — never the URL.
+    await expect
+      .poll(() => registro.creaciones.length, { timeout: 15000 })
+      .toBe(1);
+    const [creado] = registro.creaciones;
+    expect(creado.nombre).toBe('Informe Tercero norte');
+    expect([...creado.zona_ids].sort()).toEqual(['z-tercero-algodon', 'z-tercero-litin']);
+    expect(creado.desglose).toBe(true);
+    expect(creado.authorization).toBe('Bearer e2e-token');
 
-    // Generar: the desglose table — stored figures per zona, dashes where
-    // nothing is stored (S8: a dash, never a fabricated 0).
-    await page.getByTestId('informe-area-generar').click();
-    await expect(page.getByTestId('informe-area-informe-total')).toHaveText(
-      '2 subcuencas · 1801.0 ha'
-    );
+    // Inline progress (aria-live) walks the polled estados: 0 % → 40 %.
+    const progreso = page.getByTestId('informe-area-progreso-inline');
+    await expect(progreso).toBeVisible({ timeout: 15000 });
+    await expect(progreso).toContainText('Generando «Informe Tercero norte»');
+    await expect(progreso).toContainText('Te avisamos cuando esté');
+    await expect(progreso).toContainText('0%', { timeout: 15000 });
+    await expect(progreso).toContainText('40%', { timeout: 15000 });
 
-    const desglose = page.getByTestId('informe-area-desglose');
-    const filaAlgodon = desglose.getByRole('row', { name: /Arroyo Algodón/ });
-    await expect(filaAlgodon).toContainText('900.5 ha');
-    await expect(filaAlgodon).toContainText('23.4%');
-    await expect(filaAlgodon).toContainText('III');
-    await expect(filaAlgodon).toContainText('842 mm');
+    // …until the list answers completed: the ready panel with the row's totals.
+    const listo = page.getByTestId('informe-area-listo-inline');
+    await expect(listo).toBeVisible({ timeout: 20000 });
+    await expect(listo).toContainText('2 subcuencas');
+    await expect(listo).toContainText('1801.0 ha');
 
-    const filaLitin = desglose.getByRole('row', { name: /Arroyo Litín/ });
-    await expect(filaLitin).toContainText('—');
-    await expect(filaLitin).not.toContainText('0.0%');
+    // Descargar PDF: a REAL download event whose suggested filename is the
+    // server's RFC 5987 half (es-AR spelling), and whose bytes crossed the
+    // wire — parity, same discipline as the rainfall exports.
+    const descargaPrometida = page.waitForEvent('download');
+    await page.getByTestId('informe-area-descargar-inline').click();
+    const descarga = await descargaPrometida;
+    expect(descarga.suggestedFilename()).toBe('Informe Tercero norte.pdf');
 
-    // The legacy70 threshold note travels with the column (decision #738).
-    await expect(page.getByTestId('informe-area-drawer')).toContainText('puntaje > 70');
+    const flujo = await descarga.createReadStream();
+    const partes: Buffer[] = [];
+    for await (const parte of flujo) partes.push(parte as Buffer);
+    expect(Buffer.concat(partes).toString('binary')).toContain('%PDF');
 
-    // Per-dataset coverage rows render the ficha's own ratios (S5).
-    await expect(page.getByTestId('informe-area-coberturas')).toContainText('100.0%');
+    expect(registro.pdfs.length).toBe(1);
+    expect(registro.pdfs[0].authorization).toBe('Bearer e2e-token');
+    expect(registro.pdfs[0].url).not.toContain('e2e-token');
   });
 
-  test('modo=trabajo muestra el aviso del tope en línea y bloquea Generar', {
+  test('modo=trabajo anuncia el camino en segundo plano (150.000) y Generar queda habilitado', {
     tag: ['@e2e', '@medium', '@mapa', '@informe-area'],
   }, async ({ page }) => {
     const abierto = await abrirDrawer(page);
@@ -484,15 +646,26 @@ test.describe('Informe de área — elegir dos subcuencas y ver el desglose', ()
     await page.getByRole('checkbox', { name: 'Canal Desviador' }).check();
     await page.getByTestId('informe-area-siguiente').click();
 
-    // Preview still renders (it is geometry-only), but with the cap notice.
+    // Preview still renders (geometry-only); the cap notice now SELLS the
+    // background path instead of blocking (PR 2: every selection up to
+    // 150.000 ha generates).
     await expect(page.getByTestId('informe-area-preview-total')).toHaveText(
       '2 subcuencas · 41230.0 ha'
     );
     const aviso = page.getByTestId('informe-area-preview-cap');
     await expect(aviso).toBeVisible();
     await expect(aviso).toContainText('35.000 ha');
-    await expect(aviso).toContainText('PR 2');
-    await expect(page.getByTestId('informe-area-generar')).toBeDisabled();
+    await expect(aviso).toContainText('150.000');
+    await expect(aviso).toContainText('segundo plano');
+    await expect(page.getByTestId('informe-area-generar')).toBeEnabled();
+
+    // 41.230 ha is big but under the informe cap: the launcher accepts it —
+    // no client-side tope alert, crear enabled once the nombre exists.
+    await page.getByTestId('informe-area-generar').click();
+    await expect(page.getByTestId('informe-area-tope')).toHaveCount(0);
+    await expect(page.getByTestId('informe-area-crear')).toBeDisabled();
+    await page.getByTestId('informe-area-nombre').fill('Chocancharava completa');
+    await expect(page.getByTestId('informe-area-crear')).toBeEnabled();
   });
 
   test('el flujo Elegir es operable solo con teclado (trampa de foco + selección)', {
@@ -595,5 +768,184 @@ test.describe('Informe de área — elegir dos subcuencas y ver el desglose', ()
     expect(p95, `p95 ${p95} ms supera el presupuesto de 1500 ms (mocked network)`).toBeLessThan(
       1500
     );
+  });
+
+  test('desde_cache: 202 con cache hit → descarga inmediata del PDF, sin sondeo', {
+    tag: ['@e2e', '@medium', '@mapa', '@informe-area'],
+  }, async ({ page }) => {
+    test.setTimeout(120000);
+    const filaCache = filaInforme({
+      estado: 'completed',
+      progreso: 100,
+      desde_cache: true,
+      area_ha: 1801.0,
+      cantidad_zonas: 2,
+    });
+    let registro!: PeticionesInformes;
+    const abierto = await abrirDrawer(page, async (p) => {
+      registro = await instalarInformesArea(p, {
+        crear: [filaCache],
+        listar: () => [filaCache],
+      });
+    });
+    requireCondition(
+      abierto,
+      'El drawer del informe de área no abrió desde el botón del panel de la ficha'
+    );
+
+    await llegarAGenerar(page, CUENCA_TERCERO, ['Arroyo Algodón', 'Arroyo Litín']);
+    await page.getByTestId('informe-area-nombre').fill('Informe Tercero norte');
+
+    // The download is AUTOMATIC on a cache hit — armed before the create.
+    const descargaPrometida = page.waitForEvent('download');
+    await page.getByTestId('informe-area-crear').click();
+
+    // No polling UI ever: the ready panel replaces the progress inline.
+    const listo = page.getByTestId('informe-area-listo-inline');
+    await expect(listo).toBeVisible({ timeout: 15000 });
+    await expect(listo).toContainText('1801.0 ha');
+    await expect(page.getByTestId('informe-area-progreso-inline')).toHaveCount(0);
+
+    // The contract's fork: the cache-hit toast, not "Te avisamos cuando esté".
+    await expect(page.getByText('El informe ya estaba listo')).toBeVisible();
+
+    const descarga = await descargaPrometida;
+    expect(descarga.suggestedFilename()).toBe('Informe Tercero norte.pdf');
+    expect(registro.pdfs.length).toBe(1);
+
+    // NO polling: once every row is terminal the list query stops reading.
+    // Settle past the create's invalidation refetch, then outwait one full
+    // 5 s poll cycle and demand the count did not move.
+    await expect
+      .poll(() => registro.listados, { timeout: 15000 })
+      .toBeGreaterThanOrEqual(2);
+    const listadosTrasCreacion = registro.listados;
+    await page.waitForTimeout(6500);
+    expect(registro.listados, 'el listado siguió sondeando con todas las filas terminales').toBe(
+      listadosTrasCreacion
+    );
+  });
+
+  test('un informe que falla deja el motivo guardado y «Volver a intentar» re-crea', {
+    tag: ['@e2e', '@medium', '@mapa', '@informe-area'],
+  }, async ({ page }) => {
+    test.setTimeout(120000);
+    let registro!: PeticionesInformes;
+    const abierto = await abrirDrawer(page, async (p) => {
+      registro = await instalarInformesArea(p, {
+        // Two creates: the initial launch and the retry.
+        crear: [filaInforme(), filaInforme()],
+        listar: (n, ms) => {
+          if (n === 1) {
+            return ms < 4000
+              ? [filaInforme({ estado: 'pending', progreso: 0 })]
+              : [filaInforme({ estado: 'failed', error: 'GEE no disponible' })];
+          }
+          // The retry succeeds: completed as soon as the invalidation lands.
+          return [
+            filaInforme({
+              estado: 'completed',
+              progreso: 100,
+              area_ha: 1801.0,
+              cantidad_zonas: 2,
+            }),
+          ];
+        },
+      });
+    });
+    requireCondition(
+      abierto,
+      'El drawer del informe de área no abrió desde el botón del panel de la ficha'
+    );
+
+    await llegarAGenerar(page, CUENCA_TERCERO, ['Arroyo Algodón', 'Arroyo Litín']);
+    await page.getByTestId('informe-area-nombre').fill('Informe Tercero norte');
+    await page.getByTestId('informe-area-crear').click();
+
+    // First pending shows, then the polled failed row flips the panel with the
+    // STORED readable reason (S8) and the remedy that exists here: re-create.
+    await expect(page.getByTestId('informe-area-progreso-inline')).toBeVisible({
+      timeout: 15000,
+    });
+    const fallo = page.getByTestId('informe-area-fallo-inline');
+    await expect(fallo).toBeVisible({ timeout: 20000 });
+    await expect(fallo).toContainText('GEE no disponible');
+    await expect(fallo).toContainText('No se pudo generar el informe');
+
+    await fallo.getByRole('button', { name: 'Volver a intentar' }).click();
+    await expect
+      .poll(() => registro.creaciones.length, { timeout: 15000 })
+      .toBe(2);
+    await expect(page.getByTestId('informe-area-listo-inline')).toBeVisible({
+      timeout: 15000,
+    });
+  });
+
+  test('«Mis informes» desde el drawer: filas por estado y descarga solo en completed', {
+    tag: ['@e2e', '@medium', '@mapa', '@informe-area'],
+  }, async ({ page }) => {
+    test.setTimeout(90000);
+    const filas = [
+      filaInforme({
+        id: 'inf-viejo',
+        nombre: 'Viejo confiable',
+        estado: 'completed',
+        progreso: 100,
+        area_ha: 2400.5,
+        cantidad_zonas: 1,
+      }),
+      filaInforme({ id: 'inf-curso', nombre: 'Trabajo en curso', estado: 'running', progreso: 35 }),
+      filaInforme({ id: 'inf-fallo', nombre: 'El que falló', estado: 'failed', error: 'GEE no disponible' }),
+    ];
+    const abierto = await abrirDrawer(page, async (p) => {
+      await instalarInformesArea(p, {
+        alMontar: filas,
+        crear: [filaInforme()],
+        listar: () => filas,
+      });
+    });
+    requireCondition(
+      abierto,
+      'El drawer del informe de área no abrió desde el botón del panel de la ficha'
+    );
+
+    // The title button swaps the Stepper for the table; the flow survives.
+    await page.getByTestId('informe-area-abrir-mis-informes').click();
+    const panel = page.getByTestId('informe-area-panel-mis-informes');
+    await expect(panel).toBeVisible();
+    await expect(page.getByTestId('informe-area-stepper')).toHaveCount(0);
+    await expect(panel).toContainText('90 días');
+
+    const tabla = page.getByTestId('informe-area-mis-informes');
+    await expect(tabla).toBeVisible();
+    await expect(tabla.getByTestId('informe-area-mis-informes-fila')).toHaveCount(3);
+
+    // Completed: ha present (never a fabricated 0), Listo badge, download ON.
+    const filaViejo = tabla.getByRole('row', { name: /Viejo confiable/ });
+    await expect(filaViejo).toContainText('2400.5 ha');
+    await expect(filaViejo).toContainText('Listo');
+    await expect(
+      filaViejo.getByTestId('informe-area-mis-informes-descarga')
+    ).toBeEnabled();
+
+    // In course: ha is a dash until `resultado` exists, download OFF.
+    const filaCurso = tabla.getByRole('row', { name: /Trabajo en curso/ });
+    await expect(filaCurso).toContainText('Generando');
+    await expect(filaCurso).toContainText('35%');
+    await expect(
+      filaCurso.getByTestId('informe-area-mis-informes-descarga')
+    ).toBeDisabled();
+
+    // Failed: the stored reason under the nombre, download OFF.
+    const filaFallo = tabla.getByRole('row', { name: /El que falló/ });
+    await expect(filaFallo).toContainText('Falló');
+    await expect(filaFallo).toContainText('GEE no disponible');
+    await expect(
+      filaFallo.getByTestId('informe-area-mis-informes-descarga')
+    ).toBeDisabled();
+
+    // Back to the flow: the Stepper returns (state survived underneath).
+    await page.getByTestId('informe-area-mis-informes-volver').click();
+    await expect(page.getByTestId('informe-area-stepper')).toBeVisible();
   });
 });
