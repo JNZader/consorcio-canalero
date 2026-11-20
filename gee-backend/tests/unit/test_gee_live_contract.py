@@ -46,6 +46,16 @@ class TestGeeInitialization:
 
 
 class TestSentinel1Thumbnail:
+    def test_s1_band_config_is_single_band(self):
+        """Layer 9: production renders S1 with a single VV band — multi-band
+        S1 compositing triggers 'inconsistent projections' (box-verified
+        2026-11-20: 2 bands fail, VV alone returns a valid PNG)."""
+        from app.domains.geo.informe_area.service import _BANDAS_FALSO_COLOR
+
+        bandas, maximo = _BANDAS_FALSO_COLOR["sentinel1"]
+        assert bandas == ["VV"]
+        assert maximo == 0.5
+
     def test_s1_scene_loads_from_collection(self):
         """Layer 5: S1 scenes are NOT standalone assets — they live in ImageCollection."""
         import ee
