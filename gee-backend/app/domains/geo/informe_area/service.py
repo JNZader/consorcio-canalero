@@ -1272,7 +1272,7 @@ def miniatura_falso_color_impl(
     caller degrades that event to «sin datos», never fails the report.
     """
     bandas, maximo = _BANDAS_FALSO_COLOR[sensor]
-    region = ee_module.Geometry(geometry=region_geojson, geodesic=False)
+    region = ee_module.Geometry(geojson=region_geojson, geodesic=False)
     imagen = ee_module.Image(scene_id).select(bandas).clip(region)
     url = imagen.getThumbURL(
         {
