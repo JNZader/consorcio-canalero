@@ -60,7 +60,7 @@ NODATA = -9999.0
 
 # A 0.2° square measures ~42 000 ha — over the 35 000 ha zonas cap and under
 # the 150 000 ha envelope cap, so the AREA cap is the one that fires.
-LADO_ZONA_GRANDE = 0.2
+LADO_ZONA_GRANDE = 0.3  # ~112k ha — past the 90k zonas cap
 
 
 @pytest.fixture
@@ -364,11 +364,11 @@ def test_preview_geodesica_contra_32720(ficha_db, monkeypatch):
 
 
 def test_preview_sobre_el_cap_zonas_modo_trabajo(ficha_db, monkeypatch):
-    """L2/S3: >35 000 ha answers modo=trabajo + aviso — NOT the 20 000 parcel cap.
+    """S3: >90 000 ha answers modo=trabajo + aviso.
 
-    The fixture zone measures ~42 000 ha: past the zonas cap (35 000, decision
-    L2) and past the inherited parcel cap (20 000) — the response must reflect
-    the ZONAS threshold, and the preview must answer, never 422.
+    The fixture zone measures ~112 000 ha (LADO 0.3): past the 90k zonas cap
+    (raised from 35k on 2026-11-20 — PR 2 is live). The preview must answer
+    with modo=trabajo, never 422.
     """
     from fastapi.testclient import TestClient
 
