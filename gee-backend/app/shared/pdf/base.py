@@ -4,6 +4,7 @@ import io
 import os
 from dataclasses import dataclass
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Optional
 
 from reportlab.lib import colors
@@ -343,7 +344,9 @@ class BrandedPDF:
         # Date
         canvas.setFont(self._font, 8)
         canvas.setFillColor(colors.grey)
-        fecha = datetime.now().strftime("%d/%m/%Y %H:%M")
+        fecha = datetime.now(tz=ZoneInfo("America/Argentina/Buenos_Aires")).strftime(
+            "%d/%m/%Y %H:%M"
+        )
         canvas.drawRightString(width - 1.5 * cm, height - 1.3 * cm, fecha)
 
         # Header line
