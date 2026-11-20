@@ -1245,9 +1245,9 @@ _CANDIDATO_ANCLA_SQL = text(
 #: TOA reflectance ceiling the explorer pins for those collections.
 _BANDAS_FALSO_COLOR: dict[str, tuple[list[str], float]] = {
     "sentinel1": (
-        ["VV", "VH"],
+        ["VV"],
         0.5,
-    ),  # SAR: agua = oscura en VV/VH; GEE no permite duplicar bandas en select()
+    ),  # SAR single-band: multi-band compositing triggers projection errors
     "sentinel2": (["B8", "B11", "B4"], 3000.0),
     "landsat9": (["B5", "B6", "B4"], 0.35),
     "landsat8": (["B5", "B6", "B4"], 0.35),
@@ -1277,28 +1277,38 @@ def miniatura_falso_color_impl(
     bandas, maximo = _BANDAS_FALSO_COLOR[sensor]
     region = ee_module.Geometry(geo_json=region_geojson, geodesic=False)
     if sensor == "sentinel1":
-        # S1 GRD scenes are NOT standalone Image assets — filter the collection
+        # S1: single-band (VV) — GEE's multi-band compositing on S1 GRD
+        # triggers "inconsistent projections" (layers 7-8, box-tested).
+        # VV alone shows water as dark: the signal the PDF needs.
         coleccion = ee_module.ImageCollection("COPERNICUS/S1_GRD")
-        imagen = (
-            coleccion.filter(ee_module.Filter.eq("system:index", scene_id))
-            .first()
-            .select(bandas)
-            .clip(region)
+        imagen = coleccion.filter(ee_module.Filter.eq("system:index", scene_id)).first()
+        url = imagen.select(bandas).getThumbURL(
+            {
+                "bands": bandas,
+                "min": 0,
+                "max": maximo,
+                "dimensions": dimension_px,
+                "region": region_geojson,
+                "format": "png",
+            }
         )
+        respuesta = requests_module.get(url, timeout=90)
+        respuesta.raise_for_status()
+        return respuesta.content
     else:
         imagen = ee_module.Image(scene_id).select(bandas).clip(region)
-    url = imagen.getThumbURL(
-        {
-            "bands": bandas,
-            "min": 0,
-            "max": maximo,
-            "dimensions": dimension_px,
-            "region": region,
-            "format": "png",
-            "crs": "EPSG:4326",  # S1's native SAR projection clashes with the
-            # clip geometry — force WGS84 for the thumbnail render (layer 7).
-        }
-    )
+        url = imagen.getThumbURL(
+            {
+                "bands": bandas,
+                "min": 0,
+                "max": maximo,
+                "dimensions": dimension_px,
+                "region": region,
+                "format": "png",
+                "crs": "EPSG:4326",  # S1's native SAR projection clashes with the
+                # clip geometry — force WGS84 for the thumbnail render (layer 7).
+            }
+        )
     respuesta = requests_module.get(url, timeout=90)
     respuesta.raise_for_status()
     return respuesta.content
