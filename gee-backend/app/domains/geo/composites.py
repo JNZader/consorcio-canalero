@@ -92,11 +92,12 @@ def _get_wbt():
     if _wbt is None:
         from whitebox import WhiteboxTools
 
-        _wbt = WhiteboxTools()
-        _wbt.set_verbose_mode(False)
+        wbt = WhiteboxTools()
+        wbt.set_verbose_mode(False)
         # Issue #733: refuse to run on any binary other than the pinned one —
         # a wrong build fails SILENTLY otherwise (#730).
-        assert_pinned_wbt_version(_wbt)
+        assert_pinned_wbt_version(wbt)
+        _wbt = wbt
     return _wbt
 
 
@@ -824,27 +825,39 @@ def extract_zonal_profile(
         ext_row_off, ext_col_off, ext_height, ext_width = _aligned_window(
             src.transform, geom_shapely.bounds
         )
-        ext_transform = src.transform * Affine.translation(ext_col_off, ext_row_off)
-        ext_fractions = _coverage_fractions(geom_shapely, ext_transform, (ext_height, ext_width))
-        total_weight = float(ext_fractions.sum())
+        # Guard against OOM when disjoint geometry parts span hundreds of km:
+        # fall back to rasterizing the crop window directly and deriving total
+        # geometry weight from exact metric/pixel area.
+        max_ext_cells = 4_000_000
+        if ext_height * ext_width <= max_ext_cells:
+            ext_transform = src.transform * Affine.translation(ext_col_off, ext_row_off)
+            ext_fractions = _coverage_fractions(
+                geom_shapely, ext_transform, (ext_height, ext_width)
+            )
+            total_weight = float(ext_fractions.sum())
 
-        # Weights of the crop window, sliced out of the extended grid so the two
-        # accountings cannot drift. Pixels of the crop window that fall outside
-        # the extended window (they should not, but float offsets are float
-        # offsets) keep weight 0 rather than an invented one.
-        crop_col, crop_row = ~src.transform * (out_transform.c, out_transform.f)
-        row_delta = int(round(crop_row)) - ext_row_off
-        col_delta = int(round(crop_col)) - ext_col_off
-        fractions = np.zeros(data.shape, dtype=np.float64)
-        row_start = max(0, row_delta)
-        row_stop = min(ext_height, row_delta + data.shape[0])
-        col_start = max(0, col_delta)
-        col_stop = min(ext_width, col_delta + data.shape[1])
-        if row_stop > row_start and col_stop > col_start:
-            fractions[
-                row_start - row_delta : row_stop - row_delta,
-                col_start - col_delta : col_stop - col_delta,
-            ] = ext_fractions[row_start:row_stop, col_start:col_stop]
+            # Weights of the crop window, sliced out of the extended grid so the two
+            # accountings cannot drift. Pixels of the crop window that fall outside
+            # the extended window (they should not, but float offsets are float
+            # offsets) keep weight 0 rather than an invented one.
+            crop_col, crop_row = ~src.transform * (out_transform.c, out_transform.f)
+            row_delta = int(round(crop_row)) - ext_row_off
+            col_delta = int(round(crop_col)) - ext_col_off
+            fractions = np.zeros(data.shape, dtype=np.float64)
+            row_start = max(0, row_delta)
+            row_stop = min(ext_height, row_delta + data.shape[0])
+            col_start = max(0, col_delta)
+            col_stop = min(ext_width, col_delta + data.shape[1])
+            if row_stop > row_start and col_stop > col_start:
+                fractions[
+                    row_start - row_delta : row_stop - row_delta,
+                    col_start - col_delta : col_stop - col_delta,
+                ] = ext_fractions[row_start:row_stop, col_start:col_stop]
+        else:
+            fractions = _coverage_fractions(geom_shapely, out_transform, data.shape)
+            pixel_area_crs = abs(src.transform.determinant)
+            geom_pixels = float(geom_shapely.area) / pixel_area_crs if pixel_area_crs > 0 else 0.0
+            total_weight = max(float(fractions.sum()), geom_pixels)
 
         return _profile(data[valid_mask], fractions[valid_mask], total_weight)
 

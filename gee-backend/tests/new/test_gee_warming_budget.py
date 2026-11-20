@@ -19,6 +19,8 @@ from app.domains.geo.gee_tasks_warming import (
 
 def test_warm_task_limits_sit_under_the_worker_hard_kill() -> None:
     assert celery_app.conf.task_time_limit == 600
+    assert len(WARM_ENDPOINTS) == 4
+    assert all(p.startswith("/api/v2/public/map/gee/") for p in WARM_ENDPOINTS)
     assert len(WARM_ENDPOINTS) * WARM_REQUEST_TIMEOUT_SECONDS > 600
     assert task_warm_gee_layers.soft_time_limit == WARM_TASK_SOFT_TIME_LIMIT_SECONDS
     assert task_warm_gee_layers.time_limit == WARM_TASK_TIME_LIMIT_SECONDS
@@ -28,6 +30,7 @@ def test_warm_task_limits_sit_under_the_worker_hard_kill() -> None:
 def test_warm_hits_every_endpoint_concurrently(monkeypatch) -> None:
     current = 0
     peak = 0
+    seen_headers: list[dict[str, str] | None] = []
     lock = threading.Lock()
 
     class _Response:
@@ -45,9 +48,10 @@ def test_warm_hits_every_endpoint_concurrently(monkeypatch) -> None:
         def __exit__(self, *args):
             return False
 
-        def get(self, url: str):
+        def get(self, url: str, headers: dict[str, str] | None = None):
             nonlocal current, peak
             with lock:
+                seen_headers.append(headers)
                 current += 1
                 peak = max(peak, current)
             time.sleep(0.05)
@@ -59,5 +63,35 @@ def test_warm_hits_every_endpoint_concurrently(monkeypatch) -> None:
     summary = task_warm_gee_layers()
 
     assert summary["count"] == len(WARM_ENDPOINTS)
+    assert summary["ok"] == len(WARM_ENDPOINTS)
+    assert summary["failed"] == 0
     assert peak > 1
     assert {item["path"] for item in summary["warmed"]} == set(WARM_ENDPOINTS)
+    assert all(h and h.get("Host") for h in seen_headers)
+
+
+def test_warm_counts_non_2xx_as_failed(monkeypatch) -> None:
+    class _Response:
+        status_code = 401
+        headers: dict[str, str] = {}
+        elapsed = type("Elapsed", (), {"total_seconds": staticmethod(lambda: 0.01)})()
+
+    class _Client:
+        def __init__(self, timeout: float):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def get(self, url: str, headers: dict[str, str] | None = None):
+            return _Response()
+
+    monkeypatch.setattr(httpx, "Client", _Client)
+    summary = task_warm_gee_layers()
+
+    assert summary["count"] == len(WARM_ENDPOINTS)
+    assert summary["ok"] == 0
+    assert summary["failed"] == len(WARM_ENDPOINTS)

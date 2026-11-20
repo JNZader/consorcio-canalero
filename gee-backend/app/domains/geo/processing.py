@@ -56,11 +56,12 @@ def _get_wbt() -> Any:
     if _wbt is None:
         from whitebox import WhiteboxTools  # noqa: PLC0415
 
-        _wbt = WhiteboxTools()
-        _wbt.set_verbose_mode(False)
+        wbt = WhiteboxTools()
+        wbt.set_verbose_mode(False)
         # Issue #733: refuse to run on any binary other than the pinned one —
         # a wrong build fails SILENTLY otherwise (#730).
-        assert_pinned_wbt_version(_wbt)
+        assert_pinned_wbt_version(wbt)
+        _wbt = wbt
     return _wbt
 
 

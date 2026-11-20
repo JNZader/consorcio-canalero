@@ -43,7 +43,9 @@ def test_delivery_policy_is_scoped_and_timeouts_are_compatible() -> None:
         "gee.analyze_flood",
         "gee.supervised_classification",
         "gee.sar_temporal",
+        "geo.informe_area.generar",
     } <= RECOVERABLE_LONG_TASKS
+    assert "app.domains.geo.relevamiento.tasks" in (celery_app.conf.include or ())
 
     for task_name in RECOVERABLE_LONG_TASKS:
         policy = annotations[task_name]
@@ -241,7 +243,7 @@ def test_reconcile_stale_geo_jobs_respects_outbox_publication_state(db) -> None:
     ):
         db.refresh(tracker)
 
-    assert reconciled == {"geo_jobs": 3, "gee_analyses": 3}
+    assert reconciled == {"geo_jobs": 3, "gee_analyses": 3, "informes_area": 0}
     assert unpublished.estado == EstadoGeoJob.PENDING
     assert recently_published.estado == EstadoGeoJob.PENDING
     assert stale_running.estado == EstadoGeoJob.FAILED
@@ -532,10 +534,102 @@ def test_heartbeat_tipos_reap_sooner_than_gee_geojobs(db) -> None:
     db.refresh(crossings)
     db.refresh(gee)
 
-    assert counts == {"geo_jobs": 2, "gee_analyses": 0}
+    assert counts == {"geo_jobs": 2, "gee_analyses": 0, "informes_area": 0}
     assert dem.estado == EstadoGeoJob.FAILED
     assert dem.error == "worker_lost"
     assert crossings.estado == EstadoGeoJob.FAILED
     assert crossings.error == "worker_lost"
     assert gee.estado == EstadoGeoJob.RUNNING
     assert gee.error is None
+
+
+def test_all_outbox_task_keys_registered_via_celery_include() -> None:
+    """C9: importing celery_app.conf.include must register every CeleryTaskKey."""
+    import importlib
+
+    from app.shared.celery_outbox import CeleryTaskKey
+
+    for module_name in celery_app.conf.include or ():
+        importlib.import_module(module_name)
+
+    expected = {key.value for key in CeleryTaskKey}
+    registered = set(celery_app.tasks)
+    missing = expected - registered
+    assert not missing, f"Missing Celery tasks in include modules: {missing}"
+
+
+def test_reconcile_fails_stale_informes_area_respecting_outbox(db) -> None:
+    """C2: reconcile_stale_geo_jobs transitions stale InformeArea rows like GeoJob/AnalisisGeo."""
+    from app.auth.models import User, UserRole
+    from app.domains.geo.informe_area.models import InformeArea
+    from app.domains.geo.reconciliation import reconcile_stale_geo_jobs
+    from app.shared.celery_outbox import CeleryTaskKey, enqueue_celery_task
+
+    now = datetime.now(timezone.utc)
+    stale = now - timedelta(minutes=120)
+    recent_hb = now - timedelta(minutes=10)
+    stale_hb = now - timedelta(minutes=60)
+
+    user = User(
+        email=f"reconcile-informe-{uuid.uuid4().hex[:8]}@test.local",
+        hashed_password="x",
+        role=UserRole.OPERADOR,
+        nombre="Test",
+        apellido="User",
+        telefono="",
+        is_active=True,
+    )
+    db.add(user)
+    db.flush()
+
+    unpublished_id = uuid.uuid4()
+    expired_id = uuid.uuid4()
+
+    def _row(estado, updated_at, task_id=None):
+        return InformeArea(
+            id=uuid.uuid4(),
+            usuario_id=user.id,
+            nombre="test",
+            estado=estado,
+            hash_seleccion="a" * 64,
+            version_clave="v1",
+            vence_at=now + timedelta(days=90),
+            updated_at=updated_at,
+            celery_task_id=str(task_id) if task_id else None,
+            token_publico=f"tok-{uuid.uuid4().hex[:16]}",
+        )
+
+    keep_pending = _row(EstadoGeoJob.PENDING, stale, unpublished_id)
+    fail_pending = _row(EstadoGeoJob.PENDING, stale, expired_id)
+    keep_running = _row(EstadoGeoJob.RUNNING, recent_hb)
+    fail_running = _row(EstadoGeoJob.RUNNING, stale_hb)
+    db.add_all([keep_pending, fail_pending, keep_running, fail_running])
+
+    intent_unpub = enqueue_celery_task(
+        db,
+        celery_task_id=unpublished_id,
+        task_key=CeleryTaskKey.INFORME_AREA,
+        task_kwargs={"informe_id": str(keep_pending.id)},
+    )
+    intent_unpub.published_at = None
+
+    intent_exp = enqueue_celery_task(
+        db,
+        celery_task_id=expired_id,
+        task_key=CeleryTaskKey.INFORME_AREA,
+        task_kwargs={"informe_id": str(fail_pending.id)},
+    )
+    intent_exp.published_at = stale
+    db.flush()
+
+    counts = reconcile_stale_geo_jobs(db, stale_after=timedelta(minutes=90), now=now)
+    db.flush()
+    for row in (keep_pending, fail_pending, keep_running, fail_running):
+        db.refresh(row)
+
+    assert counts["informes_area"] == 2
+    assert keep_pending.estado == EstadoGeoJob.PENDING
+    assert fail_pending.estado == EstadoGeoJob.FAILED
+    assert keep_running.estado == EstadoGeoJob.RUNNING
+    assert fail_running.estado == EstadoGeoJob.FAILED
+    assert fail_running.error == "worker_lost"

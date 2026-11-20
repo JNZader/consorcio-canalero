@@ -14,6 +14,8 @@ def test_geo_reconciliation_uses_one_outbox_aware_set_based_update() -> None:
         MagicMock(rowcount=0),
         MagicMock(rowcount=1),
         MagicMock(rowcount=0),
+        MagicMock(rowcount=1),
+        MagicMock(rowcount=0),
     ]
 
     counts = reconcile_stale_geo_jobs(
@@ -22,8 +24,8 @@ def test_geo_reconciliation_uses_one_outbox_aware_set_based_update() -> None:
         now=datetime(2026, 7, 19, 18, 0, tzinfo=timezone.utc),
     )
 
-    assert counts == {"geo_jobs": 2, "gee_analyses": 1}
-    assert db.execute.call_count == 4
+    assert counts == {"geo_jobs": 2, "gee_analyses": 1, "informes_area": 1}
+    assert db.execute.call_count == 6
 
     geo_running = db.execute.call_args_list[0].args[0].compile(dialect=postgresql.dialect())
     geo_running_sql = str(geo_running)
@@ -50,3 +52,14 @@ def test_geo_reconciliation_uses_one_outbox_aware_set_based_update() -> None:
     assert "UPDATE geo_analisis_gee" in analysis_pending_sql
     assert "celery_task_outbox" in analysis_pending_sql
     assert EstadoGeoJob.PENDING in analysis_pending.params.values()
+
+    informe_running = db.execute.call_args_list[4].args[0].compile(dialect=postgresql.dialect())
+    assert "UPDATE informes_area" in str(informe_running)
+    assert EstadoGeoJob.RUNNING in informe_running.params.values()
+    assert "worker_lost" in informe_running.params.values()
+
+    informe_pending = db.execute.call_args_list[5].args[0].compile(dialect=postgresql.dialect())
+    informe_pending_sql = str(informe_pending)
+    assert "UPDATE informes_area" in informe_pending_sql
+    assert "celery_task_outbox" in informe_pending_sql
+    assert EstadoGeoJob.PENDING in informe_pending.params.values()

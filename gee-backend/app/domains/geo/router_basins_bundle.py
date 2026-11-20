@@ -262,11 +262,12 @@ def export_current_approved_basin_zones_pdf(
 
     branding = get_branding(db)
     approved_by_name = _get_user_display_name(db, zoning.approved_by_id)
-    pdf_buffer = build_approved_zoning_pdf(
-        zoning,
-        branding,
-        approved_by_name=approved_by_name,
-    )
+    with slot_de_pdf():
+        pdf_buffer = build_approved_zoning_pdf(
+            zoning,
+            branding,
+            approved_by_name=approved_by_name,
+        )
 
     filename = f"zonificacion-aprobada-v{zoning.version}.pdf"
     return StreamingResponse(
