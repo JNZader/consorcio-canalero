@@ -1297,7 +1297,7 @@ def _miniatura_por_defecto(scene_id: str, sensor: str, region_geojson: dict[str,
     return miniatura_falso_color_impl(
         scene_id=scene_id,
         sensor=sensor,
-        region_geo_json=region_geojson,
+        region_geojson=region_geojson,
         ee_module=ee,
         requests_module=requests,
     )
