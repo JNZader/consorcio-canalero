@@ -989,6 +989,11 @@ def test_miniatura_s1_banda_unica_sin_clip():
             self.meta = {}
             self.Filter = _Filtro
 
+        def Geometry(self, geo_json=None, geodesic=None):
+            # constructed for every sensor BEFORE the branch — unused by S1
+            self.meta["geom"] = (geo_json, geodesic)
+            return ("region-geom", geo_json)
+
         def ImageCollection(self, nombre):
             self.meta["coleccion"] = nombre
             return _Coleccion(self.meta, _ImagenS1(self.meta))
