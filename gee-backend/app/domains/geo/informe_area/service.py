@@ -1273,7 +1273,17 @@ def miniatura_falso_color_impl(
     """
     bandas, maximo = _BANDAS_FALSO_COLOR[sensor]
     region = ee_module.Geometry(geo_json=region_geojson, geodesic=False)
-    imagen = ee_module.Image(scene_id).select(bandas).clip(region)
+    if sensor == "sentinel1":
+        # S1 GRD scenes are NOT standalone Image assets — filter the collection
+        coleccion = ee_module.ImageCollection("COPERNICUS/S1_GRD")
+        imagen = (
+            coleccion.filter(ee_module.Filter.eq("system:index", scene_id))
+            .first()
+            .select(bandas)
+            .clip(region)
+        )
+    else:
+        imagen = ee_module.Image(scene_id).select(bandas).clip(region)
     url = imagen.getThumbURL(
         {
             "bands": bandas,
