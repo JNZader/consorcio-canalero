@@ -915,8 +915,8 @@ def test_miniatura_falso_color_bandas_por_sensor():
             return _Imagen(self.meta)
 
         def Geometry(self, geo_json=None, geodesic=None):
-            self.meta["geom"] = (geojson, geodesic)
-            return ("region", geojson)
+            self.meta["geom"] = (geo_json, geodesic)
+            return ("region", geo_json)
 
     class _Resp:
         content = b"PNG-FAKE"
