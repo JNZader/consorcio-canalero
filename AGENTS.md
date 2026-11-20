@@ -65,6 +65,30 @@ are part of the rule; a ban without them rots.
   cannot sit on an aerial mosaic of unknown date. Derived products use our
   own dated Sentinel-2/Landsat imagery via GEE.
 
+## Live-contract testing rule
+
+Mocked tests prove internal logic; they CANNOT prove an external API's
+contract (keyword names, asset loading patterns, band validation, projection
+handling, error shapes). Seven layers of mock-passed bugs shipped to
+production in one feature before this rule existed (the GEE thumbnail onion,
+PRs #753-#760, 2026-11-20). The same lesson was already paid with IDECOR
+WFS/WCS (the `IDECOR_LIVE=1` test exists for that reason).
+
+For EVERY integration with an external API (GEE, IDECOR, any third-party
+service), there MUST be at least one opt-in live test that exercises the
+real API surface. The test:
+
+- lives in `tests/unit/` (no DB fixture dependency) or a dedicated file
+- is skipped by default (`GEE_LIVE=1`, `IDECOR_LIVE=1`, etc. — opt-in)
+- calls the REAL service with REAL credentials (the box's or dev .env)
+- asserts on the REAL response (bytes, structure, format — not just "no
+  exception")
+- runs at least once before the first production deploy of the feature,
+  and after any change to the integration code
+
+The mocked tests stay — they are fast and catch internal regressions. But
+green mocks + no live test = UNTESTED against reality.
+
 ## Flags
 
 `conocimiento_normas_enabled` defaults to false in `gee-backend/app/config.py`.
