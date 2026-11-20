@@ -13,14 +13,16 @@ several operators share an office NAT.
 
 from __future__ import annotations
 
+import json
 import uuid
-from typing import Any
+from typing import Any, TypeVar
 
 from fastapi import APIRouter, Depends, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import Response
+from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import current_active_user
 from app.config import settings
 from app.core.logging import get_logger
 from app.core.rate_limit import DistributedRateLimiter
@@ -34,10 +36,25 @@ from app.domains.geo.informe_area.schemas import (
     InformeAreaResponse,
     respuesta_informe,
 )
+from app.domains.geo.router_common import _require_operator, cache_bounded_request_body
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/informes-area", tags=["Informe de Área"])
+_ModelT = TypeVar("_ModelT", bound=BaseModel)
+
+
+def _body_openapi(model: type[BaseModel]) -> dict[str, Any]:
+    return {
+        "requestBody": {
+            "required": True,
+            "content": {
+                "application/json": {
+                    "schema": model.model_json_schema(),
+                }
+            },
+        }
+    }
 
 
 _limiter: DistributedRateLimiter | None = None
@@ -67,9 +84,45 @@ def _clave_usuario(usuario: Any) -> str:
     return str(getattr(usuario, "id", "") or "desconocido")
 
 
+async def enforce_informe_body_limit(request: Request) -> None:
+    """413 BEFORE parsing/validating huge JSON bodies (Content-Length and chunked)."""
+    maximum = settings.informe_area_max_body_bytes
+    await cache_bounded_request_body(
+        request,
+        maximum=maximum,
+        too_large_detail=f"Cuerpo mayor a {maximum} bytes",
+        invalid_length_detail="content-length invalido",
+        disconnected_detail="Cliente desconectado",
+    )
+
+
+async def _parse_informe_model(request: Request, model_cls: type[_ModelT]) -> _ModelT:
+    raw = await request.body()
+    try:
+        data = json.loads(raw or b"null")
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise RequestValidationError(
+            [{"loc": ("body",), "msg": f"JSON invalido: {exc}", "type": "json_invalid"}]
+        ) from exc
+    try:
+        return model_cls.model_validate(data)
+    except ValidationError as exc:
+        raise RequestValidationError(exc.errors()) from exc
+
+
+async def parse_informe_create_body(request: Request) -> InformeAreaCreate:
+    """Validate ``InformeAreaCreate`` from the pre-bounded request body."""
+    return await _parse_informe_model(request, InformeAreaCreate)
+
+
+async def parse_informe_preview_body(request: Request) -> InformeAreaPreviewRequest:
+    """Validate ``InformeAreaPreviewRequest`` from the pre-bounded request body."""
+    return await _parse_informe_model(request, InformeAreaPreviewRequest)
+
+
 async def enforce_informe_rate_limit(
     request: Request,  # noqa: ARG001 — kept for dependency symmetry
-    usuario: Any = Depends(current_active_user),
+    usuario: Any = Depends(_require_operator()),
 ) -> None:
     """429 per USER on informe creation (S5 “rate limit en la creación”)."""
     if settings.rate_limit_disabled:
@@ -91,12 +144,17 @@ async def enforce_informe_rate_limit(
     response_model=InformeAreaResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Generar un informe de área en segundo plano (privado)",
-    dependencies=[Depends(enforce_informe_rate_limit)],
+    dependencies=[
+        Depends(_require_operator()),
+        Depends(enforce_informe_body_limit),
+        Depends(enforce_informe_rate_limit),
+    ],
+    openapi_extra=_body_openapi(InformeAreaCreate),
 )
 def crear_informe(
-    payload: InformeAreaCreate,
+    payload: InformeAreaCreate = Depends(parse_informe_create_body),
     db: Session = Depends(get_db),
-    usuario: Any = Depends(current_active_user),
+    usuario: Any = Depends(_require_operator()),
 ) -> InformeAreaResponse:
     """202 + the pending row, or the SAME completed row with ``desde_cache``
     when the selection + layer versions already produced one (S4)."""
@@ -108,11 +166,16 @@ def crear_informe(
     "/preview",
     response_model=InformeAreaPreviewResponse,
     summary="Medir una selección mixta (privado)",
+    dependencies=[
+        Depends(_require_operator()),
+        Depends(enforce_informe_body_limit),
+    ],
+    openapi_extra=_body_openapi(InformeAreaPreviewRequest),
 )
 def preview_informe(
-    payload: InformeAreaPreviewRequest,
+    payload: InformeAreaPreviewRequest = Depends(parse_informe_preview_body),
     db: Session = Depends(get_db),
-    usuario: Any = Depends(current_active_user),
+    usuario: Any = Depends(_require_operator()),
 ) -> InformeAreaPreviewResponse:
     """Geometry-only measurement of a zonas + geometrias selection (PR 3).
 
@@ -128,7 +191,7 @@ def preview_informe(
 @router.get("", response_model=InformeAreaListResponse, summary="Mis informes")
 def listar_informes(
     db: Session = Depends(get_db),
-    usuario: Any = Depends(current_active_user),
+    usuario: Any = Depends(_require_operator()),
 ) -> InformeAreaListResponse:
     filas, total = service.listar_informes(db, usuario=usuario)
     return InformeAreaListResponse(items=[respuesta_informe(f) for f in filas], total=total)
@@ -142,7 +205,7 @@ def listar_informes(
 def obtener_informe(
     informe_id: uuid.UUID,
     db: Session = Depends(get_db),
-    usuario: Any = Depends(current_active_user),
+    usuario: Any = Depends(_require_operator()),
 ) -> InformeAreaResponse:
     return respuesta_informe(service.obtener_informe(db, informe_id, usuario=usuario))
 
@@ -158,7 +221,7 @@ def obtener_informe(
 def descargar_pdf(
     informe_id: uuid.UUID,
     db: Session = Depends(get_db),
-    usuario: Any = Depends(current_active_user),
+    usuario: Any = Depends(_require_operator()),
 ) -> Response:
     """``application/pdf`` with the stored bytes, filename from the row's nombre.
 
@@ -185,7 +248,7 @@ def descargar_pdf(
 def descargar_kmz(
     informe_id: uuid.UUID,
     db: Session = Depends(get_db),
-    usuario: Any = Depends(current_active_user),
+    usuario: Any = Depends(_require_operator()),
 ) -> Response:
     """``application/vnd.google-earth.kmz`` — same privacy ladder as the PDF.
 
