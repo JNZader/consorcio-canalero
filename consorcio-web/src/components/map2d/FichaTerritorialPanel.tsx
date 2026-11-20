@@ -787,8 +787,10 @@ export const FichaTerritorialPanel = memo(function FichaTerritorialPanel({
       <Group justify="space-between" mb="xs" wrap="nowrap">
         <Title order={5}>Ficha territorial</Title>
         <Button
-          size="compact-xs"
-          variant="light"
+          size="sm"
+          variant="filled"
+          color="cyan"
+          leftSection="📄"
           onClick={abrirInforme}
           data-testid="informe-area-abrir"
         >
