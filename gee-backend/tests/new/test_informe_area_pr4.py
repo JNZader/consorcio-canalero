@@ -914,7 +914,7 @@ def test_miniatura_falso_color_bandas_por_sensor():
             self.meta["scene"] = scene_id
             return _Imagen(self.meta)
 
-        def Geometry(self, geojson=None, geodesic=None):
+        def Geometry(self, geo_json=None, geodesic=None):
             self.meta["geom"] = (geojson, geodesic)
             return ("region", geojson)
 
