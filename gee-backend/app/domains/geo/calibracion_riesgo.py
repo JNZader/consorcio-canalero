@@ -225,7 +225,10 @@ def _descarga_gee(imagen, grilla: GrillaRiesgo, requests_module) -> bytes:
             "format": "GEO_TIFF",
             "crs": grilla.crs,
             "crsTransform": list(grilla.transform),
-            "dimensions": {"width": grilla.width, "height": grilla.height},
+            # GEE espera "WxH" (string) o [W, H] — un dict {width, height}
+            # produce "Invalid dimensions" en el servidor (cazado en el box
+            # 2026-11-19; los mocks locales no ejercitan la API real).
+            "dimensions": [grilla.width, grilla.height],
         }
     )
     respuesta = requests_module.get(url, timeout=180)
