@@ -945,6 +945,92 @@ def test_miniatura_falso_color_bandas_por_sensor():
     assert ee_stub.meta["geom"][1] is False
 
 
+def test_miniatura_s1_banda_unica_sin_clip():
+    """S1 path: ImageCollection load, single VV band, NO clip, raw GeoJSON region.
+
+    Box-tested against real GEE (2026-11-20): multi-band S1 compositing
+    triggers "inconsistent projections" on getThumbURL while a single VV
+    band renders fine (water reads dark — the signal the PDF needs).
+    Layers 7-8 of the thumbnail onion. The stub image deliberately has NO
+    clip() method: calling it must fail the test.
+    """
+
+    class _ImagenS1:
+        def __init__(self, meta):
+            self.meta = meta
+
+        def select(self, bandas):
+            self.meta["bandas"] = bandas
+            return self
+
+        def getThumbURL(self, params):
+            self.meta["params"] = params
+            return "https://ee/thumb-s1"
+
+    class _Coleccion:
+        def __init__(self, meta, imagen):
+            self._meta = meta
+            self._imagen = imagen
+
+        def filter(self, filtro):
+            self._meta["filtro"] = filtro
+            return self
+
+        def first(self):
+            return self._imagen
+
+    class _Filtro:
+        @staticmethod
+        def eq(campo, valor):
+            return ("eq", campo, valor)
+
+    class _EES1:
+        def __init__(self):
+            self.meta = {}
+            self.Filter = _Filtro
+
+        def Geometry(self, geo_json=None, geodesic=None):
+            # constructed for every sensor BEFORE the branch — unused by S1
+            self.meta["geom"] = (geo_json, geodesic)
+            return ("region-geom", geo_json)
+
+        def ImageCollection(self, nombre):
+            self.meta["coleccion"] = nombre
+            return _Coleccion(self.meta, _ImagenS1(self.meta))
+
+    class _RespS1:
+        content = b"PNG-S1"
+
+        def raise_for_status(self):
+            return None
+
+    class _ReqS1:
+        def get(self, url, timeout=None):
+            assert url == "https://ee/thumb-s1"
+            return _RespS1()
+
+    geojson = {"type": "Polygon", "coordinates": [[[-62.5, -32.5], [-62.4, -32.5]]]}
+    ee_stub, req_stub = _EES1(), _ReqS1()
+    png = service.miniatura_falso_color_impl(
+        scene_id="S1A_IW_GRDH_1SDV",
+        sensor="sentinel1",
+        region_geojson=geojson,
+        ee_module=ee_stub,
+        requests_module=req_stub,
+    )
+    assert png == b"PNG-S1"
+    # loads from the collection, filters by system:index, single VV band
+    assert ee_stub.meta["coleccion"] == "COPERNICUS/S1_GRD"
+    assert ee_stub.meta["filtro"] == ("eq", "system:index", "S1A_IW_GRDH_1SDV")
+    assert ee_stub.meta["bandas"] == ["VV"]
+    # raw GeoJSON region (not an ee.Geometry), no crs override needed
+    assert ee_stub.meta["params"]["region"] == geojson
+    assert ee_stub.meta["params"]["bands"] == ["VV"]
+    assert ee_stub.meta["params"]["max"] == 0.5
+    assert ee_stub.meta["params"]["dimensions"] == service.MINIATURA_PX
+    assert "crs" not in ee_stub.meta["params"]
+
+
 # ── S7: the ONE opt-in live test (network; skip without IDECOR_LIVE=1) ──────
 
 
