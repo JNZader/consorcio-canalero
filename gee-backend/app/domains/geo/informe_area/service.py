@@ -1295,6 +1295,8 @@ def miniatura_falso_color_impl(
             "dimensions": dimension_px,
             "region": region,
             "format": "png",
+            "crs": "EPSG:4326",  # S1's native SAR projection clashes with the
+            # clip geometry — force WGS84 for the thumbnail render (layer 7).
         }
     )
     respuesta = requests_module.get(url, timeout=90)
