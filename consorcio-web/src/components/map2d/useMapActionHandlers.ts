@@ -281,7 +281,11 @@ export function useMapExportHandlers({
       // so the PDF swatch matches what the user sees on the live map.
       const canalLegend = (canalesRelevados?.features ?? []).map((feature) => {
         const props = feature.properties;
-        const km = Number((props.longitud_m / 1000).toFixed(1));
+        // Guard: a canal without longitud_m (missing data in the GeoJSON)
+        // produces NaN → JSON null → Pydantic 422. Send 0 instead — the
+        // backend renders it in the km column and the TOTAL stays honest.
+        const rawKm = Number(props.longitud_m);
+        const km = Number.isFinite(rawKm) ? Number((rawKm / 1000).toFixed(1)) : 0;
         const styleKey = props.source_style ?? 'sin_obra';
         const color = CANAL_STYLE_COLORS[styleKey] ?? CANALES_COLORS.relevadoSinObra;
         return {
