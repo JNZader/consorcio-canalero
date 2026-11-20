@@ -1294,6 +1294,10 @@ def _miniatura_por_defecto(scene_id: str, sensor: str, region_geojson: dict[str,
     import ee
     import requests
 
+    from app.domains.geo.gee_service import _ensure_initialized
+
+    _ensure_initialized()
+
     return miniatura_falso_color_impl(
         scene_id=scene_id,
         sensor=sensor,
