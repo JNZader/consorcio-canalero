@@ -1244,7 +1244,10 @@ _CANDIDATO_ANCLA_SQL = text(
 #: surface-reflectance scale the house VIS_PRESETS uses, and the Landsat
 #: TOA reflectance ceiling the explorer pins for those collections.
 _BANDAS_FALSO_COLOR: dict[str, tuple[list[str], float]] = {
-    "sentinel1": (["VV", "VH"], 0.5),  # SAR: agua = oscura en VV/VH; GEE no permite duplicar bandas en select()
+    "sentinel1": (
+        ["VV", "VH"],
+        0.5,
+    ),  # SAR: agua = oscura en VV/VH; GEE no permite duplicar bandas en select()
     "sentinel2": (["B8", "B11", "B4"], 3000.0),
     "landsat9": (["B5", "B6", "B4"], 0.35),
     "landsat8": (["B5", "B6", "B4"], 0.35),
