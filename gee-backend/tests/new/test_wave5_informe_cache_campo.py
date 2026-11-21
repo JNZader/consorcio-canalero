@@ -218,3 +218,78 @@ def test_rfc5987_content_disposition_percent_encodes_slash_and_percent() -> None
     assert "%25" in utf8_pdf
     assert "%2F" in utf8_kmz
     assert "%25" in utf8_kmz
+
+
+def test_public_campo_route_emits_private_no_cache_etag_304_and_redacts_logs(
+    informe_db: Session, capsys, caplog, monkeypatch
+) -> None:
+    import logging
+
+    from fastapi.testclient import TestClient
+
+    from app.core.logging import redact_sensitive_path, sanitize_sensitive_data
+    from app.db.session import get_db
+    from app.main import app
+
+    user = _seed_user(informe_db, f"w5-campo-{uuid.uuid4().hex[:8]}@test.local")
+    zona_id = _seed_zona(informe_db, "w5-zona-campo")
+    monkeypatch.setattr(service, "try_publish_celery_task", lambda _id: False)
+    row, _ = service.crear_informe(
+        informe_db,
+        InformeAreaCreate(nombre="Campo Privado", zona_ids=[zona_id]),
+        usuario_id=user.id,
+    )
+    paquete = b'{"version":1,"nombre":"Campo Privado","temas":{}}'
+    service.repo.actualizar_estado_if_actual(
+        informe_db,
+        row.id,
+        expected_estado=EstadoGeoJob.PENDING,
+        estado=EstadoGeoJob.COMPLETED,
+        campo_paquete=paquete,
+    )
+
+    secret_token = row.token_publico
+    assert redact_sensitive_path(f"/api/v2/public/campo/{secret_token}") == (
+        "/api/v2/public/campo/[REDACTED]"
+    )
+    assert redact_sensitive_path("/api/v2/geo/informes-area") == "/api/v2/geo/informes-area"
+    sanitized = sanitize_sensitive_data(
+        {
+            "url": f"https://app.example/campo/{secret_token}?v=1",
+            "nested": [f"/campo/{secret_token}"],
+        }
+    )
+    assert secret_token not in str(sanitized)
+
+    app.dependency_overrides[get_db] = lambda: informe_db
+    client = TestClient(app)
+    client.headers.update({"Host": "localhost"})
+    try:
+        with caplog.at_level(logging.INFO, logger="app.core.middleware"):
+            resp = client.get(f"/api/v2/public/campo/{secret_token}")
+            assert resp.status_code == 200
+            assert resp.headers["cache-control"] == "private, no-cache"
+            etag = resp.headers["etag"]
+            assert etag.startswith('"')
+            assert "Accept-Encoding" in resp.headers.get("vary", "")
+
+            not_mod = client.get(
+                f"/api/v2/public/campo/{secret_token}",
+                headers={"If-None-Match": etag},
+            )
+            assert not_mod.status_code == 304
+            assert not_mod.content == b""
+            assert not_mod.headers["etag"] == etag
+            assert not_mod.headers["cache-control"] == "private, no-cache"
+
+            weak_not_mod = client.get(
+                f"/api/v2/public/campo/{secret_token}",
+                headers={"If-None-Match": f"W/{etag}"},
+            )
+            assert weak_not_mod.status_code == 304
+    finally:
+        app.dependency_overrides.clear()
+
+    combined_logs = caplog.text + str([r.msg for r in caplog.records]) + capsys.readouterr().out
+    assert secret_token not in combined_logs
+    assert "/api/v2/public/campo/[REDACTED]" in combined_logs

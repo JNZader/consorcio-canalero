@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core.logging import get_logger
+from app.core.middleware import etag_for_body, if_none_match_hits
 from app.core.rate_limit import DistributedRateLimiter
 from app.db.session import get_db
 from app.domains.geo.informe_area import service
@@ -280,11 +281,16 @@ public_router = APIRouter(prefix="/campo", tags=["Informe de Área — campo"])
     "/{token}",
     summary="Paquete de campo por token público (sin autenticación)",
     responses={
+        304: {"description": "Paquete sin cambios (ETag coincide)"},
         404: {"description": "Token desconocido, revocado o informe no completado"},
         410: {"description": "El informe venció (retención de 90 días)"},
     },
 )
-def obtener_paquete_campo(token: str, db: Session = Depends(get_db)) -> Response:
+def obtener_paquete_campo(
+    token: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Response:
     """The offline field package JSON — everything ``/campo/:token`` renders.
 
     404 is the ONLY answer for unknown/revoked/pending tokens (a public
@@ -292,11 +298,16 @@ def obtener_paquete_campo(token: str, db: Session = Depends(get_db)) -> Response
     shows an honest message instead of "no existe".
     """
     contenido = service.paquete_campo_por_token(db, token)
+    etag = etag_for_body(contenido)
+    headers = {
+        "Cache-Control": "private, no-cache",
+        "ETag": etag,
+        "Vary": "Accept-Encoding",
+    }
+    if if_none_match_hits(request.headers.get("if-none-match"), etag):
+        return Response(status_code=304, headers=headers)
     return Response(
         content=contenido,
         media_type="application/json",
-        # The SW's CacheFirst rule governs offline reuse; a modest HTTP
-        # freshness window keeps the FIRST offline window working even
-        # before the service worker has settled.
-        headers={"Cache-Control": "public, max-age=3600"},
+        headers=headers,
     )
