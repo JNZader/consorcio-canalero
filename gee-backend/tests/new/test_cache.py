@@ -147,3 +147,31 @@ async def test_cache_retries_redis_after_cooldown(monkeypatch):
         clock[0] += 5.1
         assert await cache.get("k") == {"recovered": True}
         assert from_url.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_cache_pop_uses_atomic_getdel_on_redis():
+    cache = JSONCache(redis_url="redis://fake")
+    stub = _stub_redis()
+    stub.getdel = AsyncMock(side_effect=[json.dumps({"access_token": "jwt-123"}), None])
+    with _patch_aioredis_from_url(stub):
+        first = await cache.pop("oauth:exchange:n1")
+        second = await cache.pop("oauth:exchange:n1")
+    assert first == {"access_token": "jwt-123"}
+    assert second is None
+    assert stub.getdel.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_cache_ephemeral_memory_fallback_is_single_use_and_expires(monkeypatch):
+    clock = [500.0]
+    monkeypatch.setattr("app.core.cache.time.monotonic", lambda: clock[0])
+    cache = JSONCache(redis_url=None)
+
+    assert await cache.set_ephemeral("k1", {"token": "abc"}, ttl_seconds=60) is True
+    assert await cache.pop("k1") == {"token": "abc"}
+    assert await cache.pop("k1") is None
+
+    assert await cache.set_ephemeral("k2", {"token": "expired"}, ttl_seconds=10) is True
+    clock[0] += 10.1
+    assert await cache.pop("k2") is None

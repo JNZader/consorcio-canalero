@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
+import functools
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from typing import Literal
 
@@ -25,22 +29,53 @@ GEE_CAMINOS_TTL = 6 * 60 * 60  # 6 h — road status updated occasionally
 GEE_SENTINEL2_TTL = 60 * 60  # 1 h — image-by-date tiles
 
 
+_GEE_EXECUTOR_LOCK = threading.Lock()
+_GEE_EXECUTOR: ThreadPoolExecutor | None = None
+
+
+def _get_gee_executor() -> ThreadPoolExecutor:
+    """Return a bounded threadpool dedicated to blocking Earth Engine RPCs."""
+    global _GEE_EXECUTOR
+    with _GEE_EXECUTOR_LOCK:
+        if _GEE_EXECUTOR is None:
+            _GEE_EXECUTOR = ThreadPoolExecutor(
+                max_workers=4,
+                thread_name_prefix="gee-io",
+            )
+        return _GEE_EXECUTOR
+
+
+def shutdown_gee_executor() -> None:
+    """Release the dedicated GEE threadpool on shutdown without blocking indefinitely."""
+    global _GEE_EXECUTOR
+    with _GEE_EXECUTOR_LOCK:
+        executor = _GEE_EXECUTOR
+        _GEE_EXECUTOR = None
+    if executor is not None:
+        executor.shutdown(wait=False, cancel_futures=True)
+
+
+async def _submit_to_gee_executor(func, *args, **kwargs):
+    """Run synchronous I/O in ``_GEE_EXECUTOR`` while preserving contextvars."""
+    loop = asyncio.get_running_loop()
+    ctx = contextvars.copy_context()
+    return await loop.run_in_executor(
+        _get_gee_executor(),
+        functools.partial(ctx.run, func, *args, **kwargs),
+    )
+
+
 async def _run_blocking(func, *args, **kwargs):
-    """Run a synchronous, potentially-slow function in a worker thread so it
-    does NOT block the uvicorn event loop.
-
-    Why this matters
-    ----------------
-    The GEE service calls in this module make blocking network requests to
-    Google Earth Engine that can take 30 s to 2 min. Without offloading to a
-    thread, awaiting them stalls the entire event loop — every other endpoint
-    queues behind them, which is what produced the 21–161 s tail latency on
-    `/basins/approved-zones/current` (a totally unrelated PostGIS endpoint).
-
-    `asyncio.to_thread` propagates the current contextvars (request id,
-    structlog binding, etc.) so logging stays consistent.
+    """Run a synchronous, potentially-slow function in the dedicated GEE worker
+    pool so it does NOT block the uvicorn event loop or starve AnyIO's shared
+    threadpool.
     """
-    return await asyncio.to_thread(func, *args, **kwargs)
+    return await _submit_to_gee_executor(func, *args, **kwargs)
+
+
+async def _ensure_gee_async(ensure_gee):
+    """Initialize/resolve Earth Engine dependencies on ``_GEE_EXECUTOR``."""
+    return await _submit_to_gee_executor(ensure_gee)
 
 
 def satellite_image_flight_key(
@@ -103,7 +138,7 @@ async def list_gee_layers_impl(lazy_gee_service) -> JSONResponse:
     svc = lazy_gee_service()
     return JSONResponse(
         content=svc["get_available_layers"](),
-        headers={"Cache-Control": "public, max-age=86400"},
+        headers={"Cache-Control": "private, max-age=86400"},
     )
 
 
@@ -114,7 +149,7 @@ async def get_sentinel2_tiles_impl(
     max_cloud: int = 80,
     ensure_gee=None,
 ):
-    svc = ensure_gee()
+    svc = await _ensure_gee_async(ensure_gee)
     try:
         gee_service = svc["get_gee_service"]()
         result = await _run_blocking(
@@ -135,12 +170,12 @@ async def get_sentinel2_tiles_impl(
 
 
 async def list_consorcios_camineros_impl(*, ensure_gee) -> JSONResponse:
-    svc = ensure_gee()
+    svc = await _ensure_gee_async(ensure_gee)
     try:
         consorcios = await _run_blocking(svc["get_consorcios_camineros"])
         return JSONResponse(
             content={"consorcios": consorcios, "total": len(consorcios)},
-            headers={"Cache-Control": "public, max-age=3600"},
+            headers={"Cache-Control": "private, max-age=3600"},
         )
     except Exception as e:
         logger.error("Error obteniendo consorcios camineros", error=str(e))
@@ -152,7 +187,7 @@ async def list_consorcios_camineros_impl(*, ensure_gee) -> JSONResponse:
 
 
 async def get_caminos_consorcio_impl(*, codigo: str, ensure_gee) -> JSONResponse:
-    svc = ensure_gee()
+    svc = await _ensure_gee_async(ensure_gee)
     try:
         geojson = await _run_blocking(svc["get_caminos_by_consorcio"], codigo)
         if not geojson.get("features"):
@@ -164,7 +199,7 @@ async def get_caminos_consorcio_impl(*, codigo: str, ensure_gee) -> JSONResponse
             )
         return JSONResponse(
             content=geojson,
-            headers={"Cache-Control": "public, max-age=3600"},
+            headers={"Cache-Control": "private, max-age=3600"},
         )
     except AppException:
         raise
@@ -178,7 +213,7 @@ async def get_caminos_consorcio_impl(*, codigo: str, ensure_gee) -> JSONResponse
 
 
 async def get_caminos_por_nombre_consorcio_impl(*, nombre: str, ensure_gee) -> JSONResponse:
-    svc = ensure_gee()
+    svc = await _ensure_gee_async(ensure_gee)
     try:
         geojson = await _run_blocking(svc["get_caminos_by_consorcio_nombre"], nombre)
         if not geojson.get("features"):
@@ -189,7 +224,7 @@ async def get_caminos_por_nombre_consorcio_impl(*, nombre: str, ensure_gee) -> J
             )
         return JSONResponse(
             content=geojson,
-            headers={"Cache-Control": "public, max-age=3600"},
+            headers={"Cache-Control": "private, max-age=3600"},
         )
     except AppException:
         raise
@@ -209,15 +244,15 @@ async def get_caminos_coloreados_impl(*, ensure_gee) -> JSONResponse:
     if cached is not None:
         return JSONResponse(
             content=cached,
-            headers={"Cache-Control": "public, max-age=3600", "X-Cache": "HIT"},
+            headers={"Cache-Control": "private, max-age=3600", "X-Cache": "HIT"},
         )
-    svc = ensure_gee()
+    svc = await _ensure_gee_async(ensure_gee)
     try:
         result = await _run_blocking(svc["get_caminos_con_colores"])
         await cache.set(cache_key, result, ttl_seconds=GEE_CAMINOS_TTL)
         return JSONResponse(
             content=result,
-            headers={"Cache-Control": "public, max-age=3600", "X-Cache": "MISS"},
+            headers={"Cache-Control": "private, max-age=3600", "X-Cache": "MISS"},
         )
     except Exception as e:
         logger.error("Error obteniendo caminos coloreados", error=str(e))
@@ -235,15 +270,15 @@ async def get_estadisticas_caminos_impl(*, ensure_gee) -> JSONResponse:
     if cached is not None:
         return JSONResponse(
             content=cached,
-            headers={"Cache-Control": "public, max-age=3600", "X-Cache": "HIT"},
+            headers={"Cache-Control": "private, max-age=3600", "X-Cache": "HIT"},
         )
-    svc = ensure_gee()
+    svc = await _ensure_gee_async(ensure_gee)
     try:
         result = await _run_blocking(svc["get_estadisticas_consorcios"])
         await cache.set(cache_key, result, ttl_seconds=GEE_CAMINOS_TTL)
         return JSONResponse(
             content=result,
-            headers={"Cache-Control": "public, max-age=3600", "X-Cache": "MISS"},
+            headers={"Cache-Control": "private, max-age=3600", "X-Cache": "MISS"},
         )
     except Exception as e:
         logger.error("Error obteniendo estadisticas de consorcios", error=str(e))
@@ -261,11 +296,11 @@ async def get_gee_layer_impl(*, layer_name: str, ensure_gee) -> JSONResponse:
     if cached is not None:
         return JSONResponse(
             content=cached,
-            headers={"Cache-Control": "public, max-age=3600", "X-Cache": "HIT"},
+            headers={"Cache-Control": "private, max-age=3600", "X-Cache": "HIT"},
         )
 
     async def _compute():
-        svc = ensure_gee()
+        svc = await _ensure_gee_async(ensure_gee)
         geojson = await _run_blocking(svc["get_layer_geojson"], layer_name)
         await cache.set(cache_key, geojson, ttl_seconds=GEE_LAYER_TTL)
         return geojson
@@ -290,7 +325,7 @@ async def get_gee_layer_impl(*, layer_name: str, ensure_gee) -> JSONResponse:
         )
     return JSONResponse(
         content=geojson,
-        headers={"Cache-Control": "public, max-age=3600", "X-Cache": "MISS"},
+        headers={"Cache-Control": "private, max-age=3600", "X-Cache": "MISS"},
     )
 
 
@@ -302,7 +337,7 @@ async def get_available_image_dates_impl(
     max_cloud: int = 80,
     ensure_gee=None,
 ):
-    svc = ensure_gee()
+    svc = await _ensure_gee_async(ensure_gee)
     try:
         explorer = svc["get_image_explorer"]()
         result = await _run_blocking(
@@ -314,7 +349,7 @@ async def get_available_image_dates_impl(
         )
         return JSONResponse(
             content=result,
-            headers={"Cache-Control": "public, max-age=86400"},
+            headers={"Cache-Control": "private, max-age=86400"},
         )
     except AppException:
         raise
@@ -339,7 +374,7 @@ async def get_sentinel2_image_impl(
     cached = await cache.get(cache_key)
     if cached is not None:
         return cached
-    svc = ensure_gee()
+    svc = await _ensure_gee_async(ensure_gee)
     try:
         explorer = svc["get_image_explorer"]()
         result = await _run_blocking(
@@ -380,7 +415,7 @@ async def get_sentinel2_monthly_impl(*, year: int, month: int, ensure_gee=None):
     cached = await cache.get(cache_key)
     if cached is not None:
         return cached
-    svc = ensure_gee()
+    svc = await _ensure_gee_async(ensure_gee)
     try:
         explorer = svc["get_image_explorer"]()
         result = await _run_blocking(
@@ -423,7 +458,7 @@ async def get_sentinel2_annual_impl(*, year: int, ensure_gee=None):
     cached = await cache.get(cache_key)
     if cached is not None:
         return cached
-    svc = ensure_gee()
+    svc = await _ensure_gee_async(ensure_gee)
     try:
         explorer = svc["get_image_explorer"]()
         result = await _run_blocking(
@@ -460,7 +495,7 @@ async def _jrc_surface_water_impl(*, kind: str, year: int | None, ensure_gee=Non
     cached = await cache.get(cache_key)
     if cached is not None:
         return cached
-    svc = ensure_gee()
+    svc = await _ensure_gee_async(ensure_gee)
     try:
         import ee
 
@@ -540,7 +575,7 @@ async def get_satellite_image_impl(
         return cached
 
     async def _compute():
-        svc = ensure_gee()
+        svc = await _ensure_gee_async(ensure_gee)
         explorer = svc["get_image_explorer"]()
         result = await _run_blocking(
             explorer.get_image,
@@ -585,7 +620,7 @@ async def get_image_scenes_impl(
     cached = await cache.get(cache_key)
     if cached is not None:
         return cached
-    svc = ensure_gee()
+    svc = await _ensure_gee_async(ensure_gee)
     try:
         explorer = svc["get_image_explorer"]()
         result = await _run_blocking(
@@ -621,7 +656,7 @@ async def compare_flood_dates_impl(
     max_cloud: int,
     ensure_gee,
 ):
-    svc = ensure_gee()
+    svc = await _ensure_gee_async(ensure_gee)
     try:
         explorer = svc["get_image_explorer"]()
         return await _run_blocking(
@@ -648,7 +683,7 @@ async def get_available_visualizations_impl():
     ]
     return JSONResponse(
         content=visualizations,
-        headers={"Cache-Control": "public, max-age=86400"},
+        headers={"Cache-Control": "private, max-age=86400"},
     )
 
 
@@ -807,7 +842,7 @@ async def get_historic_flood_tiles_impl(
             resource_id=flood_id,
         )
 
-    svc = ensure_gee()
+    svc = await _ensure_gee_async(ensure_gee)
     try:
         explorer = svc["get_image_explorer"]()
         flood_date = date.fromisoformat(flood["date"])

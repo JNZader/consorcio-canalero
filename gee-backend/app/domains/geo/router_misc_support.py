@@ -9,7 +9,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
-from app.domains.geo.models import TipoAnalisisGee
+from app.domains.geo.models import EstadoGeoJob, TipoAnalisisGee
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.schemas import AnalisisGeoListResponse
 from app.shared.celery_outbox import (
@@ -17,6 +17,7 @@ from app.shared.celery_outbox import (
     enqueue_celery_task,
     try_publish_celery_task,
 )
+from app.shared.enum_params import require_choice
 from app.shared.pagination import PaginatedResponse
 
 logger = get_logger(__name__)
@@ -108,7 +109,13 @@ def _rollback_gee_submission_quietly(db: Session) -> None:
         )
 
 
-def submit_gee_analysis_impl(payload, db: Session, repo: GeoRepository):
+def submit_gee_analysis_impl(
+    payload,
+    db: Session,
+    repo: GeoRepository,
+    *,
+    usuario_id: uuid.UUID | None = None,
+):
     """Atomically persist an AnalisisGeo and its Celery publication intent."""
     today = date.today()
     stored_parameters = dict(payload.parametros)
@@ -125,7 +132,7 @@ def submit_gee_analysis_impl(payload, db: Session, repo: GeoRepository):
             tipo=normalized_tipo,
             fecha_analisis=today,
             parametros=stored_parameters,
-            usuario_id=None,
+            usuario_id=usuario_id,
             celery_task_id=str(celery_task_id),
         )
         outbox = enqueue_celery_task(
@@ -169,6 +176,8 @@ def list_gee_analyses_impl(
     db: Session,
     repo: GeoRepository,
 ) -> PaginatedResponse[AnalisisGeoListResponse]:
+    tipo = require_choice(tipo, TipoAnalisisGee, "tipo")
+    estado = require_choice(estado, EstadoGeoJob, "estado")
     items, total = repo.get_analisis_list(
         db, page=page, limit=limit, tipo_filter=tipo, estado_filter=estado
     )

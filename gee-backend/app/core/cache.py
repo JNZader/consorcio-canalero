@@ -12,8 +12,9 @@ call site, not in this module.
 from __future__ import annotations
 
 import json
+import threading
 import time
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 from app.core.logging import get_logger
 from app.core.redis_client import redis_from_url_kwargs
@@ -53,6 +54,8 @@ class JSONCache:
         self._redis: Optional["redis.asyncio.Redis"] = None
         self._redis_available: Optional[bool] = None
         self._redis_retry_at = 0.0
+        self._memory_lock = threading.Lock()
+        self._memory_ephemeral: dict[str, tuple[float, Any]] = {}
         logger.info("JSON cache initialized", redis_configured=bool(redis_url))
 
     async def _mark_redis_unavailable(self) -> None:
@@ -145,6 +148,51 @@ class JSONCache:
             logger.warning("Redis SETEX failed", key=key, error=str(exc))
             await self._mark_redis_unavailable()
             return False
+
+    async def set_ephemeral(self, key: str, value: Any, ttl_seconds: int) -> bool:
+        """Store a short-lived one-time value, falling back to process memory."""
+        if ttl_seconds <= 0:
+            return False
+        if await self.set(key, value, ttl_seconds=ttl_seconds):
+            return True
+        now = time.monotonic()
+        with self._memory_lock:
+            expired = [k for k, (exp, _val) in self._memory_ephemeral.items() if now >= exp]
+            for k in expired:
+                del self._memory_ephemeral[k]
+            self._memory_ephemeral[key] = (now + ttl_seconds, value)
+        return True
+
+    async def pop(self, key: str) -> Optional[Any]:
+        """Atomically retrieve and remove ``key`` (Redis GETDEL + memory fallback)."""
+        client = await self._get_redis()
+        raw: Optional[str] = None
+        if client is not None:
+            try:
+                raw = await client.getdel(self._full_key(key))
+            except Exception as exc:
+                logger.warning("Redis GETDEL failed, treating as miss", key=key, error=str(exc))
+                await self._mark_redis_unavailable()
+
+        with self._memory_lock:
+            mem_entry = self._memory_ephemeral.pop(key, None)
+
+        if raw is not None:
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError as exc:
+                logger.warning(
+                    "Popped value is not valid JSON, treating as miss",
+                    key=key,
+                    error=str(exc),
+                )
+                return None
+
+        if mem_entry is not None:
+            expires_at, mem_val = mem_entry
+            if time.monotonic() < expires_at:
+                return mem_val
+        return None
 
     def _lock_key(self, key: str) -> str:
         return self._full_key(f"lock:{key}")
@@ -290,9 +338,9 @@ class BytesCache:
             self._redis_available = None
         if self._redis is None and self.redis_url:
             try:
-                import redis  # type: ignore[import-not-found]
+                import redis
 
-                self._redis = redis.Redis.from_url(
+                self._redis = cast(Any, redis.Redis).from_url(
                     self.redis_url,
                     **redis_from_url_kwargs(decode_responses=False),
                 )

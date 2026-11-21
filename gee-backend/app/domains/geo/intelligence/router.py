@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -41,9 +41,51 @@ from app.domains.geo.intelligence.schemas import (
     ZonaOperativaResponse,
     ZonificacionRequest,
 )
+from app.shared.celery_outbox import (
+    CeleryTaskKey,
+    enqueue_celery_task,
+    try_publish_celery_task,
+)
 from app.shared.pagination import PaginatedResponse
 
 logger = get_logger(__name__)
+
+
+def _dispatch_intelligence_outbox_task(
+    db: Session,
+    *,
+    task_key: CeleryTaskKey,
+    task_args: list[Any] | None = None,
+    task_kwargs: dict[str, Any] | None = None,
+) -> AsyncTaskResponse:
+    """Enqueue an intelligence Celery task atomically in the outbox and publish best-effort."""
+    task_id = uuid.uuid4()
+    outbox = enqueue_celery_task(
+        db,
+        celery_task_id=task_id,
+        task_key=task_key,
+        task_args=task_args,
+        task_kwargs=task_kwargs,
+    )
+    db.commit()
+    try:
+        published = try_publish_celery_task(outbox.id)
+    except Exception as exc:  # noqa: BLE001 — Celery beat outbox relay retries deferred rows
+        published = False
+        logger.warning(
+            "intelligence_task_immediate_publish_failed",
+            task_key=task_key.value,
+            task_id=str(task_id),
+            error_type=type(exc).__name__,
+        )
+    if not published:
+        logger.info(
+            "intelligence_task_deferred_to_outbox",
+            task_key=task_key.value,
+            task_id=str(task_id),
+        )
+    return AsyncTaskResponse(task_id=str(task_id))
+
 
 router = APIRouter(tags=["Intelligence"])
 
@@ -253,10 +295,10 @@ def detect_conflictos(
     db: Session = Depends(get_db),
     _user=Depends(_require_operator()),
 ) -> AsyncTaskResponse:
-    from app.domains.geo.intelligence.tasks import task_detect_all_conflicts
-
-    task = task_detect_all_conflicts.delay()
-    return AsyncTaskResponse(task_id=task.id)
+    return _dispatch_intelligence_outbox_task(
+        db,
+        task_key=CeleryTaskKey.DETECT_ALL_CONFLICTS,
+    )
 
 
 # RUNOFF SIMULATION
@@ -303,10 +345,11 @@ def generate_zonas(
     db: Session = Depends(get_db),
     _user=Depends(_require_operator()),
 ) -> AsyncTaskResponse:
-    from app.domains.geo.intelligence.tasks import task_generate_zonification
-
-    task = task_generate_zonification.delay(str(payload.dem_layer_id), payload.threshold)
-    return AsyncTaskResponse(task_id=task.id)
+    return _dispatch_intelligence_outbox_task(
+        db,
+        task_key=CeleryTaskKey.GENERATE_ZONIFICATION,
+        task_args=[str(payload.dem_layer_id), payload.threshold],
+    )
 
 
 @router.post("/hci/batch", response_model=AsyncTaskResponse)
@@ -314,10 +357,10 @@ def batch_calculate_hci(
     db: Session = Depends(get_db),
     _user=Depends(_require_operator()),
 ) -> AsyncTaskResponse:
-    from app.domains.geo.intelligence.tasks import task_calculate_hci_all_zones
-
-    task = task_calculate_hci_all_zones.delay()
-    return AsyncTaskResponse(task_id=task.id)
+    return _dispatch_intelligence_outbox_task(
+        db,
+        task_key=CeleryTaskKey.CALCULATE_HCI_ALL,
+    )
 
 
 # CANAL PRIORITY
@@ -388,14 +431,15 @@ def trigger_composite_analysis(
     db: Session = Depends(get_db),
     _user=Depends(_require_operator()),
 ) -> AsyncTaskResponse:
-    from app.domains.geo.tasks import composite_analysis_task
-
-    task = composite_analysis_task.delay(
-        area_id=payload.area_id,
-        weights_flood=payload.weights_flood,
-        weights_drainage=payload.weights_drainage,
+    return _dispatch_intelligence_outbox_task(
+        db,
+        task_key=CeleryTaskKey.COMPOSITE_ANALYSIS,
+        task_kwargs={
+            "area_id": payload.area_id,
+            "weights_flood": payload.weights_flood,
+            "weights_drainage": payload.weights_drainage,
+        },
     )
-    return AsyncTaskResponse(task_id=task.id)
 
 
 @router.get("/composite/stats/{area_id}", response_model=BasinRiskRankingResponse)

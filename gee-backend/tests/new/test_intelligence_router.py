@@ -19,6 +19,7 @@ from app.domains.geo.intelligence.schemas import (
     EscorrentiaRequest,
     ZonificacionRequest,
 )
+from app.shared.celery_outbox import CeleryTaskKey
 
 
 # ---------------------------------------------------------------------------
@@ -326,12 +327,36 @@ class TestSimpleEndpoints:
     def test_detect_conflictos(self):
         from app.domains.geo.intelligence.router import detect_conflictos
 
-        mock_task = MagicMock()
-        mock_task.id = "task-123"
-        with patch("app.domains.geo.intelligence.tasks.task_detect_all_conflicts") as mock_fn:
-            mock_fn.delay.return_value = mock_task
-            result = detect_conflictos(db=MagicMock(), _user=MagicMock())
-        assert result.task_id == "task-123"
+        events: list[str] = []
+        db = MagicMock()
+        db.commit.side_effect = lambda: events.append("commit")
+        outbox_id = uuid.uuid4()
+
+        def fake_enqueue(session, *, celery_task_id, task_key, task_args=None, task_kwargs=None):
+            events.append("enqueue")
+            assert session is db
+            assert task_key is CeleryTaskKey.DETECT_ALL_CONFLICTS
+            assert task_args is None
+            assert task_kwargs is None
+            return SimpleNamespace(id=outbox_id, celery_task_id=str(celery_task_id))
+
+        def fake_publish(row_id):
+            events.append("publish")
+            assert row_id == outbox_id
+            return True
+
+        with (
+            patch(
+                "app.domains.geo.intelligence.router.enqueue_celery_task", side_effect=fake_enqueue
+            ),
+            patch(
+                "app.domains.geo.intelligence.router.try_publish_celery_task",
+                side_effect=fake_publish,
+            ),
+        ):
+            result = detect_conflictos(db=db, _user=MagicMock())
+        assert events == ["enqueue", "commit", "publish"]
+        assert uuid.UUID(result.task_id)
         assert result.status == "submitted"
 
     def test_escorrentia_missing_layers(self):
@@ -369,23 +394,47 @@ class TestSimpleEndpoints:
     def test_generate_zonas(self):
         from app.domains.geo.intelligence.router import generate_zonas
 
-        payload = ZonificacionRequest(dem_layer_id=uuid.uuid4(), threshold=500)
-        mock_task = MagicMock()
-        mock_task.id = "task-456"
-        with patch("app.domains.geo.intelligence.tasks.task_generate_zonification") as mock_fn:
-            mock_fn.delay.return_value = mock_task
-            result = generate_zonas(payload, db=MagicMock(), _user=MagicMock())
-        assert result.task_id == "task-456"
+        layer_id = uuid.uuid4()
+        payload = ZonificacionRequest(dem_layer_id=layer_id, threshold=500)
+        db = MagicMock()
+        outbox_id = uuid.uuid4()
+        with (
+            patch(
+                "app.domains.geo.intelligence.router.enqueue_celery_task",
+                return_value=SimpleNamespace(id=outbox_id),
+            ) as mock_enqueue,
+            patch(
+                "app.domains.geo.intelligence.router.try_publish_celery_task",
+                side_effect=RuntimeError("broker down"),
+            ),
+        ):
+            result = generate_zonas(payload, db=db, _user=MagicMock())
+        assert mock_enqueue.call_args.kwargs["task_key"] is CeleryTaskKey.GENERATE_ZONIFICATION
+        assert mock_enqueue.call_args.kwargs["task_args"] == [str(layer_id), 500]
+        db.commit.assert_called_once()
+        assert result.task_id == str(mock_enqueue.call_args.kwargs["celery_task_id"])
+        assert result.status == "submitted"
 
     def test_batch_calculate_hci(self):
         from app.domains.geo.intelligence.router import batch_calculate_hci
 
-        mock_task = MagicMock()
-        mock_task.id = "task-789"
-        with patch("app.domains.geo.intelligence.tasks.task_calculate_hci_all_zones") as mock_fn:
-            mock_fn.delay.return_value = mock_task
-            result = batch_calculate_hci(db=MagicMock(), _user=MagicMock())
-        assert result.task_id == "task-789"
+        db = MagicMock()
+        outbox_id = uuid.uuid4()
+        with (
+            patch(
+                "app.domains.geo.intelligence.router.enqueue_celery_task",
+                return_value=SimpleNamespace(id=outbox_id),
+            ) as mock_enqueue,
+            patch(
+                "app.domains.geo.intelligence.router.try_publish_celery_task",
+                return_value=False,
+            ),
+        ):
+            result = batch_calculate_hci(db=db, _user=MagicMock())
+        assert mock_enqueue.call_args.kwargs["task_key"] is CeleryTaskKey.CALCULATE_HCI_ALL
+        db.commit.assert_called_once()
+        assert result.task_id == str(mock_enqueue.call_args.kwargs["celery_task_id"])
+        assert result.status == "submitted"
 
     def test_get_canal_priorities(self):
         from app.domains.geo.intelligence.router import get_canal_priorities
@@ -466,12 +515,28 @@ class TestCompositeEndpoints:
         from app.domains.geo.intelligence.router import trigger_composite_analysis
 
         payload = CompositeAnalysisRequest(area_id="zona_principal")
-        mock_task = MagicMock()
-        mock_task.id = "comp-task-1"
-        with patch("app.domains.geo.tasks.composite_analysis_task") as mock_fn:
-            mock_fn.delay.return_value = mock_task
-            result = trigger_composite_analysis(payload, db=MagicMock(), _user=MagicMock())
-        assert result.task_id == "comp-task-1"
+        db = MagicMock()
+        outbox_id = uuid.uuid4()
+        with (
+            patch(
+                "app.domains.geo.intelligence.router.enqueue_celery_task",
+                return_value=SimpleNamespace(id=outbox_id),
+            ) as mock_enqueue,
+            patch(
+                "app.domains.geo.intelligence.router.try_publish_celery_task",
+                return_value=True,
+            ),
+        ):
+            result = trigger_composite_analysis(payload, db=db, _user=MagicMock())
+        assert mock_enqueue.call_args.kwargs["task_key"] is CeleryTaskKey.COMPOSITE_ANALYSIS
+        assert mock_enqueue.call_args.kwargs["task_kwargs"] == {
+            "area_id": "zona_principal",
+            "weights_flood": None,
+            "weights_drainage": None,
+        }
+        db.commit.assert_called_once()
+        assert result.task_id == str(mock_enqueue.call_args.kwargs["celery_task_id"])
+        assert result.status == "submitted"
 
     def test_get_composite_stats_not_found(self):
         from app.domains.geo.intelligence.router import get_composite_stats

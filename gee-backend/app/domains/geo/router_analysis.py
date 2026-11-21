@@ -3,7 +3,7 @@
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -12,8 +12,9 @@ from app.core.exceptions import AppException, NotFoundError
 from app.core.logging import get_logger
 from app.db.session import get_db
 from app.domains.geo.intelligence.models import ZonaOperativa
-from app.domains.geo.models import GeoLayer
+from app.domains.geo.models import GeoLayer, TipoGeoLayer
 from app.domains.geo.router_common import _require_operator
+from app.shared.enum_params import require_choice
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["Geo Processing"])
@@ -87,10 +88,17 @@ def compute_zonal_statistics(
     """
     from geoalchemy2.functions import ST_AsText
 
+    layer_tipo = require_choice(body.layer_tipo, TipoGeoLayer, "layer_tipo")
+    if layer_tipo is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"layer_tipo invalido. Opciones: {', '.join(m.value for m in TipoGeoLayer)}",
+        )
+
     # 1. Find the raster layer
     layer = (
         db.query(GeoLayer)
-        .filter(GeoLayer.tipo == body.layer_tipo)
+        .filter(GeoLayer.tipo == layer_tipo)
         .order_by(GeoLayer.created_at.desc(), GeoLayer.id.desc())
     )
     if body.area_id:
@@ -98,7 +106,7 @@ def compute_zonal_statistics(
     layer = layer.first()
 
     if not layer:
-        raise NotFoundError(f"No GeoLayer found for tipo={body.layer_tipo}")
+        raise NotFoundError(f"No GeoLayer found for tipo={layer_tipo}")
 
     # Prefer COG path if available
     raster_path = layer.archivo_path
@@ -152,7 +160,7 @@ def compute_zonal_statistics(
     return {
         "results": results,
         "count": len(results),
-        "raster": body.layer_tipo,
+        "raster": layer_tipo,
         "zona_source": body.zona_source,
     }
 

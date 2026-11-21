@@ -1,6 +1,7 @@
 """Shared router models and helpers for the geo domain."""
 
 import json
+import math
 import threading
 import uuid
 from collections import Counter
@@ -519,11 +520,17 @@ def _import_zonas_operativas_payload(db: Session, payload: dict) -> dict:
     # untouched, even if the caller never rolls back the transaction
     # (issue #699: the delete used to run first, so a mid-loop validation
     # error left the zonas already deleted in the session).
+    from shapely.errors import ShapelyError
+
     rows: list[ZonaOperativa] = []
     cuencas: Counter[str] = Counter()
+    seen_ids: set[uuid.UUID] = set()
     for index, feature in enumerate(features, start=1):
+        if not isinstance(feature, dict):
+            raise HTTPException(status_code=400, detail=f"Feature {index} invalida")
+
         geometry = feature.get("geometry")
-        if not geometry:
+        if not isinstance(geometry, dict) or not geometry:
             raise HTTPException(status_code=400, detail=f"Feature {index} sin geometria")
 
         geometry_type = geometry.get("type")
@@ -533,15 +540,75 @@ def _import_zonas_operativas_payload(db: Session, payload: dict) -> dict:
                 detail=f"Feature {index} tiene geometria no soportada: {geometry_type}",
             )
 
-        props = feature.get("properties") or {}
+        raw_props = feature.get("properties")
+        if raw_props is None:
+            props = {}
+        elif not isinstance(raw_props, dict):
+            raise HTTPException(
+                status_code=400, detail=f"Feature {index} tiene propiedades invalidas"
+            )
+        else:
+            props = raw_props
+
         cuenca = str(props.get("cuenca") or "sin_asignar")
         nombre = str(props.get("nombre") or f"Subcuenca {index}")
-        superficie_ha = float(props.get("superficie_ha") or 0.0)
-        geom_wkt = _normalize_polygon_wkt(geometry)
+
+        raw_area = props.get("superficie_ha")
+        if raw_area is None or raw_area == "":
+            superficie_ha = 0.0
+        elif isinstance(raw_area, bool):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Feature {index} tiene superficie_ha invalida",
+            )
+        else:
+            try:
+                superficie_ha = float(raw_area)
+            except (TypeError, ValueError) as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Feature {index} tiene superficie_ha invalida",
+                ) from exc
+            if not math.isfinite(superficie_ha) or superficie_ha < 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Feature {index} tiene superficie_ha invalida",
+                )
+
+        raw_id = props.get("id")
+        if raw_id is not None and raw_id != "":
+            try:
+                zona_id = uuid.UUID(str(raw_id))
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Feature {index} tiene id invalido",
+                ) from exc
+        else:
+            zona_id = uuid.uuid4()
+        if zona_id in seen_ids:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Feature {index} tiene id duplicado",
+            )
+        seen_ids.add(zona_id)
+
+        try:
+            geom_wkt = _normalize_polygon_wkt(geometry)
+        except (ValueError, TypeError, KeyError, IndexError, ShapelyError) as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Feature {index} tiene geometria invalida",
+            ) from exc
+        if not geom_wkt or "EMPTY" in geom_wkt.upper():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Feature {index} tiene geometria vacia",
+            )
 
         rows.append(
             ZonaOperativa(
-                id=uuid.UUID(str(props["id"])) if props.get("id") else uuid.uuid4(),
+                id=zona_id,
                 nombre=nombre,
                 geometria=f"SRID=4326;{geom_wkt}",
                 cuenca=cuenca,

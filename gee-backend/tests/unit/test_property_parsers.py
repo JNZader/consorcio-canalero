@@ -6,7 +6,6 @@ Hermetic (stdlib ``random.Random`` only) so CI runs with ``--no-deps`` against
 
 from __future__ import annotations
 
-import csv
 import io
 import math
 import random
@@ -245,15 +244,12 @@ def test_padron_cuit_mod11_and_csv_parser_invariants() -> None:
             for row_num, row in parsed
         )
 
-    # Arbitrary binary / CR-containing payloads either parse or raise csv.Error cleanly.
+    # Arbitrary CR-containing payloads parse cleanly now that _parse_csv passes newline="".
     cr_alphabet = csv_alphabet + "\r"
     for i in range(50):
         raw_str = "".join(rng.choice(cr_alphabet) for _ in range(rng.randint(0, 120)))
         encoded = raw_str.encode("utf-8-sig" if i % 2 == 0 else "latin-1")
-        try:
-            parsed = service._parse_csv(encoded)
-        except csv.Error:
-            continue
+        parsed = service._parse_csv(encoded)
         assert isinstance(parsed, list)
 
 

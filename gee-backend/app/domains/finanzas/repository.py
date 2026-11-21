@@ -212,6 +212,19 @@ class FinanzasRepository:
         db.flush()
         return presupuesto
 
+    def delete_presupuesto(
+        self,
+        db: Session,
+        presupuesto_id: uuid.UUID,
+    ) -> bool:
+        stmt = select(Presupuesto).where(Presupuesto.id == presupuesto_id)
+        presupuesto = db.execute(stmt).scalar_one_or_none()
+        if presupuesto is None:
+            return False
+        db.delete(presupuesto)
+        db.flush()
+        return True
+
     # ── REPORTS ─────────────────────────────────
 
     def get_budget_execution(

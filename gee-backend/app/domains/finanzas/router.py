@@ -199,6 +199,17 @@ def update_presupuesto(
     return service.update_presupuesto(db, presupuesto_id, payload)
 
 
+@router.delete("/presupuesto/{presupuesto_id}", status_code=204)
+def delete_presupuesto(
+    presupuesto_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    service: FinanzasService = Depends(get_service),
+    _user=Depends(_require_operator()),
+) -> None:
+    """Eliminar una linea de presupuesto (requiere operador)."""
+    service.delete_presupuesto(db, presupuesto_id)
+
+
 # ──────────────────────────────────────────────
 # REPORTS
 # ──────────────────────────────────────────────

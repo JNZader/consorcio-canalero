@@ -365,6 +365,15 @@ class TestListConsorcistas:
         with pytest.raises(TypeError):
             svc.list_consorcistas(db, 3)
 
+    def test_invalid_estado_raises_422_without_querying_repo(self) -> None:
+        svc, repo, db = _service()
+
+        with pytest.raises(HTTPException) as exc:
+            svc.list_consorcistas(db, estado="invalido")
+
+        assert exc.value.status_code == 422
+        repo.get_all.assert_not_called()
+
 
 class TestGetStats:
     def test_stats_are_a_straight_passthrough(self) -> None:

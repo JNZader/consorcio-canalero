@@ -117,6 +117,18 @@ class FinanzasService:
             year_filter=year,
         )
 
+    def _validate_consorcista_exists(
+        self,
+        db: Session,
+        consorcista_id: Optional[uuid.UUID],
+    ) -> None:
+        if consorcista_id is None:
+            return
+        from app.domains.padron.models import Consorcista
+
+        if db.get(Consorcista, consorcista_id) is None:
+            raise HTTPException(status_code=404, detail="Consorcista no encontrado")
+
     def create_ingreso(
         self,
         db: Session,
@@ -128,7 +140,12 @@ class FinanzasService:
                 status_code=400,
                 detail=f"Categoria de ingreso invalida. Opciones: {', '.join(CATEGORIAS_INGRESO)}",
             )
-        ingreso = self.repo.create_ingreso(db, data, usuario_id=usuario_id)
+        self._validate_consorcista_exists(db, data.consorcista_id)
+        try:
+            with db.begin_nested():
+                ingreso = self.repo.create_ingreso(db, data, usuario_id=usuario_id)
+        except IntegrityError as exc:
+            raise HTTPException(status_code=422, detail="Datos de ingreso invalidos") from exc
         db.commit()
         db.refresh(ingreso)
         return ingreso
@@ -144,7 +161,12 @@ class FinanzasService:
                 status_code=400,
                 detail=f"Categoria de ingreso invalida. Opciones: {', '.join(CATEGORIAS_INGRESO)}",
             )
-        updated = self.repo.update_ingreso(db, ingreso_id, data)
+        self._validate_consorcista_exists(db, data.consorcista_id)
+        try:
+            with db.begin_nested():
+                updated = self.repo.update_ingreso(db, ingreso_id, data)
+        except IntegrityError as exc:
+            raise HTTPException(status_code=422, detail="Datos de ingreso invalidos") from exc
         if updated is None:
             raise HTTPException(status_code=404, detail="Ingreso no encontrado")
         db.commit()
@@ -182,16 +204,30 @@ class FinanzasService:
         presupuesto_id: uuid.UUID,
         data: PresupuestoUpdate,
     ) -> Presupuesto:
+        if "monto_proyectado" in data.model_fields_set and data.monto_proyectado is None:
+            raise HTTPException(status_code=422, detail="No se puede anular: monto_proyectado")
         try:
             with db.begin_nested():
                 updated = self.repo.update_presupuesto(db, presupuesto_id, data)
         except IntegrityError as exc:
-            raise HTTPException(status_code=409, detail=_PRESUPUESTO_CONFLICT) from exc
+            sqlstate = getattr(getattr(exc, "orig", None), "sqlstate", None)
+            if sqlstate == "23505" or "unique" in str(exc).lower():
+                raise HTTPException(status_code=409, detail=_PRESUPUESTO_CONFLICT) from exc
+            raise HTTPException(status_code=422, detail="Datos de presupuesto invalidos") from exc
         if updated is None:
             raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
         db.commit()
         db.refresh(updated)
         return updated
+
+    def delete_presupuesto(
+        self,
+        db: Session,
+        presupuesto_id: uuid.UUID,
+    ) -> None:
+        if not self.repo.delete_presupuesto(db, presupuesto_id):
+            raise HTTPException(status_code=404, detail="Presupuesto no encontrado")
+        db.commit()
 
     # ── REPORTS ─────────────────────────────────
 

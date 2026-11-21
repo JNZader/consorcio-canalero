@@ -130,6 +130,13 @@ class TestFinanzasAuthGates:
             f"Finanzas endpoint {path} MUST require auth — got {resp.status_code}"
         )
 
+    def test_delete_presupuesto_unauthenticated_401(self, client: TestClient):
+        resp = client.delete(
+            "/api/v2/finanzas/presupuesto/00000000-0000-0000-0000-000000000000",
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status_code == 401
+
 
 # ---------------------------------------------------------------------------
 # Monitoring sugerencias — list requires operator
@@ -155,6 +162,16 @@ class TestAuthSessionGates:
     def test_refresh_without_cookie_401(self, client: TestClient):
         resp = client.post(
             "/api/v2/auth/jwt/refresh",
+            headers={
+                "Content-Type": "application/json",
+                "Origin": "http://localhost:3000",
+            },
+        )
+        assert resp.status_code == 401
+
+    def test_logout_unauthenticated_401(self, client: TestClient):
+        resp = client.post(
+            "/api/v2/auth/jwt/logout",
             headers={
                 "Content-Type": "application/json",
                 "Origin": "http://localhost:3000",

@@ -146,6 +146,18 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Error closing GEE analysis rate limiter", error=str(e))
     try:
+        from app.domains.conocimiento.router import get_conocimiento_rate_limiter
+
+        await get_conocimiento_rate_limiter().close()
+    except Exception as e:
+        logger.warning("Error closing conocimiento rate limiter", error=str(e))
+    try:
+        from app.domains.geo.informe_area.router import get_informe_rate_limiter
+
+        await get_informe_rate_limiter().close()
+    except Exception as e:
+        logger.warning("Error closing informe_area rate limiter", error=str(e))
+    try:
         from app.core.cache import get_cache
 
         await get_cache().close()
@@ -159,6 +171,12 @@ async def lifespan(app: FastAPI):
         shutdown_gee_probe()
     except Exception as e:
         logger.warning("Error releasing GEE health probe", error=str(e))
+    try:
+        from app.domains.geo.router_gee_support import shutdown_gee_executor
+
+        shutdown_gee_executor()
+    except Exception as e:
+        logger.warning("Error releasing GEE threadpool executor", error=str(e))
     logger.info("Shutdown complete")
 
 
@@ -573,16 +591,16 @@ async def live():
 async def ready(response: Response):
     """Public readiness probe — minimal body, just ready/not_ready.
 
-    Returns 503 when a critical dependency (DB, Redis, Alembic) is
-    degraded so a load balancer can drain this instance. We deliberately
-    DO NOT expose which dependency is degraded, because the detailed
-    services block previously published here (PostGIS version, Alembic
-    revision SHA, GCP project id) gives an unauthenticated attacker
-    fingerprinting information. Operators who need the breakdown should
-    hit ``/admin/ready/detailed`` (operator+ auth required).
+    Returns 503 when a critical dependency (DB, Alembic) is degraded so a load
+    balancer can drain this instance. Redis degrades gracefully to per-process
+    in-memory rate limiting / cache no-op (NUC-3), so a transient Redis outage
+    still surfaces as ``degraded`` on ``/health`` and ``/admin/ready/detailed``
+    without taking the API offline.
     """
     services = await run_health_checks()
-    critical_ok = all(service["status"] == "healthy" for service in services.values())
+    critical_ok = all(
+        services.get(name, {}).get("status") == "healthy" for name in ("database", "alembic")
+    )
 
     if not critical_ok:
         response.status_code = 503

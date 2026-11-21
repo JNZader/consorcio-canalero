@@ -38,6 +38,27 @@ from starlette.concurrency import run_in_threadpool
 from app.config import settings
 
 
+def _write_photo_atomically(full_path: Path, sanitized_bytes: bytes) -> None:
+    """Write sanitized photo bytes via temp file, fsync, and atomic replace."""
+    temp_path = full_path.with_name(f".{full_path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with temp_path.open("xb") as out:
+            out.write(sanitized_bytes)
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(temp_path, full_path)
+        directory_fd = os.open(full_path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        try:
+            temp_path.unlink()
+        except FileNotFoundError:
+            pass
+
+
 # EXIF tag id for GPSInfo. Strip this and `_GPS_RELATED_TAGS` below
 # before writing the photo to disk — the user's geo coordinates ride
 # the photo otherwise, which is PII the consorcio has no business
@@ -353,24 +374,9 @@ class LocalPhotoStorage:
             slots.release()
 
         # Write beside the destination so os.replace is atomic on the mounted
-        # filesystem. fsync the file and parent directory before publishing the URL.
-        temp_path = full_path.with_name(f".{full_path.name}.{uuid.uuid4().hex}.tmp")
-        try:
-            with temp_path.open("xb") as out:
-                out.write(sanitized_bytes)
-                out.flush()
-                os.fsync(out.fileno())
-            os.replace(temp_path, full_path)
-            directory_fd = os.open(full_path.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory_fd)
-            finally:
-                os.close(directory_fd)
-        finally:
-            try:
-                temp_path.unlink()
-            except FileNotFoundError:
-                pass
+        # filesystem. fsync the file and parent directory off the event loop
+        # before publishing the URL.
+        await run_in_threadpool(_write_photo_atomically, full_path, sanitized_bytes)
 
         # Public URL: relative path under the StaticFiles mount. We persist
         # the relative form (`/uploads/denuncias/<uuid>.jpg`) so swapping

@@ -71,7 +71,7 @@ def cliente_operador(monkeypatch):
     # The stubbed impl never touches the session; keep the real get_db out.
     app.dependency_overrides[get_db] = lambda: None
     monkeypatch.setattr(
-        geo_router, "submit_gee_analysis_impl", lambda _p, _db, _r: _respuesta_stub()
+        geo_router, "submit_gee_analysis_impl", lambda _p, _db, _r, **_kw: _respuesta_stub()
     )
 
     client = TestClient(app)

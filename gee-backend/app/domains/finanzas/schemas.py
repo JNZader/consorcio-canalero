@@ -174,6 +174,8 @@ class PresupuestoUpdate(BaseModel):
 
     monto_proyectado: Optional[Decimal] = Field(default=None, ge=0, max_digits=12, decimal_places=2)
 
+    _reject_nulls = forbid_explicit_nulls("monto_proyectado")
+
 
 class PresupuestoResponse(BaseModel):
     """Full presupuesto detail."""

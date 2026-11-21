@@ -223,6 +223,28 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
                 extra={"error": str(exc)},
             )
 
+    async def on_after_reset_password(self, user: User, request: Request | None = None) -> None:
+        """Revoke active refresh families and invalidate live access JWTs."""
+        from typing import cast
+
+        from sqlalchemy import update
+
+        from app.auth.refresh_tokens import revoke_all_for_user
+
+        sqlalchemy_user_db = cast("SQLAlchemyUserDatabase[User, uuid.UUID]", self.user_db)
+        session: AsyncSession = sqlalchemy_user_db.session
+        revoked = await revoke_all_for_user(session, user.id)
+        await session.execute(
+            update(User)
+            .where(User.id == user.id)  # type: ignore[arg-type]
+            .values(revocation_epoch=User.revocation_epoch + 1)
+        )
+        await session.commit()
+        logger.info(
+            "Password reset revoked active sessions",
+            extra={"user_id": str(user.id), "revoked_sessions": revoked},
+        )
+
 
 def get_user_manager(
     user_db: SQLAlchemyUserDatabase = Depends(get_user_db),

@@ -4,8 +4,11 @@ Carga variables de entorno y define settings.
 """
 
 import logging
-from pydantic_settings import BaseSettings
+import os
 from typing import Optional
+from urllib.parse import urlparse
+
+from pydantic_settings import BaseSettings
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +19,24 @@ INSECURE_DEFAULTS = {
     "redis_password": {"changeme", ""},
 }
 MIN_JWT_SECRET_LENGTH = 64  # bytes — matches `openssl rand -hex 32` recommendation
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "0.0.0.0", "::1"})
+
+
+def _extract_hostname(raw: str) -> str | None:
+    """Return lowercase hostname from a host, host:port, or URL string."""
+    candidate = raw.strip()
+    if not candidate:
+        return None
+    if "://" not in candidate:
+        if candidate.count(":") > 1 and not candidate.startswith("["):
+            candidate = f"http://[{candidate}]"
+        else:
+            candidate = f"http://{candidate}"
+    try:
+        parsed = urlparse(candidate)
+    except ValueError:
+        return None
+    return (parsed.hostname or "").lower() or None
 
 
 def database_sync_url(value: str) -> str:
@@ -469,6 +490,8 @@ class Settings(BaseSettings):
     # background job doubles it for the full-territory selection T2 renders.
     informe_area_max_vertices: int = 20_000
     informe_area_max_body_bytes: int = 5 * 1024 * 1024
+    public_elevation_max_body_bytes: int = 256 * 1024
+    sugerencia_max_body_bytes: int = 256 * 1024
     informe_area_max_envelope_ha: float = 500_000.0
     # Máx 3 trabajos en curso por usuario (S5). A user with 3 queued/running
     # informes gets a 429 until one finishes — the bound that keeps one
@@ -537,6 +560,7 @@ class Settings(BaseSettings):
     environment: str = "development"  # "production" | "staging" | "development"
     frontend_url: str = "http://localhost:5173"
     api_base_url: str = ""  # Backend public URL (e.g. https://cc10demayo-api.javierzader.com)
+    healthcheck_host: str = ""  # Optional explicit Host header sent by container liveness probe
 
     # Photo upload storage (LocalPhotoStorage for now — drop-in swap to S3/MinIO).
     # The directory is mounted as a Docker volume in compose so files survive
@@ -598,8 +622,6 @@ class Settings(BaseSettings):
         through naturally so localhost works on the developer
         machine.
         """
-        from urllib.parse import urlparse
-
         hosts: set[str] = set()
         for url in self.cors_origins_list:
             parsed = urlparse(url)
@@ -609,7 +631,14 @@ class Settings(BaseSettings):
             parsed = urlparse(self.api_base_url)
             if parsed.hostname:
                 hosts.add(parsed.hostname)
-        # No localhost. Dev installs whose ``CORS_ORIGINS`` includes
+        raw_hc = (self.healthcheck_host or os.environ.get("HEALTHCHECK_HOST", "")).strip()
+        hc_host = _extract_hostname(raw_hc)
+        if hc_host and not (
+            _is_production_env(self.environment)
+            and (hc_host in _LOOPBACK_HOSTS or hc_host.endswith(".localhost"))
+        ):
+            hosts.add(hc_host)
+        # No localhost in prod. Dev installs whose ``CORS_ORIGINS`` includes
         # ``http://localhost:5173`` get localhost in the set via the
         # loop above; prod ``CORS_ORIGINS`` is loopback-free (the
         # fail-fast check refuses it).
@@ -721,12 +750,22 @@ def _enforce_production_secrets(s: Settings) -> None:
     # Reuse the healthcheck's URL parser so "parseable" means the same thing
     # here and there. HEALTHCHECK_HOST has no Settings field — healthcheck.py
     # reads it straight from the environment, so the gate does too.
-    import os
-
     from app.healthcheck import _api_base_url_hostname
 
-    explicit_healthcheck_host = os.environ.get("HEALTHCHECK_HOST", "").strip()
-    if not explicit_healthcheck_host and not _api_base_url_hostname(s.api_base_url):
+    explicit_healthcheck_host = (
+        s.healthcheck_host or os.environ.get("HEALTHCHECK_HOST", "")
+    ).strip()
+    hc_hostname = (
+        _extract_hostname(explicit_healthcheck_host) if explicit_healthcheck_host else None
+    )
+    if explicit_healthcheck_host and (
+        hc_hostname is None or hc_hostname in _LOOPBACK_HOSTS or hc_hostname.endswith(".localhost")
+    ):
+        problems.append(
+            "HEALTHCHECK_HOST is invalid or points to a loopback host in production; "
+            "set a non-loopback hostname or rely on API_BASE_URL."
+        )
+    elif not explicit_healthcheck_host and not _api_base_url_hostname(s.api_base_url):
         problems.append(
             "Neither HEALTHCHECK_HOST nor a parseable API_BASE_URL is set in "
             "production; the Docker healthcheck would exit 1 forever and "
