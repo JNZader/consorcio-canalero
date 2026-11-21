@@ -458,10 +458,7 @@ async function armarDibujo(page: Page): Promise<boolean> {
  * click. The canvas holds focus after the click sequence, so the key reaches
  * the container.
  */
-async function abrirDrawer(
-  page: Page,
-  extra?: (page: Page) => Promise<void>
-): Promise<boolean> {
+async function abrirDrawer(page: Page, extra?: (page: Page) => Promise<void>): Promise<boolean> {
   await sembrarSesion(page);
   await instalarMocks(page);
   if (extra) await extra(page);
@@ -591,9 +588,7 @@ test.describe('Informe de área — elegir, lanzar en segundo plano y descargar'
 
     // The wire contract of the create (S2): nombre, the picked zonas, the
     // SegmentedControl's depth, and the bearer in the header — never the URL.
-    await expect
-      .poll(() => registro.creaciones.length, { timeout: 15000 })
-      .toBe(1);
+    await expect.poll(() => registro.creaciones.length, { timeout: 15000 }).toBe(1);
     const [creado] = registro.creaciones;
     expect(creado.nombre).toBe('Informe Tercero norte');
     expect([...creado.zona_ids].sort()).toEqual(['z-tercero-algodon', 'z-tercero-litin']);
@@ -697,7 +692,7 @@ test.describe('Informe de área — elegir, lanzar en segundo plano y descargar'
     const alCheckbox = await tabularHasta(page, '[data-testid="informe-area-zona-toggle"]');
     expect(alCheckbox, 'El checkbox de subcuenca no es alcanzable por Tab').toBe(true);
     await page.keyboard.press('Space');
-    await expect(page.getByTestId('informe-area-contador')).toHaveText('1/60 subcuencas');
+    await expect(page.getByTestId('informe-area-contador')).toHaveText('1/120 subcuencas');
 
     const alSiguiente = await tabularHasta(page, '[data-testid="informe-area-siguiente"]');
     expect(alSiguiente, 'El botón "Revisar selección" no es alcanzable por Tab').toBe(true);
@@ -744,7 +739,7 @@ test.describe('Informe de área — elegir, lanzar en segundo plano y descargar'
       await page.getByRole('checkbox', { name: `Subcuenca Pinto ${fuera}` }).uncheck();
       await abrirLista(page, CUENCA_TERCERO);
       await page.getByRole('checkbox', { name: 'Arroyo Algodón' }).check();
-      await expect(page.getByTestId('informe-area-contador')).toHaveText('60/60 subcuencas');
+      await expect(page.getByTestId('informe-area-contador')).toHaveText('60/120 subcuencas');
 
       const total = page.getByTestId('informe-area-preview-total');
       const inicio = Date.now();
@@ -816,9 +811,7 @@ test.describe('Informe de área — elegir, lanzar en segundo plano y descargar'
     // NO polling: once every row is terminal the list query stops reading.
     // Settle past the create's invalidation refetch, then outwait one full
     // 5 s poll cycle and demand the count did not move.
-    await expect
-      .poll(() => registro.listados, { timeout: 15000 })
-      .toBeGreaterThanOrEqual(2);
+    await expect.poll(() => registro.listados, { timeout: 15000 }).toBeGreaterThanOrEqual(2);
     const listadosTrasCreacion = registro.listados;
     await page.waitForTimeout(6500);
     expect(registro.listados, 'el listado siguió sondeando con todas las filas terminales').toBe(
@@ -873,9 +866,7 @@ test.describe('Informe de área — elegir, lanzar en segundo plano y descargar'
     await expect(fallo).toContainText('No se pudo generar el informe');
 
     await fallo.getByRole('button', { name: 'Volver a intentar' }).click();
-    await expect
-      .poll(() => registro.creaciones.length, { timeout: 15000 })
-      .toBe(2);
+    await expect.poll(() => registro.creaciones.length, { timeout: 15000 }).toBe(2);
     await expect(page.getByTestId('informe-area-listo-inline')).toBeVisible({
       timeout: 15000,
     });
@@ -895,7 +886,12 @@ test.describe('Informe de área — elegir, lanzar en segundo plano y descargar'
         cantidad_zonas: 1,
       }),
       filaInforme({ id: 'inf-curso', nombre: 'Trabajo en curso', estado: 'running', progreso: 35 }),
-      filaInforme({ id: 'inf-fallo', nombre: 'El que falló', estado: 'failed', error: 'GEE no disponible' }),
+      filaInforme({
+        id: 'inf-fallo',
+        nombre: 'El que falló',
+        estado: 'failed',
+        error: 'GEE no disponible',
+      }),
     ];
     const abierto = await abrirDrawer(page, async (p) => {
       await instalarInformesArea(p, {
@@ -924,25 +920,19 @@ test.describe('Informe de área — elegir, lanzar en segundo plano y descargar'
     const filaViejo = tabla.getByRole('row', { name: /Viejo confiable/ });
     await expect(filaViejo).toContainText('2400.5 ha');
     await expect(filaViejo).toContainText('Listo');
-    await expect(
-      filaViejo.getByTestId('informe-area-mis-informes-descarga')
-    ).toBeEnabled();
+    await expect(filaViejo.getByTestId('informe-area-mis-informes-descarga')).toBeEnabled();
 
     // In course: ha is a dash until `resultado` exists, download OFF.
     const filaCurso = tabla.getByRole('row', { name: /Trabajo en curso/ });
     await expect(filaCurso).toContainText('Generando');
     await expect(filaCurso).toContainText('35%');
-    await expect(
-      filaCurso.getByTestId('informe-area-mis-informes-descarga')
-    ).toBeDisabled();
+    await expect(filaCurso.getByTestId('informe-area-mis-informes-descarga')).toBeDisabled();
 
     // Failed: the stored reason under the nombre, download OFF.
     const filaFallo = tabla.getByRole('row', { name: /El que falló/ });
     await expect(filaFallo).toContainText('Falló');
     await expect(filaFallo).toContainText('GEE no disponible');
-    await expect(
-      filaFallo.getByTestId('informe-area-mis-informes-descarga')
-    ).toBeDisabled();
+    await expect(filaFallo.getByTestId('informe-area-mis-informes-descarga')).toBeDisabled();
 
     // Back to the flow: the Stepper returns (state survived underneath).
     await page.getByTestId('informe-area-mis-informes-volver').click();

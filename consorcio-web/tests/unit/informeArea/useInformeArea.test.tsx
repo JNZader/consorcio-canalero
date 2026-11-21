@@ -25,9 +25,11 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  descargarInformeAreaKmz,
   type InformeAreaItem,
   InformesAreaApiError,
   nombreArchivoDesdeDisposition,
+  urlMapaCampo,
 } from '../../../src/lib/api/informesArea';
 
 vi.mock('../../../src/lib/api/core', async () => {
@@ -433,5 +435,33 @@ describe('nombreArchivoDesdeDisposition', () => {
   it('returns null without a usable half', () => {
     expect(nombreArchivoDesdeDisposition(null)).toBeNull();
     expect(nombreArchivoDesdeDisposition('attachment')).toBeNull();
+  });
+});
+
+describe('descargarInformeAreaKmz & urlMapaCampo', () => {
+  it('descarga /kmz con Accept correcto y filename RFC 5987', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({
+        'content-disposition':
+          "attachment; filename=\"cuenca.kmz\"; filename*=UTF-8''Cuenc%C3%B3n%20norte.kmz",
+      }),
+      blob: async () => new Blob(['PK'], { type: 'application/vnd.google-earth.kmz' }),
+    } as unknown as Response);
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await descargarInformeAreaKmz('inf-99', 'Cuencón norte');
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('/api/v2/geo/informes-area/inf-99/kmz');
+    expect((init.headers as Record<string, string>).Accept).toBe(
+      'application/vnd.google-earth.kmz'
+    );
+    expect(anchorCliqueado?.download).toBe('Cuencón norte.kmz');
+  });
+
+  it('arma la ruta pública de /campo con el token escapado', () => {
+    expect(urlMapaCampo('tok/a b')).toContain('/campo/tok%2Fa%20b');
   });
 });

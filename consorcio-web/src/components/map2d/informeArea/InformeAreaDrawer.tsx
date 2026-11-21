@@ -56,6 +56,7 @@ import {
   type InformeAreaItem,
   InformesAreaApiError,
   medirInformeArea,
+  urlMapaCampo,
 } from '../../../lib/api/informesArea';
 import { Z_INDEX } from '../../../lib/zIndex';
 import { fmtHa } from '../fichaShared';
@@ -77,7 +78,12 @@ import { SeleccionArchivo } from './SeleccionArchivo';
 import { SeleccionChips } from './SeleccionChips';
 import { SeleccionDibujo } from './SeleccionDibujo';
 import { SeleccionLista } from './SeleccionLista';
-import { useCrearInformeArea, useDescargarInformeArea, useMisInformes } from './useInformeArea';
+import {
+  useCrearInformeArea,
+  useDescargarInformeArea,
+  useDescargarInformeAreaKmz,
+  useMisInformes,
+} from './useInformeArea';
 import {
   claveSeleccionMixta,
   contarSeleccion,
@@ -165,7 +171,9 @@ function copiaDeError(error: unknown): string {
 /** Terminal preview statuses for both InformesAreaApiError and FichaApiError. */
 function esReintentable(error: unknown): boolean {
   if (error instanceof InformesAreaApiError) {
-    return error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500;
+    return (
+      error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500
+    );
   }
   if (error instanceof FichaApiError) {
     return ![404, 413, 422, 503].includes(error.status);
@@ -228,14 +236,10 @@ export function InformeAreaDrawer({ opened, onClose }: InformeAreaDrawerProps) {
 
   useEffect(() => {
     if (!opened || paso !== 0 || dibujoActivo) return;
-    return activarSeleccionDeZonas(
-      (zona: ZonaResuelta, additive: boolean) => {
-        const sumar = additive || sumarMovilRef.current;
-        dispatch(
-          sumar ? { type: 'alternar', id: zona.id } : { type: 'reemplazar', ids: [zona.id] }
-        );
-      }
-    );
+    return activarSeleccionDeZonas((zona: ZonaResuelta, additive: boolean) => {
+      const sumar = additive || sumarMovilRef.current;
+      dispatch(sumar ? { type: 'alternar', id: zona.id } : { type: 'reemplazar', ids: [zona.id] });
+    });
   }, [opened, paso, dibujoActivo]);
 
   const cantidad = contarSeleccion(seleccion);
@@ -288,6 +292,17 @@ export function InformeAreaDrawer({ opened, onClose }: InformeAreaDrawerProps) {
     ? (informes.find((informe) => informe.id === informeCreado.id) ?? informeCreado)
     : null;
 
+  // Clear stale create alerts/status whenever the user alters their selection.
+  const clavePreviaRef = useRef(clave);
+  const resetCrearRef = useRef(crear.reset);
+  resetCrearRef.current = crear.reset;
+  useEffect(() => {
+    if (clavePreviaRef.current === clave) return;
+    clavePreviaRef.current = clave;
+    setInformeCreado(null);
+    resetCrearRef.current();
+  }, [clave]);
+
   // Mirror of the backend `informe_area_max_ha` (S5): stop the user before a
   // request the server only rejects (the 422 path is still handled).
   const areaHa = preview.data?.area_total_ha ?? null;
@@ -333,6 +348,7 @@ export function InformeAreaDrawer({ opened, onClose }: InformeAreaDrawerProps) {
     setNombre('');
     setNivel('subcuencas');
     setInformeCreado(null);
+    crear.reset();
     onClose();
   };
 
@@ -631,6 +647,7 @@ function InformeLanzado({
   readonly reintentable: boolean;
 }) {
   const descarga = useDescargarInformeArea();
+  const descargaKmz = useDescargarInformeAreaKmz();
 
   if (informe.estado === INFORME_AREA_ESTADOS.COMPLETO) {
     return (
@@ -650,14 +667,38 @@ function InformeLanzado({
               : ''}
             {informe.area_ha !== null ? ` · ${fmtHa(informe.area_ha)}` : ''}
           </Text>
-          <Button
-            size="xs"
-            onClick={() => descarga.mutate(informe)}
-            loading={descarga.isPending}
-            data-testid="informe-area-descargar-inline"
-          >
-            Descargar PDF
-          </Button>
+          <Group gap="xs" wrap="wrap">
+            <Button
+              size="xs"
+              onClick={() => descarga.mutate(informe)}
+              loading={descarga.isPending}
+              data-testid="informe-area-descargar-inline"
+            >
+              Descargar PDF
+            </Button>
+            <Button
+              size="xs"
+              variant="light"
+              onClick={() => descargaKmz.mutate(informe)}
+              loading={descargaKmz.isPending}
+              data-testid="informe-area-descargar-kmz-inline"
+            >
+              Descargar KMZ
+            </Button>
+            {informe.token_publico && (
+              <Button
+                component="a"
+                href={urlMapaCampo(informe.token_publico)}
+                target="_blank"
+                rel="noopener noreferrer"
+                size="xs"
+                variant="subtle"
+                data-testid="informe-area-campo-inline"
+              >
+                Mapa de campo
+              </Button>
+            )}
+          </Group>
         </Stack>
       </Alert>
     );
