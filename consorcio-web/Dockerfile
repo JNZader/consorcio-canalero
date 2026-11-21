@@ -112,6 +112,7 @@ LABEL org.opencontainers.image.title="Consorcio Web Frontend" \
 #   CVE-2026-111497 — brotli-libs 1.2.0-r1 → 1.2.1-r0
 #   CVE-2026-87636 — libxslt 1.1.43-r3 → 1.1.43-r4 (chromium XML type confusion)
 #   CVE-2026-9947 — libxslt 1.1.43-r3 → 1.1.43-r4 (chromium XML use-after-free)
+#   CVE-2026-86144 — libxml2 2.13.9-r2 → 2.13.9-r3
 # libcrypto3/libssl3/libuuid stay in the upgrade so a later digest that lags
 # those packages does not reopen the gate. Do not add Alpine's nginx package
 # here: it would replace the nginx.org build. REMOVE a package from this line
@@ -122,7 +123,7 @@ LABEL org.opencontainers.image.title="Consorcio Web Frontend" \
 # fix. APK_REFRESH is the commit SHA, so the layer re-runs on every gate.
 ARG APK_REFRESH=local
 RUN echo "apk refresh ${APK_REFRESH}" \
-    && apk upgrade --no-cache libcrypto3 libssl3 libexpat libuuid pcre2 tiff libx11 brotli-libs libxslt
+    && apk upgrade --no-cache libcrypto3 libssl3 libexpat libuuid pcre2 tiff libx11 brotli-libs libxslt libxml2
 
 # BusyBox wget handles health checks; remove curl inherited from the base image.
 RUN apk --no-network del curl
