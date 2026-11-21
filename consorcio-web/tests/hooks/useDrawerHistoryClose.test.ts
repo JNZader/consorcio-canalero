@@ -166,4 +166,27 @@ describe('useDrawerHistoryClose', () => {
 
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it('ignores synthetic popstate events while its own marker entry is still on top', () => {
+    const onClose = vi.fn();
+    renderHook(() => useDrawerHistoryClose({ opened: true, onClose }));
+
+    expect(markerIsOnTop()).toBe(true);
+    act(() => {
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('does not rewind a sibling drawer marker on unmount (#740)', () => {
+    const first = renderHook(() => useDrawerHistoryClose({ opened: true, onClose: vi.fn() }));
+    const second = renderHook(() => useDrawerHistoryClose({ opened: true, onClose: vi.fn() }));
+
+    first.unmount();
+    expect(backSpy).not.toHaveBeenCalled();
+
+    second.unmount();
+    expect(backSpy).toHaveBeenCalledTimes(1);
+  });
 });

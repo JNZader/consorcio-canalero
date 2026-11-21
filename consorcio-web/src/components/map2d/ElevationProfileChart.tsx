@@ -44,6 +44,7 @@ import {
   type FlowSense,
   type ProfileCrossing,
 } from './canalProfile';
+import { useCanAccess } from '../../stores/authStore';
 import { culvertMarks, parcelBoundaryMarks } from './profileBoundaryCrossings';
 import { buildProfileChartRows, type ProfileChartRow } from './profileChartRows';
 import { indexFromPlotX, nearestIndexByDistance } from './profileCursorSync';
@@ -180,7 +181,7 @@ const SERIES = [
   {
     key: 'elevation_mde_ar' as const,
     name: 'MDE-Ar',
-    color: 'var(--mantine-color-orange-6)',
+    color: 'light-dark(var(--mantine-color-orange-6), var(--mantine-color-orange-4))',
   },
   {
     key: 'elevation_aw3d30' as const,
@@ -246,6 +247,7 @@ export function ElevationProfileChart({
   autoLoad?: boolean;
 }) {
   const { announce } = useLiveRegion();
+  const canCompareGeeDems = useCanAccess(['operador', 'admin']);
   const startLoaded = autoLoad && hasProfileParts(geometry);
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>(
     startLoaded ? 'loading' : 'idle'
@@ -822,7 +824,7 @@ export function ElevationProfileChart({
                       type="linear"
                       dataKey="elevation_mde_ar"
                       name="MDE-Ar"
-                      stroke="var(--mantine-color-orange-6)"
+                      stroke="light-dark(var(--mantine-color-orange-6), var(--mantine-color-orange-4))"
                       dot={false}
                       connectNulls={false}
                       isAnimationActive={false}
@@ -1041,13 +1043,15 @@ export function ElevationProfileChart({
             }}
           >
             <Group gap="md" align="center" wrap="wrap">
-              <Checkbox
-                size="xs"
-                label="Comparar DEMs (GEE)"
-                checked={compareDems}
-                onChange={(event) => setCompareDems(event.currentTarget.checked)}
-                data-testid="elevation-profile-compare-dems"
-              />
+              {canCompareGeeDems ? (
+                <Checkbox
+                  size="xs"
+                  label="Comparar DEMs (GEE)"
+                  checked={compareDems}
+                  onChange={(event) => setCompareDems(event.currentTarget.checked)}
+                  data-testid="elevation-profile-compare-dems"
+                />
+              ) : null}
               <Checkbox
                 size="xs"
                 label="Simular rasante"

@@ -59,12 +59,21 @@ export function useGeolocatePinMarker({ mapRef, mapReady }: UseGeolocatePinMarke
     // `Popup.remove()` — which `Marker.remove()` triggers during cleanup — so
     // without the guard the stale popup would clobber the fresh pin B.
     let active = true;
+    const clearPinOnDrag = () => {
+      if (active) useReportAnchorStore.getState().setGeolocatePin(null);
+    };
     popup.once('close', () => {
       if (active) useReportAnchorStore.getState().setGeolocatePin(null);
     });
+    if (typeof map.on === 'function') {
+      map.on('dragstart', clearPinOnDrag);
+    }
 
     return () => {
       active = false;
+      if (typeof map.off === 'function') {
+        map.off('dragstart', clearPinOnDrag);
+      }
       marker.remove();
       markerRef.current = null;
     };

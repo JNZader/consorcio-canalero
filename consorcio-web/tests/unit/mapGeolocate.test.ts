@@ -37,4 +37,54 @@ describe('mapGeolocate UX-20', () => {
     });
     expect(requestMapGeolocate(null, { getCurrentPosition })).toBe(false);
   });
+
+  it('invokes onError when browser geolocation rejects and guards #v= after delayed moveend', () => {
+    vi.useFakeTimers();
+    try {
+      window.history.replaceState(null, '', '/mapa#v=10/-32.5/-62.5');
+      const errorMock = { code: 1, message: 'User denied' } as GeolocationPositionError;
+      const onError = vi.fn();
+      const handlers = new Map<string, () => void>();
+      const map = {
+        getZoom: () => 10,
+        flyTo: vi.fn(),
+        once: vi.fn((event: 'moveend' | 'dragstart', handler: () => void) => {
+          handlers.set(event, handler);
+        }),
+        off: vi.fn(),
+      };
+
+      requestMapGeolocate(
+        map,
+        {
+          getCurrentPosition: (_ok, err) => {
+            err?.(errorMock);
+          },
+        },
+        undefined,
+        onError
+      );
+      expect(onError).toHaveBeenCalledWith(errorMock);
+
+      requestMapGeolocate(
+        map,
+        {
+          getCurrentPosition: (ok) => {
+            ok({
+              coords: { longitude: -62.54, latitude: -32.54 },
+            } as GeolocationPosition);
+          },
+        }
+      );
+
+      // Simulate MapLibre `moveend` followed by delayed `hash: 'v'` overwrite (~300ms).
+      handlers.get('moveend')?.();
+      window.history.replaceState(null, '', '/mapa#v=14/-32.54/-62.54');
+      vi.advanceTimersByTime(500);
+      expect(window.location.hash).toBe('#v=10/-32.5/-62.5');
+    } finally {
+      vi.useRealTimers();
+      window.history.replaceState(null, '', '/');
+    }
+  });
 });

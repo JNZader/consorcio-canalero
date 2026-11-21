@@ -162,10 +162,15 @@ function copiaDeError(error: unknown): string {
   return 'No se pudo completar el pedido. Revisá la conexión e intentá de nuevo.';
 }
 
-/** Terminal ficha statuses — the same policy the ficha panel applies. */
+/** Terminal preview statuses for both InformesAreaApiError and FichaApiError. */
 function esReintentable(error: unknown): boolean {
-  if (!(error instanceof FichaApiError)) return true;
-  return ![404, 413, 422, 503].includes(error.status);
+  if (error instanceof InformesAreaApiError) {
+    return error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500;
+  }
+  if (error instanceof FichaApiError) {
+    return ![404, 413, 422, 503].includes(error.status);
+  }
+  return true;
 }
 
 /**
@@ -214,15 +219,7 @@ export function InformeAreaDrawer({ opened, onClose }: InformeAreaDrawerProps) {
   const sumarMovilRef = useRef(sumarMovil);
   sumarMovilRef.current = sumarMovil;
 
-  // ⚠️ HISTORY-CLOSE DISABLED (T4 finding, reported): the shared
-  // `useDrawerHistoryClose` pushes a marker entry, and TanStack Router's own
-  // history bookkeeping (`__TSR_*`) reacts with a popstate that fires the
-  // marker's close handler — the drawer closes itself ~instantly on MOBILE
-  // (where `enabled` would be true; desktop never enables it). The burger
-  // drawer survives the same hook, so the trigger is specific to this mount
-  // context; fixing the shared hook is outside informeArea's surface. Until
-  // then the informe drawer keeps its ✕ / "Cerrar" affordances only.
-  useDrawerHistoryClose({ opened, onClose, enabled: false });
+  useDrawerHistoryClose({ opened, onClose, enabled: !esEscritorio });
 
   // Highlight: the promoteId source + per-feature `selected` states.
   useEffect(() => {
@@ -231,18 +228,6 @@ export function InformeAreaDrawer({ opened, onClose }: InformeAreaDrawerProps) {
     aplicarSeleccionEnMapa(map, basins, seleccion);
   }, [opened, map, basins, seleccion]);
 
-  // Click ownership: ONLY the Elegir step routes map clicks to the
-  // selection — and NOT while a draw session is live (PR 3): MapboxDraw
-  // doesn't stop the map click, so a vertex placed over a subcuenca would
-  // also toggle that zona through the bridge.
-  //
-  // `descartarSeleccionPrevia: false` is a REPORTED DEVIATION, not a whim: the
-  // bridge's `enter` (useMapInteractionEffects) resolves `parcela=null`, whose
-  // plain-click branch resets the whole ficha state to IDLE — the host panel
-  // goes inactive and unmounts this drawer the moment it opens (runtime
-  // evidence: the T4 e2e). Until the enter hook narrows to parcel/canal clears
-  // (its file is outside informeArea's surface), the drawer does not fire it,
-  // so the ficha that opened the flow stays as context while zonas are picked.
   useEffect(() => {
     if (!opened || paso !== 0 || dibujoActivo) return;
     return activarSeleccionDeZonas(
@@ -251,8 +236,7 @@ export function InformeAreaDrawer({ opened, onClose }: InformeAreaDrawerProps) {
         dispatch(
           sumar ? { type: 'alternar', id: zona.id } : { type: 'reemplazar', ids: [zona.id] }
         );
-      },
-      { descartarSeleccionPrevia: false }
+      }
     );
   }, [opened, paso, dibujoActivo]);
 

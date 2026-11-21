@@ -5,6 +5,8 @@ import { useEffect, useRef } from 'react';
  * the contract instead of a magic string.
  */
 export const DRAWER_HISTORY_MARKER = '__consorcioDrawer';
+const DRAWER_HISTORY_ID = '__consorcioDrawerId';
+let nextDrawerHistoryId = 0;
 
 export interface UseDrawerHistoryCloseOptions {
   /** Whether the overlay (Drawer / Modal) is currently open. */
@@ -18,9 +20,11 @@ export interface UseDrawerHistoryCloseOptions {
   enabled?: boolean;
 }
 
-function markerIsOnTop(): boolean {
+function markerIsOnTop(instanceId: number): boolean {
   const state = window.history.state as Record<string, unknown> | null;
-  return Boolean(state && state[DRAWER_HISTORY_MARKER] === true);
+  return Boolean(
+    state && state[DRAWER_HISTORY_MARKER] === true && state[DRAWER_HISTORY_ID] === instanceId
+  );
 }
 
 /**
@@ -64,14 +68,21 @@ export function useDrawerHistoryClose({
     if (!enabled || !opened) return;
     if (typeof window === 'undefined') return;
 
+    const instanceId = ++nextDrawerHistoryId;
     // Spread the current state so the router's own bookkeeping survives the
     // synthetic entry.
     const currentState = (window.history.state ?? {}) as Record<string, unknown>;
-    window.history.pushState({ ...currentState, [DRAWER_HISTORY_MARKER]: true }, '');
+    window.history.pushState(
+      { ...currentState, [DRAWER_HISTORY_MARKER]: true, [DRAWER_HISTORY_ID]: instanceId },
+      ''
+    );
     pushedRef.current = true;
 
     const handlePopState = () => {
       if (!pushedRef.current) return;
+      // Ignore synthetic popstate dispatches (e.g. router state sync) while
+      // THIS drawer's marker entry is still at the top of the history stack.
+      if (markerIsOnTop(instanceId)) return;
       // The browser ALREADY removed our entry — closing here must not call
       // `history.back()` again (that would eat a real entry).
       pushedRef.current = false;
@@ -84,7 +95,7 @@ export function useDrawerHistoryClose({
       window.removeEventListener('popstate', handlePopState);
       if (!pushedRef.current) return;
       pushedRef.current = false;
-      if (markerIsOnTop()) {
+      if (markerIsOnTop(instanceId)) {
         window.history.back();
       }
     };
