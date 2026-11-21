@@ -1,5 +1,7 @@
 import { Alert, Button, Container, Group, Paper, Stack, Text } from '@mantine/core';
 import { Link } from '@tanstack/react-router';
+import { useEffect } from 'react';
+import { reportException } from '../lib/errorReporting';
 import { erroresUi } from '../lib/userFacingError';
 
 export interface RouterErrorFallbackProps {
@@ -8,6 +10,10 @@ export interface RouterErrorFallbackProps {
 }
 
 export function RouterErrorFallback({ error, reset }: RouterErrorFallbackProps) {
+  useEffect(() => {
+    reportException(error, { boundary: 'RouterErrorFallback' });
+  }, [error]);
+
   return (
     <Container size="sm" py="xl">
       <Paper shadow="md" p="xl" radius="md" withBorder role="alert">
