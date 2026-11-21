@@ -118,6 +118,12 @@ _NOTA_LEYENDA55 = (
     "de la leyenda (55 puntos; umbral_alto_critico: leyenda-55): Alto "
     "55–75 y Crítico 75 o más, la misma leyenda del mapa y de las tablas."
 )
+_NOTA_DRENAJE_LEYENDA50 = (
+    "El porcentaje Alto+Crítico de necesidad de drenaje se cuenta desde el "
+    "inicio de la clase Alto de su leyenda (50 puntos; umbral_alto_critico: "
+    "leyenda-55): Alto 50–70 y Crítico 70–100, la misma leyenda del mapa y "
+    "de las tablas."
+)
 _NOTA_VALIDACION = (
     "El índice de riesgo es puramente topográfico: no incorpora lluvia ni "
     "historial de inundación. La tabla de validación lo contrasta contra "
@@ -244,12 +250,13 @@ def _tabla_clases(
     cubierto = 0.0
     for cfg in orden:
         fila = por_clase.get(str(cfg["label"]))
+        etiqueta = _esc(str(cfg["label"]))
         if fila is None:
-            filas.append([str(cfg["label"]), fmt_ha(0.0), fmt_pct(0.0)])
+            filas.append([etiqueta, fmt_ha(0.0), fmt_pct(0.0)])
             continue
         ha = float(fila.get("ha") or 0.0)
         cubierto += ha
-        filas.append([str(cfg["label"]), fmt_ha(ha), fmt_pct(_pct_clase_seleccion(dataset, fila))])
+        filas.append([etiqueta, fmt_ha(ha), fmt_pct(_pct_clase_seleccion(dataset, fila))])
     area_ha = (
         float(dataset["area_ha"]) if dataset.get("area_ha") is not None else 0.0
     )  # injected by the task
@@ -291,7 +298,7 @@ def _tabla_desglose(
         celdas = []
         for _encabezado, clave, formateador in columnas:
             valor = fila.get(clave)
-            celdas.append("—" if valor is None else str(formateador(valor)))
+            celdas.append("—" if valor is None else _esc(str(formateador(valor))))
         filas.append(celdas)
     return build_data_table(encabezados, filas, branding)
 
@@ -436,7 +443,7 @@ def _seccion_resumen(
                 ("Fecha de generación", _fecha_es_ar(datos.get("generado_el"))),
                 ("Superficie total", f"{fmt_ha(datos.get('area_ha'))} ha"),
                 ("Subcuencas", str(datos.get("cantidad_zonas") or 0)),
-                ("Cuencas", ", ".join(datos.get("cuencas") or []) or "—"),
+                ("Cuencas", _esc(", ".join(str(c) for c in (datos.get("cuencas") or [])) or "—")),
             ],
             branding,
         )
@@ -517,7 +524,7 @@ def _seccion_resumen(
             flowables.append(
                 Paragraph(
                     f"Se muestran las {ZONAS_INLINE_MAX} mayores de {len(desglose)}; "
-                    "el detalle completo está al final de las secciones 2, 3, 4 y 6.",
+                    "el detalle completo está al final de las secciones 2, 3, 4, 5, 6 y 7.",
                     estilos["small"],
                 )
             )
@@ -558,8 +565,8 @@ def _tabla_validacion_riesgo(
     for evento in eventos:
         por_clase = evento.get("clases") or {}
         celdas = [
-            f"{evento.get('evento_key')} ({evento.get('fecha')})",
-            str(evento.get("sensor") or "—"),
+            _esc(f"{evento.get('evento_key')} ({evento.get('fecha')})"),
+            _esc(str(evento.get("sensor") or "—")),
         ]
         for clase in clases_leyenda:
             fila_clase = por_clase.get(clase)
@@ -794,10 +801,10 @@ def _seccion_suelos(
         def _fila_suelos_zona(fila: dict[str, Any]) -> list[str]:
             extra = por_zona.get(str(fila.get("zona_id")) or "") or {}
             return [
-                str(fila.get("nombre") or "—"),
-                str(fila.get("cuenca") or "—"),
+                _esc(str(fila.get("nombre") or "—")),
+                _esc(str(fila.get("cuenca") or "—")),
                 fmt_ha(fila.get("ha")),
-                str(extra.get("clase_dominante") or "—"),
+                _esc(str(extra.get("clase_dominante") or "—")),
                 fmt_num(extra["ip_ponderado"], 1) if extra.get("ip_ponderado") is not None else "—",
                 fmt_pct(extra["cobertura_pct"]) if extra.get("cobertura_pct") is not None else "—",
             ]
@@ -864,7 +871,9 @@ def _seccion_cobertura(
         clases = campania.get("clases") or []
         if not clases:
             continue
-        filas = [[str(c["clase"]), fmt_ha(c.get("ha")), fmt_pct(c.get("pct"))] for c in clases]
+        filas = [
+            [_esc(str(c["clase"])), fmt_ha(c.get("ha")), fmt_pct(c.get("pct"))] for c in clases
+        ]
         filas.append(
             [
                 "Total cultivado",
@@ -873,7 +882,7 @@ def _seccion_cobertura(
             ]
         )
         flowables.append(Spacer(1, 1 * mm))
-        flowables.append(Paragraph(f"Campaña {campania['campania']}", estilos["body"]))
+        flowables.append(Paragraph(f"Campaña {_esc(str(campania['campania']))}", estilos["body"]))
         flowables.append(
             build_data_table(["Clase", "Superficie (ha)", "% de la selección"], filas, branding)
         )
@@ -918,31 +927,45 @@ def _seccion_cobertura(
             ("Cuenca", "cuenca", str),
             ("Superficie (ha)", "ha", fmt_ha),
         ]
-        filas_zonas: list[list[str]] = []
-        for fila in _top_zonas(desglose):
-            extra = por_zona.get(str(fila.get("zona_id")) or "") or {}
-            celdas = [
-                "—" if fila.get(clave) is None else str(fmt(fila.get(clave)))
-                for _enc, clave, fmt in columnas
-            ]
-            celdas.append(
-                fmt_pct(extra["pct_cultivo"]) if extra.get("pct_cultivo") is not None else "—"
-            )
-            celdas.append(fmt_pct(extra["pct_soja"]) if extra.get("pct_soja") is not None else "—")
-            filas_zonas.append(celdas)
+        encabezados_cob = [
+            "Subcuenca",
+            "Cuenca",
+            "Superficie (ha)",
+            "% cultivo (uso)",
+            "% soja (última campaña)",
+        ]
+
+        def _filas_cobertura_zonas(origen: list[dict[str, Any]]) -> list[list[str]]:
+            filas_z: list[list[str]] = []
+            for fila in origen:
+                extra = por_zona.get(str(fila.get("zona_id")) or "") or {}
+                celdas = [
+                    "—" if fila.get(clave) is None else _esc(str(fmt(fila.get(clave))))
+                    for _enc, clave, fmt in columnas
+                ]
+                celdas.append(
+                    fmt_pct(extra["pct_cultivo"]) if extra.get("pct_cultivo") is not None else "—"
+                )
+                celdas.append(
+                    fmt_pct(extra["pct_soja"]) if extra.get("pct_soja") is not None else "—"
+                )
+                filas_z.append(celdas)
+            return filas_z
+
         flowables.append(
             build_data_table(
-                [
-                    "Subcuenca",
-                    "Cuenca",
-                    "Superficie (ha)",
-                    "% cultivo (uso)",
-                    "% soja (última campaña)",
-                ],
-                filas_zonas,
-                branding,
+                encabezados_cob, _filas_cobertura_zonas(_top_zonas(desglose)), branding
             )
         )
+        if len(desglose) > ZONAS_INLINE_MAX:
+            flowables.append(Spacer(1, 2 * mm))
+            flowables.append(
+                Paragraph(f"Detalle completo ({len(desglose)} subcuencas):", estilos["body"])
+            )
+            flowables.append(Spacer(1, 1 * mm))
+            flowables.append(
+                build_data_table(encabezados_cob, _filas_cobertura_zonas(desglose), branding)
+            )
     flowables.append(Spacer(1, 2 * mm))
     flowables.append(Paragraph(_FUENTE_COBERTURA, estilos["small"]))
     flowables.append(PageBreak())
@@ -1088,35 +1111,45 @@ def _seccion_canales(
             flowables.append(Spacer(1, 1 * mm))
         flowables.append(Paragraph("Desglose por subcuenca", estilos["body"]))
         flowables.append(Spacer(1, 1 * mm))
-        filas_zonas: list[list[str]] = []
-        for fila in _top_zonas(desglose):
-            extra = por_zona.get(str(fila.get("zona_id")) or "")
-            if not extra:
-                continue
-            filas_zonas.append(
-                [
-                    str(fila.get("nombre") or "—"),
-                    fmt_num(extra.get("km_relevados"), 2),
-                    fmt_num(extra.get("km_propuestos"), 2),
-                    fmt_num(extra.get("km_total"), 2),
-                    fmt_num(extra.get("km_por_mil_ha"), 2)
-                    if extra.get("km_por_mil_ha") is not None
-                    else "—",
-                ]
-            )
+        encabezados_can = [
+            "Subcuenca",
+            "Relevados (km)",
+            "Propuestos (km)",
+            "Total (km)",
+            "km cada 1.000 ha",
+        ]
+
+        def _filas_canales_zonas(origen: list[dict[str, Any]]) -> list[list[str]]:
+            filas_z: list[list[str]] = []
+            for fila in origen:
+                extra = por_zona.get(str(fila.get("zona_id")) or "")
+                if not extra:
+                    continue
+                filas_z.append(
+                    [
+                        _esc(str(fila.get("nombre") or "—")),
+                        fmt_num(extra.get("km_relevados"), 2),
+                        fmt_num(extra.get("km_propuestos"), 2),
+                        fmt_num(extra.get("km_total"), 2),
+                        fmt_num(extra.get("km_por_mil_ha"), 2)
+                        if extra.get("km_por_mil_ha") is not None
+                        else "—",
+                    ]
+                )
+            return filas_z
+
         flowables.append(
-            build_data_table(
-                [
-                    "Subcuenca",
-                    "Relevados (km)",
-                    "Propuestos (km)",
-                    "Total (km)",
-                    "km cada 1.000 ha",
-                ],
-                filas_zonas,
-                branding,
-            )
+            build_data_table(encabezados_can, _filas_canales_zonas(_top_zonas(desglose)), branding)
         )
+        if len(desglose) > ZONAS_INLINE_MAX:
+            filas_completas = _filas_canales_zonas(desglose)
+            if filas_completas:
+                flowables.append(Spacer(1, 2 * mm))
+                flowables.append(
+                    Paragraph(f"Detalle completo ({len(desglose)} subcuencas):", estilos["body"])
+                )
+                flowables.append(Spacer(1, 1 * mm))
+                flowables.append(build_data_table(encabezados_can, filas_completas, branding))
     flowables.append(PageBreak())
     return flowables
 
@@ -1154,7 +1187,7 @@ def _seccion_imagenes(
         fecha_es = str(imagen.get("fecha") or "—")
         nubes = imagen.get("nubes_pct")
         partes = [
-            f"{_esc(str(imagen.get('nombre') or imagen.get('event_key')))} · {fecha_es}",
+            f"{_esc(str(imagen.get('nombre') or imagen.get('event_key')))} · {_esc(fecha_es)}",
             f"sensor {_esc(str(imagen.get('sensor') or '—'))}",
         ]
         if nubes is not None:
@@ -1314,7 +1347,7 @@ def _qr_campo(url: str, estilos: dict[str, Any]) -> list[Flowable]:
         ),
         Spacer(1, 1.5 * mm),
         Paragraph("Mapa de campo — escaneá para abrirlo en el celular", estilos["body"]),
-        Paragraph(f"(también funciona sin señal: {url})", estilos["small"]),
+        Paragraph(f"(también funciona sin señal: {_esc(url)})", estilos["small"]),
         Spacer(1, 3 * mm),
     ]
 
@@ -1429,7 +1462,7 @@ def _notas_metodo_clase(
         notas.append(nota_umbral)
     if tipo == "drainage_need":
         nota_drenaje = (
-            _NOTA_LEYENDA55
+            _NOTA_DRENAJE_LEYENDA50
             if str(datos.get("umbral_alto_critico") or "") == "leyenda-55"
             else _NOTA_LEGACY70
         )

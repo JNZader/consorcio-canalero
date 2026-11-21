@@ -241,6 +241,18 @@ def test_engine():
                 "ADD COLUMN IF NOT EXISTS geometria_32720 geometry(Geometry, 32720)"
             )
         )
+        conn.execute(
+            text(
+                "ALTER TABLE composite_zonal_stats "
+                "ADD COLUMN IF NOT EXISTS ha_alto DOUBLE PRECISION"
+            )
+        )
+        conn.execute(
+            text(
+                "ALTER TABLE composite_zonal_stats "
+                "ADD COLUMN IF NOT EXISTS ha_critico DOUBLE PRECISION"
+            )
+        )
         conn.commit()
 
     yield engine

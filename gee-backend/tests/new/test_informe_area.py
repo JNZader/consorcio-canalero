@@ -331,9 +331,9 @@ def test_version_clave_cambiada_invalida_cache(factory, monkeypatch):
         with factory() as db:
             # Simulate the layout/layer refresh the clave exists for: same
             # selection, NEW version_plantilla → probe misses → new row.
-            # ("3": the default is "2" since PR 4 added sections — the
-            # monkeypatch value must differ from the running default.)
-            monkeypatch.setattr(settings, "informe_area_version_plantilla", "3")
+            # ("4": the default is "3" — the monkeypatch value must differ
+            # from the running default.)
+            monkeypatch.setattr(settings, "informe_area_version_plantilla", "4")
             row2, desde_cache = service.crear_informe(
                 db,
                 InformeAreaCreate(nombre="v1", zona_ids=[zona_id]),

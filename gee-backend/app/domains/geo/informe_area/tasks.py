@@ -54,6 +54,7 @@ from typing import Any
 import structlog
 
 from app.core.celery_app import celery_app
+from app.core.exceptions import sanitize_error_message
 from app.db.session import SessionLocal
 from app.domains.geo.models import EstadoGeoJob
 
@@ -66,6 +67,29 @@ PROGRESO_RESUELTO = 40
 PROGRESO_DESGLOSE = 80
 PROGRESO_PDF = 90
 PROGRESO_FINAL = 100
+
+_INTERNAL_ERROR_MARKERS = (
+    "select ",
+    "insert ",
+    "update ",
+    "delete ",
+    "postgresql://",
+    "postgres://",
+    "redis://",
+    "psycopg",
+    "sqlalchemy",
+)
+
+
+def _sanitizar_error_informe(exc: Exception) -> str:
+    """Strip SQL/DSN/filesystem details before storing in user-visible InformeArea.error."""
+    lowered = str(exc).lower()
+    default_msg = "Error interno al generar el informe"
+    if any(marker in lowered for marker in _INTERNAL_ERROR_MARKERS):
+        safe_detail = default_msg
+    else:
+        safe_detail = sanitize_error_message(exc, default_message=default_msg)
+    return f"{type(exc).__name__}: {safe_detail}".strip()
 
 
 def _resolucion_raster(ruta: str) -> str:
@@ -706,7 +730,7 @@ def generar_informe_area(informe_id: str) -> dict:
             )
             return {"informe_id": informe_id, "estado": "completed"}
         except Exception as exc:  # noqa: BLE001 — the failure path IS the contract (S8)
-            razon = f"{type(exc).__name__}: {exc}".strip()
+            razon = _sanitizar_error_informe(exc)
             logger.error("informe_area.fallo", informe_id=informe_id, exc_info=True)
             db.rollback()
             repo.actualizar_estado_if_actual(

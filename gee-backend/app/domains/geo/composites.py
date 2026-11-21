@@ -409,10 +409,10 @@ def extract_composite_zonal_stats(
 
             data = out_image[0].astype(np.float64)
 
-            # Build valid mask (exclude nodata)
-            valid_mask = np.ones(data.shape, dtype=bool)
+            # Build valid mask (exclude NaN and nodata)
+            valid_mask = ~np.isnan(data)
             if nodata is not None:
-                valid_mask = data != nodata
+                valid_mask &= data != nodata
 
             valid = data[valid_mask]
 

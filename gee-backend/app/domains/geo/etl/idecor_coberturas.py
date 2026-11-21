@@ -230,34 +230,44 @@ def bajar_coberturas(
     alto = max(1, round((bbox[3] - bbox[1]) / PASO_M))
 
     registros: list[dict[str, Any]] = []
-    for capa, spec in CAPAS.items():
-        tif_bytes = fetch_bytes(url_get_coverage(spec["coverage_id"], bbox))
-        if not tif_bytes[:2] == b"II" and not tif_bytes[:2] == b"MM":
-            # GeoTIFF is big/little endian TIFF; XML means an exception report.
-            raise EtlAssertionError(f"{capa}: la respuesta no es un GeoTIFF — {tif_bytes[:120]!r}")
-        tmp = destino / f"{capa}.tmp.tif"
-        final = destino / f"{capa}.tif"
-        tmp.write_bytes(tif_bytes)
-        dims = _validar_geotiff(tmp, ancho, alto)
-        if (dims["ancho_px"], dims["alto_px"]) != dims["esperado"]:
-            raise EtlAssertionError(
-                f"{capa}: grilla {dims['ancho_px']}x{dims['alto_px']} != "
-                f"pedida {dims['esperado']} — las capas dejarían de estar alineadas"
+    staged: list[tuple[Path, Path]] = []
+    try:
+        for capa, spec in CAPAS.items():
+            tif_bytes = fetch_bytes(url_get_coverage(spec["coverage_id"], bbox))
+            if not tif_bytes[:2] == b"II" and not tif_bytes[:2] == b"MM":
+                # GeoTIFF is big/little endian TIFF; XML means an exception report.
+                raise EtlAssertionError(
+                    f"{capa}: la respuesta no es un GeoTIFF — {tif_bytes[:120]!r}"
+                )
+            tmp = destino / f"{capa}.tmp.tif"
+            final = destino / f"{capa}.tif"
+            tmp.write_bytes(tif_bytes)
+            staged.append((tmp, final))
+            dims = _validar_geotiff(tmp, ancho, alto)
+            if (dims["ancho_px"], dims["alto_px"]) != dims["esperado"]:
+                raise EtlAssertionError(
+                    f"{capa}: grilla {dims['ancho_px']}x{dims['alto_px']} != "
+                    f"pedida {dims['esperado']} — las capas dejarían de estar alineadas"
+                )
+            leyenda = normalizar_leyenda(fetch_json(url_leyenda(spec["wms_layer"])))
+            registros.append(
+                {
+                    "capa": capa,
+                    "tipo": spec["tipo"],
+                    "campania": spec["campania"],
+                    "archivo_path": str(final),
+                    "leyenda": leyenda,
+                    "bbox_22174": list(bbox),
+                    "ancho_px": dims["ancho_px"],
+                    "alto_px": dims["alto_px"],
+                }
             )
-        tmp.replace(final)
-        leyenda = normalizar_leyenda(fetch_json(url_leyenda(spec["wms_layer"])))
-        registros.append(
-            {
-                "capa": capa,
-                "tipo": spec["tipo"],
-                "campania": spec["campania"],
-                "archivo_path": str(final),
-                "leyenda": leyenda,
-                "bbox_22174": list(bbox),
-                "ancho_px": dims["ancho_px"],
-                "alto_px": dims["alto_px"],
-            }
-        )
+        for tmp, final in staged:
+            tmp.replace(final)
+    except Exception:
+        for tmp, _ in staged:
+            tmp.unlink(missing_ok=True)
+        raise
     return {"bbox": bbox, "registros": registros}
 
 

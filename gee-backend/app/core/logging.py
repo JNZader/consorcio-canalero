@@ -5,6 +5,7 @@ Uses structlog for JSON-formatted, structured logging.
 
 import logging
 import os
+import re
 import sys
 from typing import Any, List, Optional, Set
 import structlog
@@ -50,6 +51,13 @@ SENSITIVE_FIELDS: Set[str] = {
 # Placeholder for sanitized values
 SANITIZED_VALUE = "[REDACTED]"
 
+_CAMPO_TOKEN_PATH_RE = re.compile(r"((?:/api/v2/public)?/campo/)([^/?#]+)")
+
+
+def redact_sensitive_path(path: str) -> str:
+    """Redact opaque capability tokens from logged URL paths."""
+    return _CAMPO_TOKEN_PATH_RE.sub(rf"\1{SANITIZED_VALUE}", path)
+
 
 def sanitize_sensitive_data(
     data: Any,
@@ -84,6 +92,8 @@ def sanitize_sensitive_data(
     elif isinstance(data, list):
         return [sanitize_sensitive_data(item, fields, max_depth - 1) for item in data]
     elif isinstance(data, str):
+        if "/campo/" in data:
+            data = redact_sensitive_path(data)
         # Heuristica de JWT/API key. El chequeo anterior ("largo y con punto")
         # redactaba CUALQUIER ruta de mas de 50 caracteres — p. ej.
         # /data/geo/zona_principal/output/dem_filled_hydro.tif aparecia como
