@@ -791,9 +791,6 @@ def test_wave2_compose_systemd_and_doc_redaction_contracts() -> None:
     assert "-Q geo -c 1" in sup
     assert "--workers 1" in sup
 
-    assert "python3-pip" in _read("gee-backend/Dockerfile.geo").split("apt-get purge", 1)[1]
-    assert "HEALTHCHECK" in _read("gee-backend/Dockerfile.geo")
-
     notify = _read("deploy/notify@.service")
     assert "User=javier" in notify and "NoNewPrivileges=yes" in notify
     assert "StateDirectory=consorcio-deploy" in _read("deploy/deploy-webhook.service")

@@ -177,7 +177,7 @@ RUN n=0; \
       if [ "$n" -ge 5 ]; then echo "WBT download failed after $n attempts" >&2; exit 1; fi; \
       sleep $((n * 8)); \
     done \
-    && apt-get purge -y --auto-remove gcc python3-dev python3-pip \
+    && apt-get purge -y --auto-remove gcc python3-dev \
     && rm -f /usr/bin/pebble \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
@@ -214,9 +214,6 @@ EXPOSE 8001
 
 # Switch to non-root user
 USER app
-
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD ["python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=5).close()"]
 
 # Run both Celery worker and tile service via supervisord
 CMD ["supervisord", "-c", "/etc/supervisor/conf.d/geo.conf"]
