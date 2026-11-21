@@ -8,6 +8,8 @@
     {"name":"padron-service","module":"app/domains/padron/service.py","owns":["app/domains/padron/"],"tests":["tests/test_mutation_targets_padron.py"],"min_kill_rate":0.30},
     {"name":"normas-kernel","module":"app/domains/conocimiento/normas.py","owns":["app/domains/conocimiento/normas.py"],"tests":["tests/test_mutation_targets_normas.py"],"min_kill_rate":0.30},
     {"name":"normas-editor","module":"app/domains/conocimiento/editor.py","owns":["app/domains/conocimiento/editor.py"],"tests":["tests/test_mutation_targets_normas.py"],"min_kill_rate":0.30},
-    {"name":"normas-barra","module":"app/domains/conocimiento/eval/barra_sin_gpu.py","owns":["app/domains/conocimiento/eval/barra_sin_gpu.py"],"tests":["tests/test_mutation_targets_normas.py"],"min_kill_rate":0.30}
+    {"name":"normas-barra","module":"app/domains/conocimiento/eval/barra_sin_gpu.py","owns":["app/domains/conocimiento/eval/barra_sin_gpu.py"],"tests":["tests/test_mutation_targets_normas.py"],"min_kill_rate":0.30},
+    {"name":"auth-refresh-tokens","module":"app/auth/refresh_tokens.py","owns":["app/auth/refresh_tokens.py"],"tests":["tests/test_mutation_targets_refresh_tokens.py"],"min_kill_rate":0.30},
+    {"name":"informe-area-kmz","module":"app/domains/geo/informe_area/kmz.py","owns":["app/domains/geo/informe_area/kmz.py"],"tests":["tests/test_mutation_targets_informe_area.py"],"min_kill_rate":0.30}
   ]
 }

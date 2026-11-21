@@ -64,7 +64,7 @@ def test_tests_config_workflow_and_unknown_backend_paths_fail_closed(tmp_path: P
     ):
         result, payload = _plan(tmp_path / str(index), f"M\t{path}\n")
         assert result.returncode == 0, result.stderr
-        assert len(_targets(payload)) == 8
+        assert len(_targets(payload)) == 10
 
 
 def test_renamed_or_deleted_path_fails_closed(tmp_path: Path) -> None:
@@ -73,7 +73,16 @@ def test_renamed_or_deleted_path_fails_closed(tmp_path: Path) -> None:
         "R100\tgee-backend/app/domains/padron/service.py\tgee-backend/app/domains/padron/renamed.py\n",
     )
     assert result.returncode == 0, result.stderr
-    assert len(_targets(payload)) == 8
+    assert len(_targets(payload)) == 10
+
+
+def test_wave3_refresh_tokens_and_kmz_targets_select_cleanly(tmp_path: Path) -> None:
+    result, payload = _plan(
+        tmp_path,
+        "M\tgee-backend/app/auth/refresh_tokens.py\nM\tgee-backend/app/domains/geo/informe_area/kmz.py\n",
+    )
+    assert result.returncode == 0, result.stderr
+    assert _targets(payload) == ["auth-refresh-tokens", "informe-area-kmz"]
 
 
 def test_default_manifest_is_script_relative_when_run_from_the_repo_root(
