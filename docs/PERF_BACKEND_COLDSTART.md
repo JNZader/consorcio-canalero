@@ -46,7 +46,7 @@ GET /api/v2/geo/layers/public                 | 200 | 165.93 ms
 
 Backend → 60-200 ms; cliente vio 10 000 ms. La diferencia se la come la inicialización de GEE bloqueante + serialización de workers + handshake TLS de Caddy.
 
-### Auditoría del server Hetzner (157.180.29.238)
+### Auditoría del server Hetzner (ver `~/.ssh/config` privado)
 
 **Estado de contenedores:**
 - `consorcio-backend` — Up 8 days (healthy), corriendo `uvicorn --reload` con **1 solo worker**.

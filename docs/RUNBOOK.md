@@ -7,8 +7,8 @@
 ## TL;DR — common commands
 
 ```bash
-# SSH to the server
-ssh -i ~/.ssh/hetzner_ghagga -p 2222 javier@157.180.29.238
+# SSH to the server (define alias `consorcio-prod` in your private ~/.ssh/config)
+ssh consorcio-prod
 
 # Where the stack lives
 cd /home/javier/stacks/consorcio
@@ -167,17 +167,16 @@ Hetzner Storage Box) — the same `.env` drives both backup runners.
    RESTIC_REPOSITORY=sftp:u123456-sub1@u123456.your-storagebox.de:/restic/consorcio
    RESTIC_PASSWORD=<openssl rand -base64 48>
    ```
-5. **Important**: Storage Box has no automatic lifecycle. The
-   ``backup_postgres.sh`` script's ``BACKUP_RETENTION_DAYS`` setting
-   only affects the B2 path; for SB you either set a manual cleanup
-   cron (``find``-style delete via SFTP) or accept unbounded growth.
-   Volume backups via ``restic forget --prune`` ARE managed
-   automatically because restic stores its own lifecycle metadata.
+5. **Important**: `backup_postgres.sh` applies `BACKUP_RETENTION_DAYS` on both
+   Backblaze B2 (hides expired objects) and Hetzner Storage Box (parses UTC
+   timestamps over SFTP and removes dumps older than `BACKUP_RETENTION_DAYS`).
+   Volume backups via `restic forget --prune` ARE also managed automatically
+   because restic stores its own lifecycle metadata.
 
 #### 1.4.c Trigger a one-off backup (verifies the credentials are right)
 
 ```bash
-ssh -i ~/.ssh/hetzner_ghagga -p 2222 javier@157.180.29.238
+ssh consorcio-prod
 cd /home/javier/stacks/consorcio
 docker compose --profile backup run --rm backup-postgres
 docker compose --profile backup run --rm backup-volumes
@@ -435,19 +434,13 @@ list with rationale + expected-fix milestones. Quick reference:
 
 ## 2. Daily ops
 
-### 2.1 Pre-push preflight (CI replacement while Actions is paused)
+### 2.1 Pre-push preflight (local mirror of GitHub Actions CI gates)
 
-> ⚠️ **CI is paused** — the GitHub Actions workflows `Backend`,
-> `Build and Publish Images`, and `Frontend` are `disabled_manually`
-> at the org level because the Actions billing quota was exceeded.
-> Until quota resets / a paid plan kicks in, the Phase 4 gates
-> (ruff + mypy + auth-gate tests + 60% coverage + 30% mutation)
-> are NOT enforced server-side. **Run the local preflight before
-> every push.**
+> GitHub Actions CI (`Backend`, `Frontend`, `Deploy`, `CodeQL`, `SAST`) is
+> active and enforces lint, typecheck, coverage ≥ 80%, mutation gates, and
+> Trivy image scans on pull requests and pushes to `main`.
 
-`gee-backend/scripts/preflight.sh` reproduces the same gates that
-the disabled CI workflows used to enforce. Run it from the
-`gee-backend/` directory before `git push`:
+`gee-backend/scripts/preflight.sh` reproduces those backend checks locally before `git push`. Run it from the `gee-backend/` directory:
 
 ```bash
 cd gee-backend
@@ -489,7 +482,7 @@ The Hetzner stack currently builds locally on `git pull` (no image
 pull). The simpler flow:
 
 ```bash
-ssh -i ~/.ssh/hetzner_ghagga -p 2222 javier@157.180.29.238
+ssh consorcio-prod
 cd /home/javier/stacks/consorcio
 git pull origin main
 docker compose up -d --build backend worker celery-beat geo-worker
@@ -523,11 +516,11 @@ peak hours.
 
 ```bash
 NEW=$(openssl rand -hex 32)
-ssh -i ~/.ssh/hetzner_ghagga -p 2222 javier@157.180.29.238 \
+ssh consorcio-prod \
   "cd /home/javier/stacks/consorcio && \
    cp .env .env.bak-\$(date +%Y%m%d-%H%M%S) && \
    sed -i 's|^JWT_SECRET=.*|JWT_SECRET=${NEW}|' .env && \
-   docker compose up -d backend worker celery-worker"
+   docker compose up -d backend worker"   # en prod GHCR: docker compose up -d backend celery-worker
 ```
 
 ### 2.4 ``/auth/jwt/logout-all`` and the residual access-token window
@@ -816,43 +809,26 @@ from the in-repo ``docker-compose.yml`` (dev local) and from
 ``docker-compose.prod.yml``. Until the cutover, the server's file is
 still the one serving live traffic.
 
-**What's different on the server (vs ``docker-compose.prod.yml``):**
+**Active box flow vs target INF-07 cutover (see [`docs/runbooks/infra-cicd-v6.md`](runbooks/infra-cicd-v6.md)):**
 
-- Builds from local ``./gee-backend`` source (``build:`` directive)
-  instead of pulling from GHCR (``image: ghcr.io/...``). Reason:
-  GH Actions ``Build and Publish Images`` workflow is currently
-  ``disabled_manually`` — quota exceeded. With no published image,
-  there's nothing to pull, so the server falls back to a local
-  ``docker compose build``.
-- Postgres + Redis are EMBEDDED on the same compose, not external.
-  ``docker-compose.prod.yml`` treats them as external services on
-  a shared Docker network. The server inherited the embedded
-  topology from an earlier phase and was never migrated.
-- Caddy / proxy is NOT in the compose — runs as a system service
-  outside Docker.
+- Until the INF-07 cutover is executed on the server, the active update script on the box is `scripts/deploy-box.sh` (local `docker compose up -d --build`, preserving the host compose override and embedded Postgres/Redis).
+- Target production topology (`docker-compose.prod.yml`) pulls digest-pinned images from `ghcr.io/jnzader/consorcio-canalero/{backend,geo-worker}` published by `.github/workflows/deploy.yml` and triggers `deploy/deploy_webhook.py`, with external `shared-postgres` + `shared-redis` + PgBouncer (`APP_DATABASE_URL`) and Caddy running on the host outside Docker.
 
 **What we have in sync (F4-F + F4.X-1 + F4.X-2 fix-forwards):**
 
-- Backend service ``environment`` block forwards ``USE_PGBOUNCER``.
-- Worker service ``environment`` block forwards ``USE_PGBOUNCER``.
-- PgBouncer service is up with ``POOL_MODE=transaction``,
-  ``MAX_CLIENT_CONN=200``, ``SERVER_RESET_QUERY=DISCARD ALL``,
-  ``AUTH_TYPE=scram-sha-256``.
-- Dedicated ``migrate`` service with ``DATABASE_URL`` override to
-  postgres directly + ``USE_PGBOUNCER=false`` so alembic doesn't
+- Backend service `environment` block forwards `USE_PGBOUNCER`.
+- Worker service `environment` block forwards `USE_PGBOUNCER`.
+- PgBouncer service is up with `POOL_MODE=transaction`,
+  `MAX_CLIENT_CONN=200`, `SERVER_RESET_QUERY=DISCARD ALL`,
+  `AUTH_TYPE=scram-sha-256`.
+- Dedicated `migrate` service with `DATABASE_URL` override to
+  postgres directly + `USE_PGBOUNCER=false` so alembic doesn't
   blow up on multi-statement DDL.
 
-**What's required before the server can adopt ``docker-compose.prod.yml``:**
+**What's required before switching the server to `docker-compose.prod.yml`:**
 
-1. GH Actions billing quota resets (or the user upgrades to a paid
-   plan). Until then ``Build and Publish Images`` cannot produce
-   the ``ghcr.io/jnzader/consorcio-canalero/{backend,geo-worker}``
-   images that ``docker-compose.prod.yml`` references.
-2. Run § 2.7 (cutover) once images are published — replace the
-   server's ``docker-compose.yml`` with a copy of
-   ``docker-compose.prod.yml`` from the repo, set
-   ``BACKEND_IMAGE`` + ``GEO_WORKER_IMAGE`` in ``.env`` to the
-   SHA-pinned tags, ``docker compose pull && docker compose up -d``.
+1. Ensure `shared-postgres` / `shared-redis` and the `proxy` / `backend` external Docker networks exist and `deploy/deploy-webhook.service` + Caddy are configured per [`docs/runbooks/infra-cicd-v6.md`](runbooks/infra-cicd-v6.md).
+2. Execute the INF-07 cutover checklist in `infra-cicd-v6.md`: copy `docker-compose.prod.yml`, `martin/config.prod.yaml`, and `.env` (including `BACKEND_DIGEST` / `GEO_WORKER_DIGEST` / `APP_DATABASE_URL` / `MARTIN_DB_URL`), then run `docker compose up -d`.
 
 **Why we haven't backported the embedded topology into the prod
 file instead:**
@@ -889,7 +865,7 @@ reconcile before the next deploy.
 | Backend, geo-worker, martin | Hetzner CX33 — `/home/javier/stacks/consorcio` |
 | Postgres + Redis | Same VPS, shared across stacks |
 | Container registry | `ghcr.io/jnzader/consorcio-canalero` |
-| CI/CD | GitHub Actions — `.github/workflows/{frontend,backend,deploy,gh-pages}.yml` |
+| CI/CD | GitHub Actions — `.github/workflows/{frontend,backend,deploy,pages,sast,codeql}.yml` |
 | Tile server | `https://cc10demayo-tiles.javierzader.com` (Martin) |
 | API | `https://cc10demayo-api.javierzader.com` |
 | Sentry | <https://sentry.io> (when configured) |
@@ -930,8 +906,9 @@ python3 scripts/deploy_b3p.py preflight --target-sha <40-lowercase-hex-sha>  # f
 python3 scripts/deploy_b3p.py plan --target-sha <40-lowercase-hex-sha>
 ```
 
-Pinned connection defaults are Hetzner `javier@157.180.29.238:2222`, key
-`~/.ssh/hetzner_ghagga`, stack `/home/javier/stacks/consorcio`, repository
+Connection defaults resolve from `CONSORCIO_VPS_HOST` (default SSH alias
+`consorcio-prod`), `CONSORCIO_VPS_USER`, `CONSORCIO_VPS_PORT`, and
+`CONSORCIO_VPS_SSH_KEY` (keep the real IP, custom SSH port, and private key path in private `~/.ssh/config`), stack `/home/javier/stacks/consorcio`, repository
 `JNZader/consorcio-canalero`, and backend-only scope. Every plan or executor
 requires an operator-supplied exact lowercase 40-hex `--target-sha`; there is
 no future-release SHA default. The executor requires its configured target and

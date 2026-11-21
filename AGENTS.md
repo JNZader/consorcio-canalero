@@ -18,14 +18,13 @@ not deploy the frontend. It saves the box `docker-compose.yml` and restores it
 after `git reset --hard origin/main`. The compose on `origin/main` is the
 development file.
 
-It does not run Alembic. Schema changes are a separate, explicit step.
+It does not run Alembic. Schema changes are a separate, explicit step: always
+confirm a single head with `alembic heads` before running `alembic upgrade head`
+against the target database, and do not add `alembic upgrade` to `deploy-box.sh`.
 
-On 2026-10-24 the live database stamp was `0033_one_way_profile`. The image
-running there reports that revision as `(head)` because the image predates
-`conocimiento_008`. On current `main`, `conocimiento_008` revises
-`0033_one_way_profile` and is the only Alembic head. `alembic upgrade head`
-from a current checkout against that database would apply `conocimiento_008`.
-Do not add that command to the deploy script.
+Note on topology: `scripts/deploy-box.sh` is the active local-build deploy flow on
+the VPS until the operator executes the INF-07 cutover to `docker-compose.prod.yml` +
+GHCR digests + `deploy/deploy_webhook.py` documented in `docs/runbooks/infra-cicd-v6.md`.
 
 `geo-worker` bind-mounts `gee-backend/app` and runs as uid 100. The checkout
 inside the script uses `umask 022`. A tree left at mode `600` makes the worker
