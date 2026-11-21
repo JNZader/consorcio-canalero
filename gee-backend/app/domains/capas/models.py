@@ -1,6 +1,6 @@
 """SQLAlchemy models for the capas (map layers) domain."""
 
-import enum
+from enum import StrEnum
 from datetime import datetime
 from typing import Any, Optional
 
@@ -18,7 +18,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base, TimestampMixin, UUIDMixin
 
 
-class TipoCapa(str, enum.Enum):
+class TipoCapa(StrEnum):
     POLYGON = "polygon"
     LINE = "line"
     POINT = "point"
@@ -26,7 +26,7 @@ class TipoCapa(str, enum.Enum):
     TILE = "tile"
 
 
-class FuenteCapa(str, enum.Enum):
+class FuenteCapa(StrEnum):
     LOCAL = "local"
     GEE = "gee"
     UPLOAD = "upload"

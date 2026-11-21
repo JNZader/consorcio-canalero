@@ -360,16 +360,49 @@ class TestMonitoringRepository:
         repo: MonitoringRepository,
         sample_sugerencia_data: SugerenciaCreate,
     ):
+        from datetime import datetime, timedelta, timezone
+
+        from app.domains.denuncias.models import Denuncia, EstadoDenuncia
+
         # Create a sugerencia so there's data
         repo.create_sugerencia(db, sample_sugerencia_data)
+        recent = Denuncia(
+            tipo="desborde",
+            descripcion="Canal desbordado en zona norte cerca del puente.",
+            latitud=-32.5,
+            longitud=-62.5,
+            estado=EstadoDenuncia.PENDIENTE,
+            created_at=datetime.now(timezone.utc) - timedelta(days=2),
+        )
+        old = Denuncia(
+            tipo="desborde",
+            descripcion="Denuncia antigua en revision desde hace dos semanas.",
+            latitud=-32.51,
+            longitud=-62.51,
+            estado=EstadoDenuncia.EN_REVISION,
+            created_at=datetime.now(timezone.utc) - timedelta(days=14),
+        )
+        soft_deleted = Denuncia(
+            tipo="otro",
+            descripcion="Denuncia eliminada por ARCO no debe contarse.",
+            latitud=-32.52,
+            longitud=-62.52,
+            estado=EstadoDenuncia.PENDIENTE,
+            deleted_at=datetime.now(timezone.utc),
+        )
+        db.add_all([recent, old, soft_deleted])
         db.flush()
 
         stats = repo.get_dashboard_stats(db)
 
         assert "denuncias" in stats
-        # `total_assets` se retiró junto con el dominio Infraestructura
-        # (ver memoria QA 2026-04-28 — la sección "Ver zonificación" y
-        # las maquinarias/equipamiento se sacaron completos).
+        assert stats["denuncias"]["pendiente"] >= 1
+        assert stats["denuncias"]["en_revision"] >= 1
+        assert stats["denuncias"]["total"] >= 2
+        assert {"pendiente", "en_revision", "resuelto", "descartado", "total"} <= set(
+            stats["denuncias"].keys()
+        )
+        assert stats["denuncias_nuevas_semana"] >= 1
         assert "total_tramites" in stats
         assert "total_sugerencias" in stats
         assert stats["total_sugerencias"] >= 1
