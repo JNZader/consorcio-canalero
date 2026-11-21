@@ -383,7 +383,9 @@ def render_mapa_ubicacion(
         bounds = _bounds_con_margen([union, *geoms_zonas])
         minx, miny, maxx, maxy = bounds
 
-        aspecto = (maxy - miny) / max(maxx - minx, 1e-12)
+        lat_media = (miny + maxy) / 2.0
+        cos_lat = max(math.cos(math.radians(lat_media)), 0.1)
+        aspecto = (maxy - miny) / max((maxx - minx) * cos_lat, 1e-12)
         ancho = ANCHO_MAX_PX
         alto = round(ancho * aspecto)
         if alto > ALTO_MAX_PX:

@@ -217,10 +217,17 @@ def _seed_composite_alto(db: Session, zona_id: uuid.UUID, area_high_risk_ha: flo
         text(
             "INSERT INTO composite_zonal_stats "
             "(id, zona_id, tipo, fecha_calculo, mean_score, max_score, p90_score, "
-            " area_high_risk_ha) "
-            "VALUES (:id, :zona_id, 'flood_risk', CURRENT_DATE, 50.0, 90.0, 70.0, :ha)"
+            " area_high_risk_ha, ha_alto, ha_critico) "
+            "VALUES (:id, :zona_id, 'flood_risk', CURRENT_DATE, 50.0, 90.0, 70.0, "
+            "        :ha, :ha_alto, :ha_critico)"
         ),
-        {"id": uuid.uuid4(), "zona_id": zona_id, "ha": area_high_risk_ha},
+        {
+            "id": uuid.uuid4(),
+            "zona_id": zona_id,
+            "ha": area_high_risk_ha,
+            "ha_alto": area_high_risk_ha * 0.7,
+            "ha_critico": area_high_risk_ha * 0.3,
+        },
     )
 
 
