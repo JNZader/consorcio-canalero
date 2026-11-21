@@ -593,3 +593,92 @@ def test_limpieza_borra_vencidos_y_conserva_vivos(factory):
             zona_ids=[],
             informe_ids=informe_ids,
         )
+
+
+def test_app_main_maneja_informe_area_error_404(informe_db):
+    """C1: real app.main FastAPI app converts InformeAreaError to flat 404 JSON."""
+    from fastapi.testclient import TestClient
+
+    from app.auth.dependencies import current_active_user
+    from app.db.session import get_db
+    from app.main import app
+
+    usuario = _usuario(informe_db, UserRole.OPERADOR)
+    prev_overrides = dict(app.dependency_overrides)
+    app.dependency_overrides[get_db] = lambda: informe_db
+    app.dependency_overrides[current_active_user] = lambda: usuario
+    try:
+        with TestClient(app, base_url="http://localhost", raise_server_exceptions=False) as cliente:
+            rs = cliente.get(f"{INFORME_PATH}/{uuid.uuid4()}")
+        assert rs.status_code == 404, rs.text
+        assert rs.json()["codigo"] == "informe_no_encontrado"
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(prev_overrides)
+
+
+def test_ciudadano_recibe_403_en_todas_las_rutas_privadas(informe_db):
+    """C3: role CIUDADANO gets 403 across all /api/v2/geo/informes-area routes."""
+    from fastapi.testclient import TestClient
+
+    ciudadano = _usuario(informe_db, UserRole.CIUDADANO)
+    rid = uuid.uuid4()
+    with TestClient(_app(informe_db, ciudadano)) as cliente:
+        assert (
+            cliente.post(INFORME_PATH, json={"nombre": "x", "zona_ids": [str(rid)]}).status_code
+            == 403
+        )
+        assert (
+            cliente.post(f"{INFORME_PATH}/preview", json={"zona_ids": [str(rid)]}).status_code
+            == 403
+        )
+        assert cliente.get(INFORME_PATH).status_code == 403
+        assert cliente.get(f"{INFORME_PATH}/{rid}").status_code == 403
+        assert cliente.get(f"{INFORME_PATH}/{rid}/pdf").status_code == 403
+        assert cliente.get(f"{INFORME_PATH}/{rid}/kmz").status_code == 403
+
+
+def test_generar_informe_area_rollback_en_error_db(factory, monkeypatch):
+    """C2: a SQL failure inside generar_informe_area rolls back before writing FAILED CAS."""
+    from sqlalchemy.exc import SQLAlchemyError
+
+    usuario_id = None
+    informe_ids: list[uuid.UUID] = []
+    try:
+        with factory() as db:
+            usuario = _seed_usuario(db, f"informe-c2-rb-{uuid.uuid4().hex[:8]}@test.local")
+            db.commit()
+            usuario_id = usuario.id
+            row = _seed_informe(
+                db,
+                usuario_id=usuario_id,
+                nombre="Rollback test",
+                vence_at=datetime.now(timezone.utc) + timedelta(days=90),
+            )
+            db.commit()
+            informe_ids = [row.id]
+
+        def _break_session(db_sess, *args, **kwargs):
+            # Put session in broken transaction state (InFailedSqlTransaction)
+            try:
+                db_sess.execute(text("SELECT * FROM tabla_inexistente_c2_rollback"))
+            except SQLAlchemyError:
+                pass
+            raise RuntimeError("boom tras query rota")
+
+        monkeypatch.setattr(service, "resolver_seleccion", _break_session)
+        salida = tasks.generar_informe_area(str(row.id))
+        assert salida["estado"] == "failed"
+
+        with factory() as db:
+            refreshed = db.get(InformeArea, row.id)
+            assert refreshed is not None
+            assert refreshed.estado == EstadoGeoJob.FAILED
+            assert "boom tras query rota" in (refreshed.error or "")
+    finally:
+        _limpiar(
+            factory,
+            usuario_id=usuario_id,
+            zona_ids=[],
+            informe_ids=informe_ids,
+        )

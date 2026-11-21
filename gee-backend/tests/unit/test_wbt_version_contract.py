@@ -66,3 +66,40 @@ def test_un_banner_que_no_es_string_levanta_el_error_disenado() -> None:
     mensaje = str(excinfo.value)
     assert "did not report a version banner" in mensaje
     assert "FileNotFoundError" in mensaje
+
+
+@pytest.mark.parametrize(
+    "module_path",
+    [
+        "app.domains.geo.processing",
+        "app.domains.geo.composites",
+        "app.domains.geo.intelligence.calculations",
+    ],
+)
+def test_get_wbt_no_cachea_instancia_invalida_al_fallar_version(
+    monkeypatch: pytest.MonkeyPatch,
+    module_path: str,
+) -> None:
+    """C10: si assert_pinned_wbt_version falla, _wbt debe seguir en None en el 2do llamado."""
+    import importlib
+    import sys
+    import types
+
+    mod = importlib.import_module(module_path)
+
+    class _FakeBadWbt:
+        def set_verbose_mode(self, _flag: bool) -> None:
+            return None
+
+        def version(self) -> str:
+            return "WhiteboxTools v2.3.6 (c) ..."
+
+    fake_whitebox = types.ModuleType("whitebox")
+    fake_whitebox.WhiteboxTools = _FakeBadWbt  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "whitebox", fake_whitebox)
+    monkeypatch.setattr(mod, "_wbt", None)
+
+    for _ in range(2):
+        with pytest.raises(RuntimeError):
+            mod._get_wbt()
+        assert mod._wbt is None

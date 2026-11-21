@@ -931,18 +931,84 @@ def test_miniatura_falso_color_bandas_por_sensor():
 
     ee_stub, req_stub = _EE(), _Req()
     png = service.miniatura_falso_color_impl(
-        scene_id="ESCENA-1",
+        scene_id="COPERNICUS/S2_SR_HARMONIZED/ESCENA-1",
         sensor="sentinel2",
         region_geojson={"type": "Polygon", "coordinates": []},
         ee_module=ee_stub,
         requests_module=req_stub,
     )
     assert png == b"PNG-FAKE"
-    assert ee_stub.meta["scene"] == "ESCENA-1"
+    assert ee_stub.meta["scene"] == "COPERNICUS/S2_SR_HARMONIZED/ESCENA-1"
     assert ee_stub.meta["bandas"] == ["B8", "B11", "B4"]
+    assert ee_stub.meta["params"]["min"] == 0.0
+    assert ee_stub.meta["params"]["max"] == 3000.0
     assert ee_stub.meta["params"]["dimensions"] == service.MINIATURA_PX
     assert ee_stub.meta["params"]["format"] == "png"
     assert ee_stub.meta["geom"][1] is False
+
+
+def test_miniatura_optica_bare_system_index_usa_coleccion():
+    """C6: bare optical system:index must filter ImageCollection instead of ee.Image(bare_id)."""
+
+    class _ImagenOpt:
+        def __init__(self, meta):
+            self.meta = meta
+
+        def select(self, bandas):
+            self.meta["bandas"] = bandas
+            return self
+
+        def clip(self, region):
+            self.meta["clip"] = region
+            return self
+
+        def getThumbURL(self, params):
+            self.meta["params"] = params
+            return "https://ee/thumb-opt"
+
+    class _ColeccionOpt:
+        def __init__(self, meta):
+            self._meta = meta
+
+        def filter(self, filtro):
+            self._meta["filtro"] = filtro
+            return self
+
+        def first(self):
+            return _ImagenOpt(self._meta)
+
+    class _EEOpt:
+        def __init__(self):
+            self.meta = {}
+            self.Filter = type("_F", (), {"eq": staticmethod(lambda k, v: ("eq", k, v))})
+
+        def Geometry(self, geo_json=None, geodesic=None):
+            return ("region", geo_json)
+
+        def ImageCollection(self, col):
+            self.meta["coleccion"] = col
+            return _ColeccionOpt(self.meta)
+
+    class _ReqOpt:
+        def get(self, url, timeout=None):
+            return type("_R", (), {"content": b"PNG-OPT", "raise_for_status": lambda s: None})()
+
+    ee_stub = _EEOpt()
+    png = service.miniatura_falso_color_impl(
+        scene_id="20210402T141049_20210402T141418_T20HNH",
+        sensor="sentinel2",
+        region_geojson={"type": "Polygon", "coordinates": []},
+        ee_module=ee_stub,
+        requests_module=_ReqOpt(),
+    )
+    assert png == b"PNG-OPT"
+    assert ee_stub.meta["coleccion"] == "COPERNICUS/S2_SR_HARMONIZED"
+    assert ee_stub.meta["filtro"] == (
+        "eq",
+        "system:index",
+        "20210402T141049_20210402T141418_T20HNH",
+    )
+    assert ee_stub.meta["bandas"] == ["B8", "B11", "B4"]
 
 
 def test_miniatura_s1_banda_unica_sin_clip():
@@ -1026,7 +1092,8 @@ def test_miniatura_s1_banda_unica_sin_clip():
     # raw GeoJSON region (not an ee.Geometry), no crs override needed
     assert ee_stub.meta["params"]["region"] == geojson
     assert ee_stub.meta["params"]["bands"] == ["VV"]
-    assert ee_stub.meta["params"]["max"] == 0.5
+    assert ee_stub.meta["params"]["min"] == -25.0
+    assert ee_stub.meta["params"]["max"] == 0.0
     assert ee_stub.meta["params"]["dimensions"] == service.MINIATURA_PX
     assert "crs" not in ee_stub.meta["params"]
 

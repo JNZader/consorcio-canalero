@@ -142,6 +142,14 @@ _DESCARGO = (
 # ── KPIs (shared by the builder and the task's ``resultado``) ────────────────
 
 
+def _pct_clase_seleccion(dataset: dict[str, Any], clase: dict[str, Any]) -> float:
+    """Class % over the WHOLE selection, scaling covered-only raster % once."""
+    pct = float(clase.get("pct") or 0.0)
+    if "pixel_count" in dataset and dataset.get("cobertura_ratio") is not None:
+        return round(pct * float(dataset["cobertura_ratio"]), 2)
+    return pct
+
+
 def _pct_clases(dataset: dict[str, Any] | None, etiquetas: tuple[str, ...]) -> float | None:
     """Sum of ``pct`` over the clases whose label is in ``etiquetas``.
 
@@ -153,7 +161,9 @@ def _pct_clases(dataset: dict[str, Any] | None, etiquetas: tuple[str, ...]) -> f
     clases = dataset.get("clases") or []
     if not clases:
         return None
-    return round(sum(float(c.get("pct") or 0.0) for c in clases if c.get("clase") in etiquetas), 2)
+    return round(
+        sum(_pct_clase_seleccion(dataset, c) for c in clases if c.get("clase") in etiquetas), 2
+    )
 
 
 def calcular_kpis(datos: dict[str, Any]) -> dict[str, float | None]:
@@ -237,9 +247,9 @@ def _tabla_clases(
         if fila is None:
             filas.append([str(cfg["label"]), fmt_ha(0.0), fmt_pct(0.0)])
             continue
-        cubierto += float(fila.get("ha") or 0.0)
-        filas.append([str(cfg["label"]), fmt_ha(fila.get("ha")), fmt_pct(fila.get("pct"))])
-
+        ha = float(fila.get("ha") or 0.0)
+        cubierto += ha
+        filas.append([str(cfg["label"]), fmt_ha(ha), fmt_pct(_pct_clase_seleccion(dataset, fila))])
     area_ha = (
         float(dataset["area_ha"]) if dataset.get("area_ha") is not None else 0.0
     )  # injected by the task
@@ -1278,17 +1288,17 @@ def _qr_campo(url: str, estilos: dict[str, Any]) -> list[Flowable]:
     from reportlab.graphics.barcode import qr as rl_qr
     from reportlab.graphics.shapes import Drawing
 
-    lado_mm = 24.0
+    lado = 24.0 * mm
     widget = rl_qr.QrCodeWidget(url, barLevel="M")
     x0, y0, x1, y1 = widget.getBounds()
     dibujo = Drawing(
-        lado_mm,
-        lado_mm,
+        lado,
+        lado,
         transform=[
-            lado_mm / (x1 - x0),
+            lado / (x1 - x0),
             0,
             0,
-            lado_mm / (y1 - y0),
+            lado / (y1 - y0),
             0,
             0,
         ],
@@ -1298,7 +1308,7 @@ def _qr_campo(url: str, estilos: dict[str, Any]) -> list[Flowable]:
     return [
         Table(
             [[dibujo]],
-            colWidths=[lado_mm * mm],
+            colWidths=[lado],
             style=[("ALIGN", (0, 0), (-1, -1), "CENTER")],
             hAlign="RIGHT",
         ),

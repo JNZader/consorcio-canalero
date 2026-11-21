@@ -713,3 +713,39 @@ def test_tile_proxy_accepts_the_deepest_supported_zoom(cliente, db) -> None:
     # No tile service is running in tests: the proxy degrades to 204, which
     # proves the request passed validation instead of being rejected as 422.
     assert rs.status_code == 204
+
+
+def test_export_approved_zones_pdf_sheds_load_when_every_slot_is_taken(
+    cliente, monkeypatch
+) -> None:
+    """C11: GET approved-zones/current/export-pdf shares slot_de_pdf() concurrency bound."""
+    from app.domains.geo import router_basins_bundle, router_common
+    from app.main import app
+
+    fake_repo = type(
+        "_Repo",
+        (),
+        {
+            "get_active_approved_zoning": staticmethod(
+                lambda _db, cuenca=None: type("_Z", (), {"version": 1, "approved_by_id": None})()
+            )
+        },
+    )()
+    app.dependency_overrides[router_basins_bundle._get_repo] = lambda: fake_repo
+
+    router_common.reset_map_pdf_slots()
+    monkeypatch.setattr(router_common, "PDF_SEMAFORO_TIMEOUT_S", 0.01)
+    slots = router_common.get_map_pdf_slots()
+    tomados = []
+    try:
+        while slots.acquire(blocking=False):
+            tomados.append(1)
+        assert tomados, "the semaphore must start with at least one slot"
+
+        rs = cliente.get("/api/v2/geo/basins/approved-zones/current/export-pdf")
+        assert rs.status_code == 503, rs.text
+        assert rs.headers.get("Retry-After")
+    finally:
+        for _ in tomados:
+            slots.release()
+        router_common.reset_map_pdf_slots()

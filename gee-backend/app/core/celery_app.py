@@ -51,6 +51,7 @@ RECOVERABLE_LONG_TASKS = frozenset(
         "gee.analyze_flood",
         "gee.supervised_classification",
         "gee.sar_temporal",
+        "geo.informe_area.generar",
     }
 )
 RECOVERABLE_TASK_ANNOTATIONS = {
@@ -76,6 +77,7 @@ celery_app = Celery(
         "app.domains.geo.intelligence.tasks",
         "app.domains.geo.rainfall.tasks",
         "app.domains.geo.informe_area.tasks",
+        "app.domains.geo.relevamiento.tasks",
         # Registers denuncias.notify_status on every prefork child so
         # outbox-published status mails are not dropped when the flag is on.
         "app.domains.denuncias.tasks",

@@ -52,9 +52,10 @@ class TestSentinel1Thumbnail:
         2026-11-20: 2 bands fail, VV alone returns a valid PNG)."""
         from app.domains.geo.informe_area.service import _BANDAS_FALSO_COLOR
 
-        bandas, maximo = _BANDAS_FALSO_COLOR["sentinel1"]
+        bandas, minimo, maximo = _BANDAS_FALSO_COLOR["sentinel1"]
         assert bandas == ["VV"]
-        assert maximo == 0.5
+        assert minimo == -25.0
+        assert maximo == 0.0
 
     def test_s1_scene_loads_from_collection(self):
         """Layer 5: S1 scenes are NOT standalone assets — they live in ImageCollection."""
@@ -98,6 +99,14 @@ class TestSentinel1Thumbnail:
         assert len(png) > 1000, f"PNG too small: {len(png)} bytes"
         assert png[:4] == b"\x89PNG", f"Not a PNG: starts with {png[:8]!r}"
 
+        import io
+
+        import numpy as np
+        from PIL import Image
+
+        arr = np.asarray(Image.open(io.BytesIO(png)))
+        assert float(arr.std()) > 1.0, "S1 thumbnail is flat/black (stretch bug)"
+
 
 class TestSentinel2Thumbnail:
     def test_s2_scene_loads_as_standalone_image(self):
@@ -109,6 +118,7 @@ class TestSentinel2Thumbnail:
         # A known S2 scene over Córdoba
         img = ee.Image("COPERNICUS/S2_SR_HARMONIZED/20250315T140049_20250315T140049_T21HUB")
         assert img is not None
+        assert img.get("system:index").getInfo() == "20250315T140049_20250315T140049_T21HUB"
 
     def test_miniatura_s2_falso_color(self):
         """The S2 thumbnail pipeline (if an S2 scene is ever used for anchors)."""
@@ -117,6 +127,6 @@ class TestSentinel2Thumbnail:
         )
 
         assert "sentinel2" in _BANDAS_FALSO_COLOR
-        bandas, maximo = _BANDAS_FALSO_COLOR["sentinel2"]
+        bandas, _minimo, maximo = _BANDAS_FALSO_COLOR["sentinel2"]
         assert len(bandas) == 3  # NIR, SWIR1, Red — true false-color
         assert maximo > 0

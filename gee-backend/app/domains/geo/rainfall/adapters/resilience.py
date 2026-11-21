@@ -142,10 +142,8 @@ class RedisCircuitStore(CircuitStore):
 
         from app.core.redis_client import redis_from_url_kwargs
 
-        self._client = _redis.Redis.from_url(
-            redis_url,
-            **redis_from_url_kwargs(decode_responses=True),
-        )
+        redis_kwargs: Any = redis_from_url_kwargs(decode_responses=True)
+        self._client = _redis.Redis.from_url(redis_url, **redis_kwargs)
 
     def _key(self, role: str) -> str:
         return f"rainfall:circuit:{role}"
@@ -186,14 +184,17 @@ def _run_with_timeout(
     can interrupt a hanging fetch.  When signals cannot be used (non-main
     thread, Windows, etc.) we degrade to an unguarded call.
     """
+    func_timeout_fn: Any
     try:
         from func_timeout import FunctionTimedOut, func_timeout
-    except ImportError:
-        func_timeout = None  # type: ignore[assignment]
 
-    if func_timeout is not None:
+        func_timeout_fn = func_timeout
+    except ImportError:
+        func_timeout_fn = None
+
+    if func_timeout_fn is not None:
         try:
-            return func_timeout(timeout_seconds, fn, args=args, kwargs=kwargs)
+            return func_timeout_fn(timeout_seconds, fn, args=args, kwargs=kwargs)
         except FunctionTimedOut as exc:
             raise TimeoutError("timed out") from exc
 
