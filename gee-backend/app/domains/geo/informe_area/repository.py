@@ -108,6 +108,7 @@ class InformeAreaRepository:
                 InformeArea.usuario_id == usuario_id,
                 InformeArea.version_clave == version_clave,
                 InformeArea.estado == EstadoGeoJob.COMPLETED,
+                InformeArea.vence_at > func.now(),
             )
             .order_by(InformeArea.created_at.desc())
             .limit(1)

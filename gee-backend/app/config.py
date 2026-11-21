@@ -507,7 +507,7 @@ class Settings(BaseSettings):
     # of serving a stale layout — same mechanism a layer refresh gets for
     # free through geo_layers.created_at.
     informe_area_version_plantilla: str = (
-        "2"  # "2": PR 4 adds suelos/cobertura/canales/imágenes sections
+        "3"  # "3": PR 5/6 QR + KMZ + W-INF-01..03 cache/section fixes
     )
     # Retention (S11, decision L2): an informe expires 90 days after creation;
     # the daily beat sweep deletes rows past their ``vence_at``.

@@ -29,6 +29,7 @@ anybody else gets the same 404 as for a missing id.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import re
 import unicodedata
@@ -201,6 +202,12 @@ _TABLA_SUELOS_IDECOR = "idecor_suelos_50mil"
 #: re-downloads and re-registers, and the clave must move with it.
 _VERSIONES_COBERTURA_SQL = text("SELECT max(fecha_de_bajada)::text FROM idecor_cobertura_raster")
 _TABLA_COBERTURA = "idecor_cobertura_raster"
+
+_VERSIONES_VALIDACION_SQL = text("SELECT max(created_at)::text FROM riesgo_validacion_evento")
+_TABLA_VALIDACION = "riesgo_validacion_evento"
+
+_VERSIONES_CANALES_SQL = text("SELECT max(updated_at)::text FROM canal_consorcio")
+_TABLA_CANALES = "canal_consorcio"
 
 
 def resolver_seleccion(
@@ -657,8 +664,23 @@ def riesgo_validacion_dataset(db: Session) -> dict[str, Any] | None:
     }
 
 
-def calcular_version_clave(db: Session, hash_seleccion: str) -> str:
-    """hash_seleccion + per-layer versions + version_plantilla (S4)."""
+def _advisory_lock_usuario(db: Session, usuario_id: uuid.UUID) -> None:
+    """Serialize informe creation per user inside the active transaction."""
+    lock_key = int.from_bytes(
+        hashlib.sha256(f"informe_area:create:{usuario_id}".encode("utf-8")).digest()[:8],
+        "big",
+        signed=True,
+    )
+    db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_key})
+
+
+def calcular_version_clave(
+    db: Session,
+    hash_seleccion: str,
+    *,
+    desglose: bool = True,
+) -> str:
+    """hash_seleccion + desglose + per-layer versions + version_plantilla (S4)."""
     with ficha_service._traducir_fallas_db():  # noqa: SLF001 — PR 1 reuse (S12)
         fila = db.execute(_VERSIONES_SQL).one()
         suelos_idecor: str | None = None
@@ -677,15 +699,34 @@ def calcular_version_clave(db: Session, hash_seleccion: str) -> str:
             is not None
         ):
             cobertura_idecor = db.execute(_VERSIONES_COBERTURA_SQL).scalar()
+        validacion: str | None = None
+        if (
+            db.execute(
+                text("SELECT to_regclass(:tabla)"), {"tabla": _TABLA_VALIDACION}
+            ).scalar_one_or_none()
+            is not None
+        ):
+            validacion = db.execute(_VERSIONES_VALIDACION_SQL).scalar()
+        canales: str | None = None
+        if (
+            db.execute(
+                text("SELECT to_regclass(:tabla)"), {"tabla": _TABLA_CANALES}
+            ).scalar_one_or_none()
+            is not None
+        ):
+            canales = db.execute(_VERSIONES_CANALES_SQL).scalar()
     partes = [
         hash_seleccion,
         f"plantilla={settings.informe_area_version_plantilla}",
+        f"desglose={int(bool(desglose))}",
         f"flood_risk={fila.flood_risk or '-'}",
         f"drainage_need={fila.drainage_need or '-'}",
         f"precip_normal={fila.precip_normal or '-'}",
         f"composite={fila.composite or '-'}",
         f"suelos_idecor={suelos_idecor or '-'}",
         f"cobertura_idecor={cobertura_idecor or '-'}",
+        f"validacion={validacion or '-'}",
+        f"canales={canales or '-'}",
     ]
     return "|".join(partes)
 
@@ -696,9 +737,10 @@ def crear_informe(
     *,
     usuario_id: uuid.UUID,
 ) -> tuple[InformeArea, bool]:
-    """Validate → hash → version → cache probe → dispatch. Returns (row, desde_cache)."""
+    """Validate → lock → hash → version → cache probe → dispatch."""
     seleccion = resolver_seleccion(db, payload.zona_ids, payload.geometrias)
-    version_clave = calcular_version_clave(db, seleccion.hash_seleccion)
+    _advisory_lock_usuario(db, usuario_id)
+    version_clave = calcular_version_clave(db, seleccion.hash_seleccion, desglose=payload.desglose)
 
     en_curso = repo.contar_en_curso(db, usuario_id)
     if en_curso >= settings.informe_area_max_en_curso:
@@ -782,7 +824,7 @@ def _nombre_archivo(nombre: str) -> tuple[str, str]:
     plano = unicodedata.normalize("NFKD", nombre).encode("ascii", "ignore").decode()
     slug = re.sub(r"[^A-Za-z0-9]+", "-", plano).strip("-").lower() or "informe-area"
     ascii_name = f"informe-{slug[:60]}.pdf"
-    utf8_name = quote(f"{nombre.strip() or 'informe-area'}.pdf")
+    utf8_name = quote(f"{nombre.strip() or 'informe-area'}.pdf", safe="")
     return ascii_name, utf8_name
 
 
@@ -1650,7 +1692,7 @@ def _nombre_archivo_kmz(nombre: str) -> tuple[str, str]:
     plano = unicodedata.normalize("NFKD", nombre).encode("ascii", "ignore").decode()
     slug = re.sub(r"[^A-Za-z0-9]+", "-", plano).strip("-").lower() or "informe-area"
     ascii_name = f"informe-{slug[:60]}.kmz"
-    utf8_name = quote(f"{nombre.strip() or 'informe-area'}.kmz")
+    utf8_name = quote(f"{nombre.strip() or 'informe-area'}.kmz", safe="")
     return ascii_name, utf8_name
 
 
