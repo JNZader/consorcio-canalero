@@ -8,8 +8,7 @@ import { apiFetch } from '../../src/lib/api';
 
 vi.mock('../../src/lib/api', () => ({
   apiFetch: vi.fn(),
-  API_URL: 'http://localhost:8000',
-  getAuthToken: vi.fn().mockResolvedValue('token'),
+  fetchAuthenticatedFile: vi.fn(),
 }));
 
 vi.mock('@mantine/notifications', () => ({

@@ -1,9 +1,10 @@
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { useCallback, useEffect, useState } from 'react';
-import { API_URL, apiFetch, getAuthToken } from '../../../../lib/api';
+import { apiFetch, fetchAuthenticatedFile } from '../../../../lib/api';
 import { logger } from '../../../../lib/logger';
 import { showError, showSuccess } from '../../../../lib/notifications';
+import { QueryError } from '../../../../lib/queryError';
 import { erroresUi, textoError } from '../../../../lib/userFacingError';
 import type { AgendaItem, EntityOption, Reunion } from './reunionesTypes';
 import {
@@ -247,12 +248,13 @@ export function useReunionesController() {
 
     setExporting(true);
     try {
-      const token = await getAuthToken();
-      const response = await fetch(`${API_URL}/api/v2/reuniones/${selectedReunion.id}/export-pdf`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error(textoError(erroresUi.generarPdf));
-      const blob = await response.blob();
+      const { blob, contentType } = await fetchAuthenticatedFile(
+        `/reuniones/${selectedReunion.id}/export-pdf`,
+        { headers: { Accept: 'application/pdf' } }
+      );
+      if (!(contentType ?? blob.type).toLowerCase().includes('application/pdf')) {
+        throw new Error(textoError(erroresUi.pdfInvalido));
+      }
       const url = window.URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
@@ -263,6 +265,13 @@ export function useReunionesController() {
       setTimeout(() => window.URL.revokeObjectURL(url), 1000);
     } catch (error) {
       logger.error('Export error:', error);
+      const detail =
+        error instanceof QueryError && error.statusCode
+          ? textoError(erroresUi.generarPdf, `Respuesta ${error.statusCode}.`)
+          : error instanceof Error
+            ? error.message
+            : erroresUi.generarPdf.detalle;
+      showError(erroresUi.generarPdf.titulo, detail);
     } finally {
       setExporting(false);
     }

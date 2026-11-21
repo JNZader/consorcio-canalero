@@ -454,11 +454,12 @@ function extractContentDispositionFilename(header: string | null): string | null
 export async function fetchAuthenticatedFile(
   endpoint: string,
   options: ApiFetchOptions = {}
-): Promise<{ blob: Blob; filename: string | null }> {
+): Promise<{ blob: Blob; filename: string | null; contentType: string | null }> {
   return authenticatedFetchResponse(`${API_URL}${API_PREFIX}${endpoint}`, options, async (response) => {
     const blob = await response.blob();
     const filename = extractContentDispositionFilename(response.headers.get('content-disposition'));
-    return { blob, filename };
+    const contentType = response.headers.get('content-type');
+    return { blob, filename, contentType };
   });
 }
 

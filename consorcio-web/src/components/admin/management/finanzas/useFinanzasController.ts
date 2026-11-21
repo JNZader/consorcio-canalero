@@ -1,9 +1,10 @@
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { useCallback, useEffect, useState } from 'react';
-import { API_URL, apiFetch, getAuthToken } from '../../../../lib/api';
+import { apiFetch, fetchAuthenticatedFile } from '../../../../lib/api';
 import { logger } from '../../../../lib/logger';
 import { showError, showSuccess } from '../../../../lib/notifications';
+import { QueryError } from '../../../../lib/queryError';
 import { erroresUi, textoError } from '../../../../lib/userFacingError';
 import { GASTO_CATEGORIES, INGRESO_CATEGORIES } from './constants';
 import type { Balance, Gasto, Ingreso } from './finanzasTypes';
@@ -228,22 +229,14 @@ export function useFinanzasController() {
   const handleDownloadSummaryPdf = async () => {
     setExportingSummaryPdf(true);
     try {
-      const token = await getAuthToken();
-      const response = await fetch(`${API_URL}/api/v2/finanzas/resumen/${currentYear}/export-pdf`, {
-        headers: {
-          Accept: 'application/pdf',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
-      if (!response.ok) {
-        throw new Error(textoError(erroresUi.descargarResumen, `Respuesta ${response.status}.`));
-      }
-      const contentType = response.headers.get('content-type') ?? '';
-      if (!contentType.includes('application/pdf')) {
+      const { blob, contentType } = await fetchAuthenticatedFile(
+        `/finanzas/resumen/${currentYear}/export-pdf`,
+        { headers: { Accept: 'application/pdf' } }
+      );
+      if (!(contentType ?? '').toLowerCase().includes('application/pdf')) {
         throw new Error(textoError(erroresUi.pdfInvalido));
       }
 
-      const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
@@ -254,10 +247,13 @@ export function useFinanzasController() {
       setTimeout(() => window.URL.revokeObjectURL(url), 1000);
     } catch (error) {
       logger.error('Error downloading financial summary PDF:', error);
-      showError(
-        'No se pudo descargar el resumen',
-        error instanceof Error ? error.message : 'Intentá nuevamente en unos minutos.'
-      );
+      const detail =
+        error instanceof QueryError && error.statusCode
+          ? textoError(erroresUi.descargarResumen, `Respuesta ${error.statusCode}.`)
+          : error instanceof Error
+            ? error.message
+            : 'Intentá nuevamente en unos minutos.';
+      showError('No se pudo descargar el resumen', detail);
     } finally {
       setExportingSummaryPdf(false);
     }

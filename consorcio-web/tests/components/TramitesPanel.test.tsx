@@ -4,18 +4,18 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TramitesPanel from '../../src/components/admin/management/TramitesPanel';
-import { API_URL, getAuthToken } from '../../src/lib/api';
+import { fetchAuthenticatedFile } from '../../src/lib/api';
+import { QueryError } from '../../src/lib/queryError';
 import contracts from '../fixtures/admin-api-contracts.json';
 
-const { mockApiFetch, mockGetAuthToken } = vi.hoisted(() => ({
+const { mockApiFetch, mockFetchAuthenticatedFile } = vi.hoisted(() => ({
   mockApiFetch: vi.fn(),
-  mockGetAuthToken: vi.fn(),
+  mockFetchAuthenticatedFile: vi.fn(),
 }));
 
 vi.mock('../../src/lib/api', () => ({
-  API_URL: 'http://localhost:8000',
   apiFetch: mockApiFetch,
-  getAuthToken: mockGetAuthToken,
+  fetchAuthenticatedFile: mockFetchAuthenticatedFile,
 }));
 
 vi.mock('@mantine/notifications', () => ({
@@ -51,7 +51,11 @@ async function chooseOption(input: HTMLElement, name: string) {
 describe('TramitesPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetAuthToken.mockResolvedValue('token');
+    mockFetchAuthenticatedFile.mockResolvedValue({
+      blob: new Blob(['pdf'], { type: 'application/pdf' }),
+      filename: `tramite-${tramite.id}.pdf`,
+      contentType: 'application/pdf',
+    });
     Object.defineProperty(window.URL, 'createObjectURL', {
       configurable: true,
       value: vi.fn(() => 'blob:tramite-pdf'),
@@ -186,12 +190,15 @@ describe('TramitesPanel', () => {
 
   it('downloads the authenticated tramite PDF with loading state and cleanup', async () => {
     const user = userEvent.setup();
-    let resolveResponse: ((response: Response) => void) | undefined;
-    const responsePromise = new Promise<Response>((resolve) => {
-      resolveResponse = resolve;
-    });
-    const fetchMock = vi.fn(() => responsePromise);
-    vi.stubGlobal('fetch', fetchMock);
+    let resolveResponse:
+      | ((value: { blob: Blob; filename: string | null; contentType: string | null }) => void)
+      | undefined;
+    mockFetchAuthenticatedFile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveResponse = resolve;
+        })
+    );
 
     renderPanel();
     const row = await screen.findByRole('row', { name: new RegExp(tramite.titulo, 'i') });
@@ -203,25 +210,22 @@ describe('TramitesPanel', () => {
     await user.click(downloadButton);
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        `${API_URL}/api/v2/tramites/${tramite.id}/export-pdf`,
+      expect(fetchAuthenticatedFile).toHaveBeenCalledWith(
+        `/tramites/${tramite.id}/export-pdf`,
         {
           headers: {
             Accept: 'application/pdf',
-            Authorization: 'Bearer token',
           },
         }
       );
     });
     expect(downloadButton).toBeDisabled();
-    expect(getAuthToken).toHaveBeenCalledTimes(1);
 
-    resolveResponse?.(
-      new Response(new Blob(['pdf'], { type: 'application/pdf' }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/pdf' },
-      })
-    );
+    resolveResponse?.({
+      blob: new Blob(['pdf'], { type: 'application/pdf' }),
+      filename: `tramite-${tramite.id}.pdf`,
+      contentType: 'application/pdf',
+    });
 
     await waitFor(() => {
       expect(notifications.show).toHaveBeenCalledWith(
@@ -244,15 +248,7 @@ describe('TramitesPanel', () => {
 
   it('reports a truthful error when the tramite PDF cannot be downloaded', async () => {
     const user = userEvent.setup();
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ detail: 'unavailable' }), {
-          status: 503,
-          headers: { 'Content-Type': 'application/json' },
-        })
-      )
-    );
+    mockFetchAuthenticatedFile.mockRejectedValueOnce(new QueryError('unavailable', 503));
 
     renderPanel();
     const row = await screen.findByRole('row', { name: new RegExp(tramite.titulo, 'i') });
@@ -265,6 +261,32 @@ describe('TramitesPanel', () => {
         expect.objectContaining({
           title: 'No se pudo descargar el trámite',
           message: expect.stringContaining('503'),
+          color: 'alerta',
+        })
+      );
+    });
+    expect(window.URL.createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-PDF response when downloading a tramite PDF', async () => {
+    const user = userEvent.setup();
+    mockFetchAuthenticatedFile.mockResolvedValueOnce({
+      blob: new Blob(['<html>error</html>'], { type: 'text/html' }),
+      filename: null,
+      contentType: 'text/html',
+    });
+
+    renderPanel();
+    const row = await screen.findByRole('row', { name: new RegExp(tramite.titulo, 'i') });
+    await user.click(within(row).getByRole('button', { name: /ver seguimiento/i }));
+    const modal = await screen.findByRole('dialog', { name: /seguimiento del trámite/i });
+    await user.click(within(modal).getByRole('button', { name: /descargar pdf/i }));
+
+    await waitFor(() => {
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'No se pudo descargar el trámite',
+          message: 'No pudimos preparar el PDF. El servidor no devolvió un documento. Volvé a intentar.',
           color: 'alerta',
         })
       );

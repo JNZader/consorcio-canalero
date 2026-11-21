@@ -15,9 +15,10 @@ import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
 import { useCallback, useEffect, useState } from 'react';
 import { formatTramiteEstado } from '../../../constants/tramites';
-import { API_URL, apiFetch, getAuthToken } from '../../../lib/api';
+import { apiFetch, fetchAuthenticatedFile } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
 import { showError, showSuccess } from '../../../lib/notifications';
+import { QueryError } from '../../../lib/queryError';
 import { erroresUi, textoError } from '../../../lib/userFacingError';
 import { IconButton } from '../../ui/IconButton';
 import { IconDownload, IconHistory, IconPlus } from '../../ui/icons';
@@ -205,23 +206,14 @@ export default function TramitesPanel() {
 
     setDownloadingPdf(true);
     try {
-      const token = await getAuthToken();
-      const response = await fetch(`${API_URL}/api/v2/tramites/${selectedTramite.id}/export-pdf`, {
-        headers: {
-          Accept: 'application/pdf',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
-      if (!response.ok) {
-        throw new Error(textoError(erroresUi.descargarTramite, `Respuesta ${response.status}.`));
-      }
-
-      const contentType = response.headers.get('content-type') ?? '';
-      if (!contentType.includes('application/pdf')) {
+      const { blob, contentType } = await fetchAuthenticatedFile(
+        `/tramites/${selectedTramite.id}/export-pdf`,
+        { headers: { Accept: 'application/pdf' } }
+      );
+      if (!(contentType ?? blob.type).toLowerCase().includes('application/pdf')) {
         throw new Error(textoError(erroresUi.pdfInvalido));
       }
 
-      const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
@@ -234,10 +226,13 @@ export default function TramitesPanel() {
       showSuccess('PDF descargado', `Se descargó el expediente de ${selectedTramite.titulo}`);
     } catch (error) {
       logger.error('Error downloading trámite PDF:', error);
-      showError(
-        'No se pudo descargar el trámite',
-        error instanceof Error ? error.message : 'Intentá nuevamente en unos minutos.'
-      );
+      const detail =
+        error instanceof QueryError && error.statusCode
+          ? textoError(erroresUi.descargarTramite, `Respuesta ${error.statusCode}.`)
+          : error instanceof Error
+            ? error.message
+            : 'Intentá nuevamente en unos minutos.';
+      showError('No se pudo descargar el trámite', detail);
     } finally {
       setDownloadingPdf(false);
     }
