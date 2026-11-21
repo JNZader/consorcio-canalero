@@ -26,6 +26,7 @@ from app.auth.refresh_tokens import (
 )
 from app.auth.schemas import UserCreate, UserRead, UserUpdate
 from app.config import settings
+from app.core.cache import get_cache
 from app.core.logging import get_logger
 from app.db.session import get_async_db
 
@@ -75,9 +76,13 @@ def _clear_refresh_cookie(response: Response) -> None:
     response.delete_cookie(_REFRESH_COOKIE, path=_REFRESH_COOKIE_PATH)
 
 
-# JWT auth routes: /auth/jwt/login, /auth/jwt/logout
+# JWT auth routes: /auth/jwt/login (fastapi-users /logout is no-op; we own it below)
+_jwt_auth_router = fastapi_users.get_auth_router(auth_backend)
+_jwt_auth_router.routes = [
+    route for route in _jwt_auth_router.routes if getattr(route, "path", None) != "/logout"
+]
 router.include_router(
-    fastapi_users.get_auth_router(auth_backend),
+    _jwt_auth_router,
     prefix="/auth/jwt",
     tags=["auth"],
 )
@@ -235,6 +240,23 @@ async def refresh_access_token(
     return response
 
 
+@router.post("/auth/jwt/logout", status_code=204, tags=["auth"])
+async def logout_current_session(
+    request: Request,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_db),
+) -> Response:
+    """Revoke the current device's refresh-token family and clear its cookie."""
+    raw = request.cookies.get(_REFRESH_COOKIE)
+    if raw:
+        existing = await find_active(session, raw)
+        if existing is not None and existing.user_id == user.id:
+            await revoke_family(session, existing.family_id)
+    response = Response(status_code=204)
+    _clear_refresh_cookie(response)
+    return response
+
+
 @router.post("/auth/jwt/logout-all", tags=["auth"])
 async def logout_all_sessions(
     user: User = Depends(current_active_user),
@@ -377,6 +399,7 @@ if settings.google_oauth_client_id:
     # call ``POST /auth/jwt/exchange-cookie`` once to read + delete it.
     _OAUTH_EXCHANGE_COOKIE = "oauth_access_token"
     _OAUTH_EXCHANGE_MAX_AGE = 60  # 60 s — the SPA hits the exchange immediately.
+    _OAUTH_EXCHANGE_COOKIE_PATH = "/api/v2/auth/jwt/exchange-cookie"
     # Narrow the cookie scope to the OAuth endpoints only. Path=/ would
     # make the cookie ride on every backend request, which is both wider
     # than necessary and a small leak surface (any future endpoint that
@@ -429,27 +452,6 @@ if settings.google_oauth_client_id:
     from app.db.session import get_async_db
     from sqlalchemy import func as sa_func, select as sa_select
     from sqlalchemy.ext.asyncio import AsyncSession
-
-    def _is_secure_request(request: Request) -> bool:
-        """True when the cookie's ``Secure`` flag MUST be set.
-
-        In production/staging we force ``True`` regardless of headers — the
-        backend is only reachable via Caddy/HTTPS in those envs and reading
-        ``X-Forwarded-Proto`` would otherwise trust a client-supplied header
-        (no ``forwarded_allow_ips`` whitelist is wired today, so any upstream
-        that bypasses the reverse proxy could forge it).
-
-        In dev we fall back to the request scheme so HTTP localhost still
-        works without a Secure-cookie rejection.
-        """
-        from app.config import _is_production_env
-
-        if _is_production_env(settings.environment):
-            return True
-        if request.url.scheme == "https":
-            return True
-        forwarded = request.headers.get("x-forwarded-proto", "")
-        return forwarded.lower().split(",", 1)[0].strip() == "https"
 
     @router.get("/auth/google/authorize", tags=["auth"])
     async def google_oauth_authorize(request: Request):
@@ -648,17 +650,23 @@ if settings.google_oauth_client_id:
             )
 
             _oauth_logger.info("Google OAuth login successful for %s", account_email)
+            exchange_nonce = secrets.token_urlsafe(32)
+            await get_cache().set_ephemeral(
+                f"oauth:exchange:{exchange_nonce}",
+                {"access_token": token},
+                ttl_seconds=_OAUTH_EXCHANGE_MAX_AGE,
+            )
             response = RedirectResponse(
-                # No more URL-fragment token — the SPA reads the JWT
-                # from a single-use HttpOnly cookie via
-                # ``POST /auth/jwt/exchange-cookie`` after this redirect.
+                # No more URL-fragment token — the SPA reads the JWT via
+                # ``POST /auth/jwt/exchange-cookie`` backed by a single-use
+                # opaque nonce cookie consumed server-side.
                 url=f"{frontend_callback}?via=cookie"
             )
             _set_refresh_cookie(response, request, raw_refresh)
             secure_cookie = _is_secure_request(request)
             response.set_cookie(
                 key=_OAUTH_EXCHANGE_COOKIE,
-                value=token,
+                value=exchange_nonce,
                 max_age=_OAUTH_EXCHANGE_MAX_AGE,
                 httponly=True,
                 # Strict — the redirect that sets this cookie is a
@@ -671,9 +679,8 @@ if settings.google_oauth_client_id:
                 # travels back from Cloudflare Pages → Hetzner.
                 samesite="none" if secure_cookie else "lax",
                 secure=secure_cookie,
-                # Narrow path so the cookie only travels to the OAuth
-                # exchange endpoint. /api/v2/auth/jwt/exchange-cookie.
-                path="/api/v2/auth/jwt/",
+                # Exact endpoint path so the cookie never rides on /refresh or /logout*.
+                path=_OAUTH_EXCHANGE_COOKIE_PATH,
             )
             _clear_state_cookie(response)
             return response
@@ -698,19 +705,15 @@ if settings.google_oauth_client_id:
 
     @router.post("/auth/jwt/exchange-cookie", tags=["auth"])
     async def exchange_oauth_cookie(request: Request):
-        """Trade the single-use OAuth cookie for an access token in JSON.
+        """Trade the single-use OAuth exchange nonce cookie for an access token.
 
         The SPA hits this once after landing on ``/auth/callback?via=cookie``.
-        The cookie is read, dropped from the response (browser clears it),
-        and the JWT is returned in the response body so the SPA can put
-        it in sessionStorage exactly like the password-login flow does.
-
-        Returns 401 (with cookie clear) when the cookie is missing or
-        empty — the most common reason is the SPA hit this endpoint
-        twice (the cookie was consumed by the first call). The user
-        should re-start the Google flow.
+        The opaque nonce is popped server-side (atomic single-use) and the
+        cookie is deleted from the response. Any replay of the cookie yields 401.
         """
-        token = request.cookies.get(_OAUTH_EXCHANGE_COOKIE)
+        nonce = request.cookies.get(_OAUTH_EXCHANGE_COOKIE)
+        entry = await get_cache().pop(f"oauth:exchange:{nonce}") if nonce else None
+        token = entry.get("access_token") if isinstance(entry, dict) else None
         response = JSONResponse(
             {"access_token": token or "", "token_type": "bearer"}
             if token
@@ -723,5 +726,5 @@ if settings.google_oauth_client_id:
             },
             status_code=200 if token else 401,
         )
-        response.delete_cookie(_OAUTH_EXCHANGE_COOKIE, path="/api/v2/auth/jwt/")
+        response.delete_cookie(_OAUTH_EXCHANGE_COOKIE, path=_OAUTH_EXCHANGE_COOKIE_PATH)
         return response

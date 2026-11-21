@@ -169,6 +169,16 @@ class TestAuthSessionGates:
         )
         assert resp.status_code == 401
 
+    def test_logout_unauthenticated_401(self, client: TestClient):
+        resp = client.post(
+            "/api/v2/auth/jwt/logout",
+            headers={
+                "Content-Type": "application/json",
+                "Origin": "http://localhost:3000",
+            },
+        )
+        assert resp.status_code == 401
+
     def test_logout_all_unauthenticated_401(self, client: TestClient):
         resp = client.post(
             "/api/v2/auth/jwt/logout-all",

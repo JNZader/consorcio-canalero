@@ -417,3 +417,117 @@ def test_refresh_replay_past_window_burned_and_cleared(
         "confirmed replay must burn the whole family — the winner's rotated "
         "token cannot survive the sweep"
     )
+
+
+def test_logout_revokes_current_family_and_keeps_other_device_alive(
+    client: TestClient, seeded_user: User
+):
+    """POST /auth/jwt/logout revokes ONLY the caller's refresh family and clears the cookie."""
+    login = client.post(
+        "/api/v2/auth/jwt/login",
+        data={"username": seeded_user.email, "password": PASSWORD},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert login.status_code == 200
+    access_token = login.json()["access_token"]
+
+    _discard_async_pool()
+    client.post(
+        "/api/v2/auth/jwt/login-with-refresh",
+        headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+    )
+    cookie_device_a = client.cookies.get("refresh_token")
+    assert cookie_device_a
+
+    _discard_async_pool()
+    client.post(
+        "/api/v2/auth/jwt/login-with-refresh",
+        headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+    )
+    cookie_device_b = client.cookies.get("refresh_token")
+    assert cookie_device_b and cookie_device_b != cookie_device_a
+
+    _discard_async_pool()
+    logout = client.post(
+        "/api/v2/auth/jwt/logout",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "Origin": "http://localhost:3000",
+            "Cookie": f"refresh_token={cookie_device_a}",
+        },
+    )
+    assert logout.status_code == 204
+    assert "refresh_token" in logout.headers.get("set-cookie", "").lower()
+
+    # Device A's refresh token is now dead.
+    _discard_async_pool()
+    refresh_a = client.post(
+        "/api/v2/auth/jwt/refresh",
+        headers={**_REFRESH_HEADERS, "Cookie": f"refresh_token={cookie_device_a}"},
+    )
+    assert refresh_a.status_code == 401
+
+    # Device B's session remains alive.
+    _discard_async_pool()
+    refresh_b = client.post(
+        "/api/v2/auth/jwt/refresh",
+        headers={**_REFRESH_HEADERS, "Cookie": f"refresh_token={cookie_device_b}"},
+    )
+    assert refresh_b.status_code == 200
+
+
+def test_password_reset_revokes_refresh_tokens_and_invalidates_jwt(
+    client: TestClient, seeded_user: User, test_engine
+):
+    """Resetting password via fastapi-users must revoke sessions and bump revocation_epoch."""
+    from app.auth.email_codes import RESET_PURPOSE, EmailCode
+
+    cookie = _login_and_stamp_refresh_cookie(client, seeded_user)
+    _discard_async_pool()
+    login = client.post(
+        "/api/v2/auth/jwt/login",
+        data={"username": seeded_user.email, "password": PASSWORD},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert login.status_code == 200
+    pre_reset_access = login.json()["access_token"]
+
+    _discard_async_pool()
+    forgot = client.post(
+        "/api/v2/auth/forgot-password",
+        json={"email": seeded_user.email},
+        headers={"Content-Type": "application/json"},
+    )
+    assert forgot.status_code == 202, forgot.text
+
+    with Session(bind=test_engine) as session:
+        code_row = (
+            session.query(EmailCode)
+            .filter(EmailCode.user_id == seeded_user.id, EmailCode.purpose == RESET_PURPOSE)
+            .order_by(EmailCode.created_at.desc())
+            .first()
+        )
+    assert code_row is not None
+    reset_token = code_row.token
+
+    _discard_async_pool()
+    reset_resp = client.post(
+        "/api/v2/auth/reset-password",
+        json={"token": reset_token, "password": "New-Reset-Passw0rd-99!"},
+        headers={"Content-Type": "application/json"},
+    )
+    assert reset_resp.status_code == 200, reset_resp.text
+
+    # Pre-reset JWT is rejected via bumped revocation_epoch.
+    _discard_async_pool()
+    me = client.get("/api/v2/users/me", headers={"Authorization": f"Bearer {pre_reset_access}"})
+    assert me.status_code == 401
+
+    # Pre-reset refresh token is also revoked.
+    _discard_async_pool()
+    refreshed = client.post(
+        "/api/v2/auth/jwt/refresh",
+        headers={**_REFRESH_HEADERS, "Cookie": f"refresh_token={cookie}"},
+    )
+    assert refreshed.status_code == 401
