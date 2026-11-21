@@ -9,8 +9,17 @@ STAMP_FILE="${BACKUP_STAMP_FILE:-${STACK_DIR}/logs/backup-last-success}"
 COMPOSE_FILE="${COMPOSE_FILE:-${STACK_DIR}/docker-compose.yml}"
 
 cd "${STACK_DIR}"
-docker compose -f "${COMPOSE_FILE}" --profile backup run --rm backup-postgres
-docker compose -f "${COMPOSE_FILE}" --profile backup run --rm backup-volumes
+COMPOSE_ENV_ARGS=()
+if [[ -f "${STACK_DIR}/.env" ]]; then
+  COMPOSE_ENV_ARGS+=(--env-file "${STACK_DIR}/.env")
+fi
+DIGEST_ENV_FILE="${DEPLOY_DIGEST_ENV:-${STACK_DIR}/deploy-digests.env}"
+if [[ -f "${DIGEST_ENV_FILE}" ]]; then
+  COMPOSE_ENV_ARGS+=(--env-file "${DIGEST_ENV_FILE}")
+fi
+
+docker compose "${COMPOSE_ENV_ARGS[@]}" -f "${COMPOSE_FILE}" --profile backup run --rm backup-postgres
+docker compose "${COMPOSE_ENV_ARGS[@]}" -f "${COMPOSE_FILE}" --profile backup run --rm backup-volumes
 
 mkdir -p "$(dirname "${STAMP_FILE}")"
 date -u +%Y-%m-%dT%H:%M:%SZ > "${STAMP_FILE}"

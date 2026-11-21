@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
 #
-# Pre-push CI replacement. The GitHub Actions ``Backend`` /
-# ``Build and Publish Images`` workflows are ``disabled_manually`` on
-# this repo (GH Actions billing quota exceeded), so the Phase 4 gates
-# (ruff + mypy + auth-gate regression + 60% coverage + 30% mutation
-# kill-rate) are not enforced server-side. This script reproduces them
-# locally so a developer can run it before ``git push`` and catch the
-# same regressions the CI used to catch.
+# Pre-push local mirror of the backend CI gates. Runs ruff, mypy, auth-gate
+# regression, 80% coverage, and 30% cosmic-ray mutation kill-rate locally
+# before `git push`.
 #
 # Usage from gee-backend/:
 #   bash scripts/preflight.sh             # ALL gates (~10min, default)
@@ -44,7 +40,7 @@ Always runs:
     1. ruff check
     2. mypy on the Phase 4 strict scope (auth + padron + denuncias)
     3. auth-gate regression suite (tests/new/test_auth_gates.py)
-    4. backend coverage gate at 60% (tests/new/ + .coveragerc)
+    4. backend coverage gate at 80% (tests/new/ + .coveragerc)
     5. cosmic-ray mutation gate at 0.30 kill-rate
        (denuncias.service, monitoring.service, tramites.schemas)
 
@@ -123,13 +119,13 @@ run_step "auth-gate tests" \
     python3 -m pytest tests/new/test_auth_gates.py -q --no-header -p no:cacheprovider
 
 # ---------------------------------------------------------------------------
-# 4. backend coverage gate at 60% (F4-A)
+# 4. backend coverage gate at 80% (CI-04)
 # ---------------------------------------------------------------------------
 
-run_step "coverage >= 60%" \
+run_step "coverage >= 80%" \
     python3 -m pytest tests/new/ \
         --cov=app --cov-config=.coveragerc \
-        --cov-fail-under=60 \
+        --cov-fail-under=80 \
         -q --no-header --tb=short -p no:cacheprovider
 
 # ---------------------------------------------------------------------------

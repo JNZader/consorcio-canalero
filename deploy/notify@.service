@@ -4,6 +4,10 @@ Documentation=file:/home/javier/programacion/consorcio-canalero/docs/runbooks/in
 
 [Service]
 Type=oneshot
+User=javier
+Group=javier
+NoNewPrivileges=yes
+PrivateTmp=yes
 ExecStart=/usr/local/bin/consorcio-notify.sh %i
 StandardOutput=journal
 StandardError=journal

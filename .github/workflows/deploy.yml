@@ -520,7 +520,7 @@ jobs:
     # de GitHub, no en este archivo. Ver docs/runbooks/infra-cicd-v6.md.
     # DEPLOY_WEBHOOK_SECRET tiene que ser un environment secret de production.
     environment: production
-    timeout-minutes: 5
+    timeout-minutes: 20
     needs: [promote-images]
     # Production rollout is opt-in even when a webhook URL exists.
     if: ${{ vars.ENABLE_PRODUCTION_DEPLOY == 'true' && vars.DEPLOY_WEBHOOK_URL != '' }}
@@ -539,4 +539,5 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.DEPLOY_WEBHOOK_SECRET }}" \
             -H "Content-Type: application/json" \
             --data "$PAYLOAD" \
+            --max-time 960 \
             --fail --silent --show-error

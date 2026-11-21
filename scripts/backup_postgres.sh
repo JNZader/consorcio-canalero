@@ -115,10 +115,19 @@ for line in sys.stdin:
     : "${HETZNER_SB_HOST:?HETZNER_SB_HOST is required for BACKUP_BACKEND=hetzner-sb}"
     : "${HETZNER_SB_USER:?HETZNER_SB_USER is required for BACKUP_BACKEND=hetzner-sb}"
 
+    SSHPASS_CMD=()
+    KNOWN_HOSTS_FILE="${HETZNER_SB_KNOWN_HOSTS:-${HOME:-/tmp}/.ssh/known_hosts}"
+    if [ -n "${HETZNER_SB_KNOWN_HOSTS:-}" ] && [ -f "$HETZNER_SB_KNOWN_HOSTS" ]; then
+      SSH_HOST_KEY_OPTS=(-o StrictHostKeyChecking=yes -o "UserKnownHostsFile=${HETZNER_SB_KNOWN_HOSTS}")
+    else
+      mkdir -p "$(dirname "$KNOWN_HOSTS_FILE")"
+      SSH_HOST_KEY_OPTS=(-o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=${KNOWN_HOSTS_FILE}")
+    fi
+
     if [ -n "${HETZNER_SB_SSH_KEY:-}" ]; then
-      SCP_AUTH=(-i "$HETZNER_SB_SSH_KEY" -o StrictHostKeyChecking=accept-new)
+      SCP_AUTH=(-i "$HETZNER_SB_SSH_KEY" "${SSH_HOST_KEY_OPTS[@]}")
     elif [ -n "${HETZNER_SB_PASS:-}" ]; then
-      SCP_AUTH=(-o StrictHostKeyChecking=accept-new)
+      SCP_AUTH=("${SSH_HOST_KEY_OPTS[@]}")
       # ``sshpass`` is the cleanest way to pipe a password into scp; the
       # Storage Box has no other auth option without an SSH key.
       command -v sshpass >/dev/null || {
@@ -132,12 +141,19 @@ for line in sys.stdin:
       exit 2
     fi
 
+    run_sftp() {
+      if [ "${#SSHPASS_CMD[@]}" -gt 0 ]; then
+        "${SSHPASS_CMD[@]}" sftp "${SCP_AUTH[@]}" "$@"
+      else
+        sftp "${SCP_AUTH[@]}" "$@"
+      fi
+    }
+
     REMOTE_DIR="postgres"
     REMOTE_PATH="${REMOTE_DIR}/${FILENAME}"
     # Ensure the directory exists. The Storage Box only exposes sftp;
     # ``mkdir -p`` over sftp needs a tiny here-doc.
-    "${SSHPASS_CMD[@]:-}" sftp "${SCP_AUTH[@]}" \
-      "${HETZNER_SB_USER}@${HETZNER_SB_HOST}" <<EOF
+    run_sftp "${HETZNER_SB_USER}@${HETZNER_SB_HOST}" <<EOF
 -mkdir ${REMOTE_DIR}
 put ${DUMP_PATH} ${REMOTE_PATH}
 put ${SHA256_PATH} ${REMOTE_PATH}.sha256
@@ -149,8 +165,7 @@ EOF
         || date -u -v "-${RETENTION_DAYS}d" +%s)"
       echo "[$(date -u +%FT%TZ)] purging Storage Box dumps older than ${RETENTION_DAYS}d"
       # List, parse UTC timestamp from filename, and delete via sftp.
-      FILES_TO_DELETE="$("${SSHPASS_CMD[@]:-}" sftp "${SCP_AUTH[@]}" \
-        "${HETZNER_SB_USER}@${HETZNER_SB_HOST}" <<EOF 2>/dev/null | python3 -c "
+      FILES_TO_DELETE="$(run_sftp "${HETZNER_SB_USER}@${HETZNER_SB_HOST}" <<EOF 2>/dev/null | python3 -c "
 import sys, re, datetime
 cutoff = int(sys.argv[1])
 pattern = re.compile(r'^${PREFIX}-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z\.sql\.zst\.enc(\.sha256)?$')
@@ -184,8 +199,7 @@ EOF
             SFTP_BATCH="${SFTP_BATCH}rm ${REMOTE_DIR}/${f}"$'\n'
           fi
         done <<< "$FILES_TO_DELETE"
-        "${SSHPASS_CMD[@]:-}" sftp "${SCP_AUTH[@]}" \
-          "${HETZNER_SB_USER}@${HETZNER_SB_HOST}" <<EOF
+        run_sftp "${HETZNER_SB_USER}@${HETZNER_SB_HOST}" <<EOF
 ${SFTP_BATCH}quit
 EOF
       fi
