@@ -14,7 +14,9 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db.session import get_db
+from app.shared.body_limit import make_body_limit_dependency
 
 router = APIRouter(prefix="/map", tags=["public-elevation"])
 
@@ -29,7 +31,12 @@ class PublicElevationProfileRequest(BaseModel):
     )
 
 
-@router.post("/elevation-profile")
+@router.post(
+    "/elevation-profile",
+    dependencies=[
+        Depends(make_body_limit_dependency(lambda: settings.public_elevation_max_body_bytes))
+    ],
+)
 def public_elevation_profile(
     body: PublicElevationProfileRequest,
     db: Session = Depends(get_db),

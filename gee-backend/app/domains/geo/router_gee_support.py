@@ -103,7 +103,7 @@ async def list_gee_layers_impl(lazy_gee_service) -> JSONResponse:
     svc = lazy_gee_service()
     return JSONResponse(
         content=svc["get_available_layers"](),
-        headers={"Cache-Control": "public, max-age=86400"},
+        headers={"Cache-Control": "private, max-age=86400"},
     )
 
 
@@ -140,7 +140,7 @@ async def list_consorcios_camineros_impl(*, ensure_gee) -> JSONResponse:
         consorcios = await _run_blocking(svc["get_consorcios_camineros"])
         return JSONResponse(
             content={"consorcios": consorcios, "total": len(consorcios)},
-            headers={"Cache-Control": "public, max-age=3600"},
+            headers={"Cache-Control": "private, max-age=3600"},
         )
     except Exception as e:
         logger.error("Error obteniendo consorcios camineros", error=str(e))
@@ -164,7 +164,7 @@ async def get_caminos_consorcio_impl(*, codigo: str, ensure_gee) -> JSONResponse
             )
         return JSONResponse(
             content=geojson,
-            headers={"Cache-Control": "public, max-age=3600"},
+            headers={"Cache-Control": "private, max-age=3600"},
         )
     except AppException:
         raise
@@ -189,7 +189,7 @@ async def get_caminos_por_nombre_consorcio_impl(*, nombre: str, ensure_gee) -> J
             )
         return JSONResponse(
             content=geojson,
-            headers={"Cache-Control": "public, max-age=3600"},
+            headers={"Cache-Control": "private, max-age=3600"},
         )
     except AppException:
         raise
@@ -209,7 +209,7 @@ async def get_caminos_coloreados_impl(*, ensure_gee) -> JSONResponse:
     if cached is not None:
         return JSONResponse(
             content=cached,
-            headers={"Cache-Control": "public, max-age=3600", "X-Cache": "HIT"},
+            headers={"Cache-Control": "private, max-age=3600", "X-Cache": "HIT"},
         )
     svc = ensure_gee()
     try:
@@ -217,7 +217,7 @@ async def get_caminos_coloreados_impl(*, ensure_gee) -> JSONResponse:
         await cache.set(cache_key, result, ttl_seconds=GEE_CAMINOS_TTL)
         return JSONResponse(
             content=result,
-            headers={"Cache-Control": "public, max-age=3600", "X-Cache": "MISS"},
+            headers={"Cache-Control": "private, max-age=3600", "X-Cache": "MISS"},
         )
     except Exception as e:
         logger.error("Error obteniendo caminos coloreados", error=str(e))
@@ -235,7 +235,7 @@ async def get_estadisticas_caminos_impl(*, ensure_gee) -> JSONResponse:
     if cached is not None:
         return JSONResponse(
             content=cached,
-            headers={"Cache-Control": "public, max-age=3600", "X-Cache": "HIT"},
+            headers={"Cache-Control": "private, max-age=3600", "X-Cache": "HIT"},
         )
     svc = ensure_gee()
     try:
@@ -243,7 +243,7 @@ async def get_estadisticas_caminos_impl(*, ensure_gee) -> JSONResponse:
         await cache.set(cache_key, result, ttl_seconds=GEE_CAMINOS_TTL)
         return JSONResponse(
             content=result,
-            headers={"Cache-Control": "public, max-age=3600", "X-Cache": "MISS"},
+            headers={"Cache-Control": "private, max-age=3600", "X-Cache": "MISS"},
         )
     except Exception as e:
         logger.error("Error obteniendo estadisticas de consorcios", error=str(e))
@@ -261,7 +261,7 @@ async def get_gee_layer_impl(*, layer_name: str, ensure_gee) -> JSONResponse:
     if cached is not None:
         return JSONResponse(
             content=cached,
-            headers={"Cache-Control": "public, max-age=3600", "X-Cache": "HIT"},
+            headers={"Cache-Control": "private, max-age=3600", "X-Cache": "HIT"},
         )
 
     async def _compute():
@@ -290,7 +290,7 @@ async def get_gee_layer_impl(*, layer_name: str, ensure_gee) -> JSONResponse:
         )
     return JSONResponse(
         content=geojson,
-        headers={"Cache-Control": "public, max-age=3600", "X-Cache": "MISS"},
+        headers={"Cache-Control": "private, max-age=3600", "X-Cache": "MISS"},
     )
 
 
@@ -314,7 +314,7 @@ async def get_available_image_dates_impl(
         )
         return JSONResponse(
             content=result,
-            headers={"Cache-Control": "public, max-age=86400"},
+            headers={"Cache-Control": "private, max-age=86400"},
         )
     except AppException:
         raise
@@ -648,7 +648,7 @@ async def get_available_visualizations_impl():
     ]
     return JSONResponse(
         content=visualizations,
-        headers={"Cache-Control": "public, max-age=86400"},
+        headers={"Cache-Control": "private, max-age=86400"},
     )
 
 

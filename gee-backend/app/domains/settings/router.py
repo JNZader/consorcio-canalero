@@ -172,6 +172,7 @@ def save_mapa_imagen_principal(
         valor=payload.model_dump(),
         categoria="mapa",
         descripcion="Parametros de la imagen satelital seleccionada para el mapa principal",
+        actor_id=uuid.UUID(str(_user.id)),
     )
 
     # Return full response
@@ -197,6 +198,7 @@ def save_mapa_imagen_comparacion(
         valor=payload.model_dump(),
         categoria="mapa",
         descripcion="Parametros de comparacion de imagenes satelitales",
+        actor_id=uuid.UUID(str(_user.id)),
     )
 
     # Return full response

@@ -221,6 +221,7 @@ def test_update_setting_invalidation_beats_an_in_flight_reader(
 def test_upsert_setting_invalidation_beats_an_in_flight_reader(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(settings_mod, "write_audit_entry_sync", lambda *args, **kwargs: None)
     service = SettingsService(repository=_Repo())
 
     def drop() -> None:

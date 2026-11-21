@@ -392,7 +392,7 @@ def get_geo_layer_file(
         media_type=content_type,
         headers={
             "Content-Disposition": f'attachment; filename="{file_path.name}"',
-            "Cache-Control": "public, max-age=3600",
+            "Cache-Control": "private, max-age=3600",
         },
     )
 

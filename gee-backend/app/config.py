@@ -469,6 +469,8 @@ class Settings(BaseSettings):
     # background job doubles it for the full-territory selection T2 renders.
     informe_area_max_vertices: int = 20_000
     informe_area_max_body_bytes: int = 5 * 1024 * 1024
+    public_elevation_max_body_bytes: int = 256 * 1024
+    sugerencia_max_body_bytes: int = 256 * 1024
     informe_area_max_envelope_ha: float = 500_000.0
     # Máx 3 trabajos en curso por usuario (S5). A user with 3 queued/running
     # informes gets a 429 until one finishes — the bound that keeps one

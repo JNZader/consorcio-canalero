@@ -5,6 +5,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
+from urllib.parse import urlsplit
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ValidationError
@@ -215,7 +216,7 @@ _SEED_DEFAULTS: list[dict[str, Any]] = [
 
 _BRANDING_CACHE: dict[str, Any] | None = None
 _BRANDING_CACHE_TIME: float = 0.0
-_BRANDING_CACHE_TTL: float = 600.0  # 10 minutes
+_BRANDING_CACHE_TTL: float = 60.0  # 1 minute (limits cross-worker drift)
 # Bumped on every drop, under the same lock that publishes a fill. A reader
 # that already left to query settings must not write that snapshot back.
 _BRANDING_CACHE_GENERATION: int = 0
@@ -236,6 +237,19 @@ def _as_optional_str(value: Any) -> str | None:
     return None
 
 
+def _is_safe_logo_url(value: str) -> bool:
+    trimmed = value.strip()
+    if not trimmed:
+        return True
+    if trimmed.startswith("/"):
+        return not trimmed.startswith("//") and not trimmed.startswith("/\\")
+    try:
+        parsed = urlsplit(trimmed)
+    except ValueError:
+        return False
+    return parsed.scheme.lower() in {"http", "https"} and bool(parsed.netloc)
+
+
 def _require_setting_model(valor: Any, model: type[BaseModel], key: str) -> None:
     if valor is None:
         return
@@ -253,6 +267,11 @@ def _reject_bad_setting_valor(key: str, valor: Any) -> None:
     if key in _TEXT_SETTING_KEYS:
         if valor is not None and not isinstance(valor, str):
             raise HTTPException(status_code=422, detail=f"Setting '{key}' debe ser texto")
+        if key == "branding/logo_url" and isinstance(valor, str) and not _is_safe_logo_url(valor):
+            raise HTTPException(
+                status_code=422,
+                detail="Setting 'branding/logo_url' debe usar esquema http(s) o ruta relativa '/'",
+            )
         return
     if key == "mapa/imagen_principal":
         _require_setting_model(valor, ImagenMapaParams, key)
@@ -331,6 +350,8 @@ class SettingsService:
         valor: Any,
         categoria: str,
         descripcion: Optional[str] = None,
+        *,
+        actor_id: uuid.UUID | None = None,
     ) -> SystemSettings:
         """Insert or update a setting by key."""
         _reject_bad_setting_valor(key, valor)
@@ -340,6 +361,12 @@ class SettingsService:
             valor=valor,
             categoria=categoria,
             descripcion=descripcion,
+        )
+        write_audit_entry_sync(
+            db,
+            user_id=actor_id,
+            action="settings.upsert",
+            resource=f"clave={key}",
         )
         db.commit()
         db.refresh(setting)
@@ -357,11 +384,13 @@ class SettingsService:
             if cached is not None and (now - _BRANDING_CACHE_TIME) < _BRANDING_CACHE_TTL:
                 return dict(cached)
 
+        raw_logo = _as_optional_str(self.get_setting(db, "branding/logo_url"))
+        logo_url = raw_logo if raw_logo is None or _is_safe_logo_url(raw_logo) else None
         data = {
             "nombre_organizacion": _as_optional_str(
                 self.get_setting(db, "general/nombre_organizacion")
             ),
-            "logo_url": _as_optional_str(self.get_setting(db, "branding/logo_url")),
+            "logo_url": logo_url,
             "color_primario": _as_optional_str(self.get_setting(db, "branding/color_primario")),
             "color_secundario": _as_optional_str(self.get_setting(db, "branding/color_secundario")),
         }

@@ -6,7 +6,9 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db.session import get_db
+from app.shared.body_limit import make_body_limit_dependency
 from app.domains.monitoring.schemas import (
     AnalisisGeeResponse,
     DashboardStatsResponse,
@@ -55,6 +57,7 @@ def _require_user():
     response_model=SugerenciaResponse,
     status_code=201,
     tags=["sugerencias"],
+    dependencies=[Depends(make_body_limit_dependency(lambda: settings.sugerencia_max_body_bytes))],
 )
 def create_sugerencia(
     payload: SugerenciaCreate,
