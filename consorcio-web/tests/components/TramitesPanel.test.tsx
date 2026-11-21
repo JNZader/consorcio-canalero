@@ -69,13 +69,14 @@ describe('TramitesPanel', () => {
       value: vi.fn(),
     });
     mockApiFetch.mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path === '/tramites' && !options) return { items: [tramite], total: 1 };
-      if (path === `/tramites/${tramite.id}` && !options) return tramite;
-      if (path === '/tramites' && options?.method === 'POST') {
+      const method = options?.method ?? 'GET';
+      if (path === '/tramites' && method === 'GET') return { items: [tramite], total: 1 };
+      if (path === `/tramites/${tramite.id}` && method === 'GET') return tramite;
+      if (path === '/tramites' && method === 'POST') {
         return { id: '44444444-4444-4444-8444-444444444444', message: 'ok', estado: 'ingresado' };
       }
-      if (path === `/tramites/${tramite.id}/seguimiento` && options?.method === 'POST') {
-        const body = JSON.parse(String(options.body)) as { comentario: string };
+      if (path === `/tramites/${tramite.id}/seguimiento` && method === 'POST') {
+        const body = JSON.parse(String(options?.body)) as { comentario: string };
         return {
           ...tramite.seguimiento[0],
           id: '55555555-5555-4555-8555-555555555555',
@@ -135,7 +136,7 @@ describe('TramitesPanel', () => {
       );
       expect(JSON.parse(String(postCall?.[1]?.body))).toEqual(contracts.tramites.create);
     });
-    expect(mockApiFetch.mock.calls.filter(([path, options]) => path === '/tramites' && !options)).toHaveLength(2);
+    expect(mockApiFetch.mock.calls.filter(([path, options]) => path === '/tramites' && (options?.method ?? 'GET') === 'GET')).toHaveLength(2);
   });
 
   it('validates backend-required tramite fields before posting', async () => {
@@ -170,7 +171,10 @@ describe('TramitesPanel', () => {
     const modal = await screen.findByRole('dialog', { name: /seguimiento del trámite/i });
     const existingComment = contracts.tramites.seguimiento_create.comentario;
     expect(within(modal).getByText(existingComment)).toBeInTheDocument();
-    expect(mockApiFetch).toHaveBeenCalledWith(`/tramites/${tramite.id}`);
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      `/tramites/${tramite.id}`,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
 
     const newComment = 'Se adjunto el informe tecnico';
     await user.type(within(modal).getByLabelText(/nuevo seguimiento/i), newComment);
@@ -310,7 +314,7 @@ describe('TramitesPanel', () => {
 
     // Reintentar recupera la lista cuando el backend vuelve.
     mockApiFetch.mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path === '/tramites' && !options) return { items: [tramite], total: 1 };
+      if (path === '/tramites' && (options?.method ?? 'GET') === 'GET') return { items: [tramite], total: 1 };
       return [];
     });
     await user.click(screen.getByRole('button', { name: /reintentar/i }));
@@ -322,8 +326,9 @@ describe('TramitesPanel', () => {
   it('FE-6: reports a failed follow-up detail load with a visible error toast', async () => {
     const user = userEvent.setup();
     mockApiFetch.mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path === '/tramites' && !options) return { items: [tramite], total: 1 };
-      if (path === `/tramites/${tramite.id}` && !options) {
+      const method = options?.method ?? 'GET';
+      if (path === '/tramites' && method === 'GET') return { items: [tramite], total: 1 };
+      if (path === `/tramites/${tramite.id}` && method === 'GET') {
         throw new Error('Trámite no encontrado');
       }
       return [];
@@ -350,7 +355,7 @@ describe('TramitesPanel', () => {
     const user = userEvent.setup();
     let rejectPost: ((reason?: unknown) => void) | undefined;
     mockApiFetch.mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path === '/tramites' && !options) return { items: [tramite], total: 1 };
+      if (path === '/tramites' && (options?.method ?? 'GET') === 'GET') return { items: [tramite], total: 1 };
       if (path === '/tramites' && options?.method === 'POST') {
         return new Promise((_resolve, reject) => {
           rejectPost = reject;
@@ -397,5 +402,45 @@ describe('TramitesPanel', () => {
     // El modal sigue abierto para corregir y reintentar.
     expect(screen.getByRole('dialog', { name: /registrar nuevo trámite/i })).toBeInTheDocument();
     await waitFor(() => expect(submit).toBeEnabled());
+  });
+
+  it('starts tipo NativeSelect with empty placeholder so visual selection matches form state', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(await screen.findByRole('button', { name: /nuevo trámite/i }));
+    const modal = await screen.findByRole('dialog', { name: /registrar nuevo trámite/i });
+    const tipoSelect = within(modal).getByLabelText(/^tipo/i) as HTMLSelectElement;
+    expect(tipoSelect.value).toBe('');
+  });
+
+  it('shows error notification when adding follow-up fails', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockImplementation(async (path: string, options?: RequestInit) => {
+      const method = options?.method ?? 'GET';
+      if (path === '/tramites' && method === 'GET') return { items: [tramite], total: 1 };
+      if (path === `/tramites/${tramite.id}` && method === 'GET') return tramite;
+      if (path === `/tramites/${tramite.id}/seguimiento` && method === 'POST') {
+        throw new Error('Error al guardar seguimiento');
+      }
+      return [];
+    });
+
+    renderPanel();
+    const row = await screen.findByRole('row', { name: new RegExp(tramite.titulo, 'i') });
+    await user.click(within(row).getByRole('button', { name: /ver seguimiento/i }));
+    const modal = await screen.findByRole('dialog', { name: /seguimiento del trámite/i });
+    await user.type(within(modal).getByLabelText(/nuevo seguimiento/i), 'Seguimiento fallido test');
+    await user.click(within(modal).getByRole('button', { name: /agregar seguimiento/i }));
+
+    await waitFor(() => {
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'No se pudo agregar el seguimiento',
+          message: 'Error al guardar seguimiento',
+          color: 'alerta',
+        })
+      );
+    });
   });
 });

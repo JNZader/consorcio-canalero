@@ -32,7 +32,7 @@ describe('ReunionesPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path === '/reuniones' && !options) {
+      if (path === '/reuniones' && (!options?.method || options.method === 'GET')) {
         return [
           {
             id: 'r1',
@@ -162,7 +162,7 @@ describe('ReunionesPanel', () => {
     }> = [];
 
     vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path === '/reuniones' && !options) {
+      if (path === '/reuniones' && (!options?.method || options.method === 'GET')) {
         return [
           {
             id: 'r1',
@@ -184,7 +184,7 @@ describe('ReunionesPanel', () => {
       if (path === '/infraestructura/assets') {
         return { results: [] };
       }
-      if (path === '/reuniones/r1/agenda' && !options) {
+      if (path === '/reuniones/r1/agenda' && (!options?.method || options.method === 'GET')) {
         return agendaItems;
       }
       if (path === '/reuniones/r1/agenda' && options?.method === 'POST') {
@@ -247,7 +247,7 @@ describe('ReunionesPanel', () => {
     const user = userEvent.setup();
 
     vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path === '/reuniones' && !options) {
+      if (path === '/reuniones' && (!options?.method || options.method === 'GET')) {
         return [];
       }
       if (path === '/denuncias?limit=50') {
@@ -294,7 +294,7 @@ describe('ReunionesPanel', () => {
     let rejectPost: ((reason?: unknown) => void) | undefined;
 
     vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path === '/reuniones' && !options) return [];
+      if (path === '/reuniones' && (!options?.method || options.method === 'GET')) return [];
       if (path === '/denuncias?limit=50') return { items: [] };
       if (path === '/tramites') return { data: [] };
       if (path === '/infraestructura/assets') return { results: [] };
@@ -354,7 +354,7 @@ describe('ReunionesPanel', () => {
     let resolveDelete: (() => void) | undefined;
 
     vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
-      if (path === '/reuniones' && !options) {
+      if (path === '/reuniones' && (!options?.method || options.method === 'GET')) {
         return [
           {
             id: 'r1',
@@ -367,7 +367,7 @@ describe('ReunionesPanel', () => {
       }
       if (path === '/denuncias?limit=50') return { items: [] };
       if (path === '/tramites') return { data: [] };
-      if (path === '/reuniones/r1/agenda' && !options) {
+      if (path === '/reuniones/r1/agenda' && (!options?.method || options.method === 'GET')) {
         return deleted
           ? []
           : [

@@ -1,6 +1,7 @@
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { isAbortError } from '../../../../lib/abortUtils';
 import { apiFetch, fetchAuthenticatedFile } from '../../../../lib/api';
 import { logger } from '../../../../lib/logger';
 import { showError, showSuccess } from '../../../../lib/notifications';
@@ -30,6 +31,12 @@ export function useReunionesController() {
 
   const [createOpened, createModal] = useDisclosure(false);
   const [agendaOpened, agendaModal] = useDisclosure(false);
+  const reunionesAbortRef = useRef<AbortController | null>(null);
+  const reunionesSeqRef = useRef(0);
+  const agendaAbortRef = useRef<AbortController | null>(null);
+  const agendaSeqRef = useRef(0);
+  const referrablesAbortRef = useRef<AbortController | null>(null);
+  const referrablesSeqRef = useRef(0);
 
   const itemForm = useForm({
     initialValues: {
@@ -62,39 +69,72 @@ export function useReunionesController() {
   });
 
   const fetchReuniones = useCallback(async () => {
+    reunionesAbortRef.current?.abort();
+    const controller = new AbortController();
+    reunionesAbortRef.current = controller;
+    const seq = ++reunionesSeqRef.current;
+
     setLoading(true);
     try {
-      const response = await apiFetch<{ items: Reunion[]; total: number }>('/reuniones');
+      const response = await apiFetch<{ items: Reunion[]; total: number }>('/reuniones', {
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted || seq !== reunionesSeqRef.current) return;
       setReuniones(normalizeArrayResponse<Reunion>(response));
       setLoadError(null);
     } catch (err) {
+      if (isAbortError(err, controller.signal) || seq !== reunionesSeqRef.current) return;
       logger.error('Error fetching reuniones:', err);
       setReuniones([]);
       setLoadError(textoError(erroresUi.cargarReuniones));
     } finally {
-      setLoading(false);
+      if (seq === reunionesSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   const fetchAgenda = useCallback(async (reunionId: string) => {
+    agendaAbortRef.current?.abort();
+    const controller = new AbortController();
+    agendaAbortRef.current = controller;
+    const seq = ++agendaSeqRef.current;
+
     try {
       const response = await apiFetch<AgendaItem[] | { items: AgendaItem[] }>(
-        `/reuniones/${reunionId}/agenda`
-      ).catch(() => [] as AgendaItem[]);
+        `/reuniones/${reunionId}/agenda`,
+        { signal: controller.signal }
+      );
+      if (controller.signal.aborted || seq !== agendaSeqRef.current) return;
       setAgenda(Array.isArray(response) ? response : (response.items ?? []));
     } catch (err) {
+      if (isAbortError(err, controller.signal) || seq !== agendaSeqRef.current) return;
+      setAgenda([]);
       logger.error('Error fetching agenda:', err);
+      showError(
+        'No se pudo cargar la agenda',
+        err instanceof Error ? err.message : 'Intentá nuevamente en unos minutos.'
+      );
     }
   }, []);
 
   const fetchReferrables = useCallback(async () => {
+    referrablesAbortRef.current?.abort();
+    const controller = new AbortController();
+    referrablesAbortRef.current = controller;
+    const seq = ++referrablesSeqRef.current;
+
     setLoadingEntities(true);
     try {
       const [reportsRaw, tramitesRaw, sugerenciasRaw] = await Promise.all([
-        apiFetch<unknown>('/denuncias?limit=50'),
-        apiFetch<unknown>('/tramites'),
-        apiFetch<unknown>('/sugerencias?limit=50').catch(() => []),
+        apiFetch<unknown>('/denuncias?limit=50', { signal: controller.signal }),
+        apiFetch<unknown>('/tramites', { signal: controller.signal }),
+        apiFetch<unknown>('/sugerencias?limit=50', { signal: controller.signal }).catch((err) => {
+          if (isAbortError(err, controller.signal)) throw err;
+          return [];
+        }),
       ]);
+      if (controller.signal.aborted || seq !== referrablesSeqRef.current) return;
 
       const reports = normalizeArrayResponse<{
         id: string;
@@ -121,9 +161,12 @@ export function useReunionesController() {
 
       setAvailableEntities(buildReferrableOptions(reports, tramites, sugerencias));
     } catch (err) {
+      if (isAbortError(err, controller.signal) || seq !== referrablesSeqRef.current) return;
       logger.error('Error fetching referrables:', err);
     } finally {
-      setLoadingEntities(false);
+      if (seq === referrablesSeqRef.current) {
+        setLoadingEntities(false);
+      }
     }
   }, []);
 
@@ -133,6 +176,11 @@ export function useReunionesController() {
       await fetchReferrables();
     };
     loadData();
+    return () => {
+      reunionesAbortRef.current?.abort();
+      agendaAbortRef.current?.abort();
+      referrablesAbortRef.current?.abort();
+    };
   }, [fetchReuniones, fetchReferrables]);
 
   const handleViewAgenda = (reunion: Reunion) => {
@@ -193,6 +241,10 @@ export function useReunionesController() {
       await fetchAgenda(selectedReunion.id);
     } catch (err) {
       logger.error('Error adding agenda topic:', err);
+      showError(
+        'No se pudo agregar el tema',
+        err instanceof Error ? err.message : 'Intentá nuevamente en unos minutos.'
+      );
     }
   };
 

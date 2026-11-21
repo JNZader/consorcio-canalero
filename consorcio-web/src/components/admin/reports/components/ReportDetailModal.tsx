@@ -14,8 +14,9 @@ import {
   Timeline,
   Title,
 } from '@mantine/core';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CATEGORY_OPTIONS, getAllowedNextEstados } from '../../../../constants';
+import { isAbortError } from '../../../../lib/abortUtils';
 import type { Report } from '../../../../lib/api';
 import { API_URL, apiFetch } from '../../../../lib/api';
 import { formatDate } from '../../../../lib/formatters';
@@ -350,19 +351,29 @@ function AssigneeField({
   const [options, setOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [value, setValue] = useState<string | null>(initialAsignado ?? null);
   const [error, setError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+  const patchSeqRef = useRef(0);
+  const patchAbortRef = useRef<AbortController | null>(null);
+  const committedValueRef = useRef<string | null>(initialAsignado ?? null);
 
   useEffect(() => {
-    let cancelled = false;
-    void apiFetch<Array<{ id: string; nombre: string; email: string }>>('/denuncias/operadores')
+    mountedRef.current = true;
+    const controller = new AbortController();
+    void apiFetch<Array<{ id: string; nombre: string; email: string }>>('/denuncias/operadores', {
+      signal: controller.signal,
+    })
       .then((rows) => {
-        if (cancelled) return;
+        if (!mountedRef.current || controller.signal.aborted) return;
         setOptions(rows.map((row) => ({ value: row.id, label: `${row.nombre} (${row.email})` })));
       })
-      .catch(() => {
-        if (!cancelled) setError('No se pudo cargar la lista de operadores');
+      .catch((err) => {
+        if (!mountedRef.current || isAbortError(err, controller.signal)) return;
+        setError('No se pudo cargar la lista de operadores');
       });
     return () => {
-      cancelled = true;
+      mountedRef.current = false;
+      controller.abort();
+      patchAbortRef.current?.abort();
     };
   }, []);
 
@@ -376,18 +387,30 @@ function AssigneeField({
       onChange={(next) => {
         // Arranca un intento nuevo: el error del intento anterior no
         // tiene por qué seguir en pantalla.
+        patchAbortRef.current?.abort();
+        const controller = new AbortController();
+        patchAbortRef.current = controller;
+        const seq = ++patchSeqRef.current;
+
         setError(null);
-        const previous = value;
         setValue(next);
         void apiFetch(`/denuncias/${denunciaId}`, {
           method: 'PATCH',
           body: JSON.stringify({ asignado_a: next }),
+          signal: controller.signal,
         })
           .then(() => {
+            if (!mountedRef.current || controller.signal.aborted || seq !== patchSeqRef.current) {
+              return;
+            }
+            committedValueRef.current = next;
             onAssigneeChange?.(denunciaId, next);
           })
-          .catch(() => {
-            setValue(previous);
+          .catch((err) => {
+            if (!mountedRef.current || isAbortError(err, controller.signal) || seq !== patchSeqRef.current) {
+              return;
+            }
+            setValue(committedValueRef.current);
             setError('No se pudo guardar la asignación');
           });
       }}

@@ -13,8 +13,9 @@ import {
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatTramiteEstado } from '../../../constants/tramites';
+import { isAbortError } from '../../../lib/abortUtils';
 import { apiFetch, fetchAuthenticatedFile } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
 import { showError, showSuccess } from '../../../lib/notifications';
@@ -84,31 +85,55 @@ export default function TramitesPanel() {
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [opened, { open, close }] = useDisclosure(false);
   const [historyOpened, { open: openHistory, close: closeHistory }] = useDisclosure(false);
+  const listAbortRef = useRef<AbortController | null>(null);
+  const listSeqRef = useRef(0);
+  const detailAbortRef = useRef<AbortController | null>(null);
+  const detailSeqRef = useRef(0);
 
   const fetchTramites = useCallback(async () => {
+    listAbortRef.current?.abort();
+    const controller = new AbortController();
+    listAbortRef.current = controller;
+    const seq = ++listSeqRef.current;
+
     setLoading(true);
     try {
-      const response = await apiFetch<{ items: TramiteListItem[]; total: number }>('/tramites');
+      const response = await apiFetch<{ items: TramiteListItem[]; total: number }>('/tramites', {
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted || seq !== listSeqRef.current) return;
       setTramites(response.items ?? []);
       setLoadError(false);
     } catch (err) {
+      if (isAbortError(err, controller.signal) || seq !== listSeqRef.current) return;
       logger.error('Error fetching trámites:', err);
       // FE-6: sin este estado, un fallo de carga se renderiza igual que una
       // tabla vacía ("no hay trámites") y el operador no distingue un backend
       // caído de un padrón sin expedientes.
       setLoadError(true);
     } finally {
-      setLoading(false);
+      if (seq === listSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   const fetchDetalle = async (id: string) => {
+    detailAbortRef.current?.abort();
+    const controller = new AbortController();
+    detailAbortRef.current = controller;
+    const seq = ++detailSeqRef.current;
+
     try {
-      const detail = await apiFetch<TramiteDetail>(`/tramites/${id}`);
+      const detail = await apiFetch<TramiteDetail>(`/tramites/${id}`, {
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted || seq !== detailSeqRef.current) return;
       setSelectedTramite({ ...detail, seguimiento: detail.seguimiento ?? [] });
       setNewSeguimiento('');
       openHistory();
     } catch (err) {
+      if (isAbortError(err, controller.signal) || seq !== detailSeqRef.current) return;
       logger.error('Error fetching trámite detail:', err);
       showError(
         'No se pudo cargar el seguimiento',
@@ -119,6 +144,10 @@ export default function TramitesPanel() {
 
   useEffect(() => {
     fetchTramites();
+    return () => {
+      listAbortRef.current?.abort();
+      detailAbortRef.current?.abort();
+    };
   }, [fetchTramites]);
 
   const form = useForm<TramiteFormValues>({
@@ -190,12 +219,17 @@ export default function TramitesPanel() {
       setNewSeguimiento('');
     } catch (err) {
       logger.error('Error adding trámite follow-up:', err);
+      showError(
+        'No se pudo agregar el seguimiento',
+        err instanceof Error ? err.message : 'Intentá nuevamente en unos minutos.'
+      );
     } finally {
       setAddingSeguimiento(false);
     }
   };
 
   const handleCloseHistory = () => {
+    detailAbortRef.current?.abort();
     setSelectedTramite(null);
     setNewSeguimiento('');
     closeHistory();
@@ -313,7 +347,7 @@ export default function TramitesPanel() {
           <Stack gap="sm">
             <NativeSelect
               label="Tipo"
-              data={TRAMITE_TYPES}
+              data={[{ value: '', label: 'Seleccioná un tipo...' }, ...TRAMITE_TYPES]}
               required
               {...form.getInputProps('tipo')}
             />

@@ -96,7 +96,10 @@ describe('useFinanzasController — initial load', () => {
     expect(result.current.gastos).toEqual([gasto]);
     expect(result.current.ingresos).toEqual([ingreso]);
     expect(result.current.balance).toEqual(balance);
-    expect(apiFetchMock).toHaveBeenCalledWith(`/finanzas/resumen/${currentYear}`);
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      `/finanzas/resumen/${currentYear}`,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
     expect(result.current.activeTab).toBe('balance');
     expect(result.current.categoryData.map((option) => option.value)).toEqual([
       'obras',
@@ -148,7 +151,10 @@ describe('useFinanzasController — gastos', () => {
     });
     expect(result.current.gastoOpened).toBe(false);
     expect(result.current.form.values.descripcion).toBe('');
-    expect(apiFetchMock).toHaveBeenCalledWith('/finanzas/gastos');
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      '/finanzas/gastos',
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Gasto registrado', color: 'exito' })
     );
@@ -279,7 +285,10 @@ describe('useFinanzasController — ingresos', () => {
 
     expect(bodyOf('/finanzas/ingresos', 'POST')).toEqual(values);
     expect(result.current.ingresoOpened).toBe(false);
-    expect(apiFetchMock).toHaveBeenCalledWith('/finanzas/ingresos');
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      '/finanzas/ingresos',
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Ingreso registrado', color: 'exito' })
     );

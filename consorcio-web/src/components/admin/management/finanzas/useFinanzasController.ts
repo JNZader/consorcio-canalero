@@ -1,6 +1,7 @@
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { isAbortError } from '../../../../lib/abortUtils';
 import { apiFetch, fetchAuthenticatedFile } from '../../../../lib/api';
 import { logger } from '../../../../lib/logger';
 import { showError, showSuccess } from '../../../../lib/notifications';
@@ -84,29 +85,46 @@ export function useFinanzasController() {
     },
   });
 
+  const fetchAbortRef = useRef<AbortController | null>(null);
+  const fetchSeqRef = useRef(0);
+
   const fetchFinanzas = useCallback(async () => {
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    const seq = ++fetchSeqRef.current;
+
     setLoading(true);
     try {
       const [gastosRaw, ingresosRaw, balanceData] = await Promise.all([
-        apiFetch<Gasto[] | { items: Gasto[] }>('/finanzas/gastos'),
-        apiFetch<Ingreso[] | { items: Ingreso[] }>('/finanzas/ingresos'),
-        apiFetch<Balance>(`/finanzas/resumen/${currentYear}`),
+        apiFetch<Gasto[] | { items: Gasto[] }>('/finanzas/gastos', { signal: controller.signal }),
+        apiFetch<Ingreso[] | { items: Ingreso[] }>('/finanzas/ingresos', {
+          signal: controller.signal,
+        }),
+        apiFetch<Balance>(`/finanzas/resumen/${currentYear}`, { signal: controller.signal }),
       ]);
+      if (controller.signal.aborted || seq !== fetchSeqRef.current) return;
       setGastos(normalizeArray(gastosRaw));
       setIngresos(normalizeArray(ingresosRaw));
       setBalance(balanceData);
       setLoadError(null);
     } catch (error) {
+      if (isAbortError(error, controller.signal) || seq !== fetchSeqRef.current) return;
       logger.error('Error fetching finanzas:', error);
       setBalance(null);
       setLoadError(textoError(erroresUi.cargarFinanzas));
     } finally {
-      setLoading(false);
+      if (seq === fetchSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, [currentYear]);
 
   useEffect(() => {
     fetchFinanzas();
+    return () => {
+      fetchAbortRef.current?.abort();
+    };
   }, [fetchFinanzas]);
 
   const handleCreateGasto = async (values: typeof form.values) => {

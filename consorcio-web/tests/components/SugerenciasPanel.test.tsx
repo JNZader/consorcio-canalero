@@ -277,15 +277,18 @@ describe('SugerenciasPanel', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText('No hay sugerencias')).not.toBeInTheDocument();
     await waitFor(() => {
-      expect(sugerenciasApi.getAll).toHaveBeenLastCalledWith({
-        page: 1,
-        limit: 10,
-        estado: undefined,
-        tipo: undefined,
-        sort: 'created_at',
-        order: 'desc',
-        search: 'bomba-lejana',
-      });
+      expect(sugerenciasApi.getAll).toHaveBeenLastCalledWith(
+        {
+          page: 1,
+          limit: 10,
+          estado: undefined,
+          tipo: undefined,
+          sort: 'created_at',
+          order: 'desc',
+          search: 'bomba-lejana',
+        },
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      );
     });
   });
 
@@ -309,14 +312,17 @@ describe('SugerenciasPanel', () => {
 
     expect(await screen.findByText('Tema interno devuelto por el servidor')).toBeInTheDocument();
     await waitFor(() => {
-      expect(sugerenciasApi.getAll).toHaveBeenLastCalledWith({
-        page: 1,
-        limit: 10,
-        estado: undefined,
-        tipo: 'interna',
-        sort: 'created_at',
-        order: 'desc',
-      });
+      expect(sugerenciasApi.getAll).toHaveBeenLastCalledWith(
+        {
+          page: 1,
+          limit: 10,
+          estado: undefined,
+          tipo: 'interna',
+          sort: 'created_at',
+          order: 'desc',
+        },
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      );
     });
   });
 
@@ -328,14 +334,17 @@ describe('SugerenciasPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Ordenar por Estado' }));
 
     await waitFor(() => {
-      expect(sugerenciasApi.getAll).toHaveBeenLastCalledWith({
-        page: 1,
-        limit: 10,
-        estado: undefined,
-        tipo: undefined,
-        sort: 'estado',
-        order: 'desc',
-      });
+      expect(sugerenciasApi.getAll).toHaveBeenLastCalledWith(
+        {
+          page: 1,
+          limit: 10,
+          estado: undefined,
+          tipo: undefined,
+          sort: 'estado',
+          order: 'desc',
+        },
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      );
     });
     expect(window.location.search).toContain('sort=estado');
   });
@@ -349,14 +358,17 @@ describe('SugerenciasPanel', () => {
     renderPanel();
 
     expect(await screen.findByText('Limpiar desagues secundarios')).toBeInTheDocument();
-    expect(sugerenciasApi.getAll).toHaveBeenCalledWith({
-      page: 1,
-      limit: 10,
-      estado: undefined,
-      tipo: undefined,
-      sort: 'created_at',
-      order: 'desc',
-    });
+    expect(sugerenciasApi.getAll).toHaveBeenCalledWith(
+      {
+        page: 1,
+        limit: 10,
+        estado: undefined,
+        tipo: undefined,
+        sort: 'created_at',
+        order: 'desc',
+      },
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
     // Sin estado de error: el sort inválido jamás llega a la API.
     expect(screen.queryByText(/no pudimos cargar las sugerencias/i)).not.toBeInTheDocument();
 
@@ -374,14 +386,17 @@ describe('SugerenciasPanel', () => {
     renderPanel();
 
     expect(await screen.findByText('Limpiar desagues secundarios')).toBeInTheDocument();
-    expect(sugerenciasApi.getAll).toHaveBeenCalledWith({
-      page: 1,
-      limit: 10,
-      estado: undefined,
-      tipo: undefined,
-      sort: 'categoria',
-      order: 'asc',
-    });
+    expect(sugerenciasApi.getAll).toHaveBeenCalledWith(
+      {
+        page: 1,
+        limit: 10,
+        estado: undefined,
+        tipo: undefined,
+        sort: 'categoria',
+        order: 'asc',
+      },
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
     expect(window.location.search).toContain('sort=categoria');
   });
 });

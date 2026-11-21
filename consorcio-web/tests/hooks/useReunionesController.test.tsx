@@ -47,8 +47,16 @@ function stubApi(handlers: Handlers = {}) {
       const [method, path] = key.split(' ');
       if ((options?.method ?? 'GET') === method && url === path) return handler?.(url, options);
     }
-    if (url === '/reuniones' && !options) return { items: [reunion], total: 1 };
-    if (url.startsWith('/reuniones/') && url.endsWith('/agenda') && !options) return [agendaItem];
+    if (url === '/reuniones' && (!options?.method || options.method === 'GET')) {
+      return { items: [reunion], total: 1 };
+    }
+    if (
+      url.startsWith('/reuniones/') &&
+      url.endsWith('/agenda') &&
+      (!options?.method || options.method === 'GET')
+    ) {
+      return [agendaItem];
+    }
     if (url.startsWith('/denuncias')) {
       return { items: [{ id: 'd1', tipo: 'canal_obstruido', ubicacion_texto: 'Lote 5' }] };
     }
@@ -156,7 +164,7 @@ describe('useReunionesController — agenda', () => {
     await waitFor(() => expect(result.current.agenda).toEqual([agendaItem]));
   });
 
-  it('accepts a wrapped { items } agenda payload and degrades to [] on failure', async () => {
+  it('accepts a wrapped { items } agenda payload and shows an error toast on failure', async () => {
     stubApi({ 'GET /reuniones/r1/agenda': () => ({ items: [agendaItem] }) });
     const { result } = await mountController();
 
@@ -170,6 +178,15 @@ describe('useReunionesController — agenda', () => {
       result.current.handleViewAgenda(reunion);
     });
     await waitFor(() => expect(result.current.agenda).toEqual([]));
+    await waitFor(() => {
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'No se pudo cargar la agenda',
+          message: 'down',
+          color: 'alerta',
+        })
+      );
+    });
   });
 
   it('handleAddTopic posts the next order plus resolved references and reloads the agenda', async () => {
@@ -209,7 +226,7 @@ describe('useReunionesController — agenda', () => {
     expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
-  it('logs when adding a topic fails', async () => {
+  it('logs and shows error toast when adding a topic fails', async () => {
     const { result } = await mountController();
     await act(async () => {
       result.current.handleViewAgenda(reunion);
@@ -222,6 +239,13 @@ describe('useReunionesController — agenda', () => {
     });
 
     expect(loggerMock.error).toHaveBeenCalledWith('Error adding agenda topic:', expect.anything());
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'No se pudo agregar el tema',
+        message: 'nope',
+        color: 'alerta',
+      })
+    );
   });
 });
 
@@ -358,7 +382,10 @@ describe('useReunionesController — create meeting', () => {
     expect(result.current.createOpened).toBe(false);
     expect(result.current.reunionForm.values.titulo).toBe('');
     // Reloaded the list after creating.
-    expect(apiFetchMock).toHaveBeenCalledWith('/reuniones');
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      '/reuniones',
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
   });
 
   it('keeps the modal open and notifies in red when creation fails', async () => {

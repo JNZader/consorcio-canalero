@@ -287,7 +287,8 @@ describe('ReportsPanel', () => {
         undefined,
         undefined,
         'created_at',
-        'desc'
+        'desc',
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
       );
     });
     expect(screen.getByText('1 pendientes')).toBeInTheDocument();
@@ -323,7 +324,8 @@ describe('ReportsPanel', () => {
         undefined,
         'hidrante-lejano',
         'created_at',
-        'desc'
+        'desc',
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
       );
     });
   });
@@ -355,7 +357,8 @@ describe('ReportsPanel', () => {
         'inundacion',
         undefined,
         'created_at',
-        'desc'
+        'desc',
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
       );
     });
   });
@@ -375,7 +378,8 @@ describe('ReportsPanel', () => {
         undefined,
         undefined,
         'created_at',
-        'asc'
+        'asc',
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
       );
     });
     expect(window.location.search).toContain('order=asc');
@@ -390,7 +394,8 @@ describe('ReportsPanel', () => {
         undefined,
         undefined,
         'created_at',
-        'desc'
+        'desc',
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
       );
     });
     expect(window.location.search).not.toContain('order=');
@@ -405,7 +410,8 @@ describe('ReportsPanel', () => {
         undefined,
         undefined,
         'estado',
-        'desc'
+        'desc',
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
       );
     });
     expect(window.location.search).toContain('sort=estado');
@@ -427,7 +433,8 @@ describe('ReportsPanel', () => {
         undefined,
         undefined,
         'created_at',
-        'asc'
+        'asc',
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
       );
     });
   });
@@ -448,7 +455,8 @@ describe('ReportsPanel', () => {
       undefined,
       undefined,
       'created_at',
-      'desc'
+      'desc',
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
     // Sin estado de error: el sort inválido jamás llega a la API.
     expect(screen.queryByText(/no pudimos cargar las denuncias/i)).not.toBeInTheDocument();
@@ -476,7 +484,8 @@ describe('ReportsPanel', () => {
       undefined,
       undefined,
       'tipo',
-      'asc'
+      'asc',
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
     expect(window.location.search).toContain('sort=tipo');
   });
@@ -532,5 +541,73 @@ describe('ReportsPanel', () => {
 
     expect(await screen.findByText('7 pendientes')).toBeInTheDocument();
     expect(screen.getByText('3 en revision')).toBeInTheDocument();
+  });
+
+  it('reuses the same idempotency_key across bulk update retries', async () => {
+    const user = userEvent.setup();
+    vi.mocked(reportsApi.bulkUpdate)
+      .mockRejectedValueOnce(new Error('500'))
+      .mockResolvedValueOnce({ resultados: [{ id: 'rep-1', ok: true }] });
+
+    renderPanel();
+    await screen.findByText('Canal desbordado en zona norte');
+
+    await user.click(screen.getByRole('checkbox', { name: 'Seleccionar denuncia rep-1' }));
+    await user.click(screen.getByRole('button', { name: 'Pasar 1 a en revisión' }));
+    let dialog = screen.getByRole('dialog', { name: /cambiar estado/i });
+    await user.click(within(dialog).getByRole('button', { name: 'Confirmar' }));
+
+    await waitFor(() => expect(reportsApi.bulkUpdate).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: /cambiar estado/i })).not.toBeInTheDocument()
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Pasar 1 a en revisión' }));
+    dialog = screen.getByRole('dialog', { name: /cambiar estado/i });
+    await user.click(within(dialog).getByRole('button', { name: 'Confirmar' }));
+
+    await waitFor(() => expect(reportsApi.bulkUpdate).toHaveBeenCalledTimes(2));
+    const firstKey = vi.mocked(reportsApi.bulkUpdate).mock.calls[0]?.[2];
+    const secondKey = vi.mocked(reportsApi.bulkUpdate).mock.calls[1]?.[2];
+    expect(firstKey).toBeTruthy();
+    expect(secondKey).toBe(firstKey);
+  });
+
+  it('retains only failed IDs on partial bulk failure and clears selection on filter change', async () => {
+    const user = userEvent.setup();
+    const secondReport = { ...baseReport, id: 'rep-2', descripcion: 'Segundo canal' };
+    vi.mocked(reportsApi.getAll).mockResolvedValue({
+      items: [baseReport, secondReport],
+      total: 2,
+      page: 1,
+    });
+    vi.mocked(reportsApi.bulkUpdate).mockResolvedValueOnce({
+      resultados: [
+        { id: 'rep-1', ok: true },
+        { id: 'rep-2', ok: false, error: 'Ya cerrada' },
+      ],
+    });
+
+    renderPanel();
+    await screen.findByText('Canal desbordado en zona norte');
+
+    await user.click(screen.getByRole('checkbox', { name: 'Seleccionar denuncia rep-1' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Seleccionar denuncia rep-2' }));
+    await user.click(screen.getByRole('button', { name: 'Pasar 2 a en revisión' }));
+    const dialog = screen.getByRole('dialog', { name: /cambiar estado/i });
+    await user.click(within(dialog).getByRole('button', { name: 'Confirmar' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Pasar 1 a en revisión' })).toBeInTheDocument();
+    });
+    expect(screen.getByRole('checkbox', { name: 'Seleccionar denuncia rep-1' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Seleccionar denuncia rep-2' })).toBeChecked();
+
+    // Changing filter clears selection so invisible rows aren't retained.
+    await user.click(screen.getByRole('combobox', { name: /filtrar por estado de la denuncia/i }));
+    await user.click(await screen.findByRole('option', { name: /resuelto/i }));
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /pasar \d+ a en revisión/i })).not.toBeInTheDocument();
+    });
   });
 });

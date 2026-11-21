@@ -147,18 +147,20 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
   const [floodHistoryData, setFloodHistoryData] = useState<FloodHistoryPoint[]>([]);
 
   useEffect(() => {
-    let mounted = true;
+    const controller = new AbortController();
 
     async function fetchOptionalData() {
       const currentYear = new Date().getFullYear();
 
       const [balanceResult, budgetResult, historicalResult] = await Promise.allSettled([
-        apiFetch<FinanceBalanceSummary>(`/finanzas/resumen/${currentYear}`),
-        apiFetch<unknown>(`/finanzas/ejecucion/${currentYear}`),
-        statsApi.getHistorical({ limit: 6 }),
+        apiFetch<FinanceBalanceSummary>(`/finanzas/resumen/${currentYear}`, {
+          signal: controller.signal,
+        }),
+        apiFetch<unknown>(`/finanzas/ejecucion/${currentYear}`, { signal: controller.signal }),
+        statsApi.getHistorical({ limit: 6 }, { signal: controller.signal }),
       ]);
 
-      if (!mounted) {
+      if (controller.signal.aborted) {
         return;
       }
 
@@ -178,7 +180,7 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
     fetchOptionalData();
 
     return () => {
-      mounted = false;
+      controller.abort();
     };
   }, []);
 

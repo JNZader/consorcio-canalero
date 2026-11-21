@@ -12,7 +12,8 @@ import {
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { isAbortError } from '../../../lib/abortUtils';
 import { apiFetch } from '../../../lib/api';
 import { handleError } from '../../../lib/errorHandler';
 import { showNotification, showSuccess } from '../../../lib/notifications';
@@ -20,6 +21,7 @@ import { erroresUi } from '../../../lib/userFacingError';
 import { isValidCUIT } from '../../../lib/validators';
 import { useUserRole } from '../../../stores/authStore';
 import { ConfirmDialog } from '../../ui/ConfirmDialog';
+import { EmptyState } from '../../ui/EmptyState';
 import { IconButton } from '../../ui/IconButton';
 import { IconEdit, IconPlus, IconSearch, IconTrash, IconUser } from '../../ui/icons';
 import { LoadingState } from '../../ui/LoadingState';
@@ -65,34 +67,57 @@ export default function PadronPanel() {
     null
   );
   const [deleting, setDeleting] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const savingRef = useRef(false);
+  const fetchAbortRef = useRef<AbortController | null>(null);
+  const fetchSeqRef = useRef(0);
 
   const fetchConsorcistas = useCallback(async () => {
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    const seq = ++fetchSeqRef.current;
+
     setLoading(true);
     try {
       const response = await apiFetch<Consorcista[] | { items: Consorcista[] }>(
-        `/padron?${new URLSearchParams({ search }).toString()}`
+        `/padron?${new URLSearchParams({ search }).toString()}`,
+        { signal: controller.signal }
       );
+      if (controller.signal.aborted || seq !== fetchSeqRef.current) return;
       const data = Array.isArray(response) ? response : (response.items ?? []);
       setConsorcistas(data);
       setLoadError(null);
+      setHasLoadedOnce(true);
     } catch (err) {
+      if (isAbortError(err, controller.signal) || seq !== fetchSeqRef.current) return;
       setConsorcistas([]);
       setLoadError(erroresUi.cargarPadron.detalle);
+      setHasLoadedOnce(true);
       handleError(err, {
         title: erroresUi.cargarPadron.titulo,
         fallbackMessage: erroresUi.cargarPadron.detalle,
         context: 'PadronPanel.fetchConsorcistas',
       });
     } finally {
-      setLoading(false);
+      if (seq === fetchSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, [search]);
 
   useEffect(() => {
-    const timer = setTimeout(() => fetchConsorcistas(), 300);
+    const timer = setTimeout(() => void fetchConsorcistas(), 300);
     return () => clearTimeout(timer);
   }, [fetchConsorcistas]);
+
+  useEffect(() => {
+    return () => {
+      fetchAbortRef.current?.abort();
+    };
+  }, []);
 
   const form = useForm({
     initialValues: {
@@ -128,6 +153,9 @@ export default function PadronPanel() {
   };
 
   const handleSave = async (values: typeof form.values) => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
     try {
       if (editingConsorcista) {
         await apiFetch(`/padron/${editingConsorcista.id}`, {
@@ -150,7 +178,7 @@ export default function PadronPanel() {
       }
       close();
       setEditingConsorcista(null);
-      fetchConsorcistas();
+      void fetchConsorcistas();
       form.reset();
     } catch (err) {
       handleError(err, {
@@ -158,6 +186,9 @@ export default function PadronPanel() {
         fallbackMessage: erroresUi.crearConsorcista.detalle,
         context: 'PadronPanel.handleSave',
       });
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
   };
 
@@ -230,57 +261,43 @@ export default function PadronPanel() {
     }
   };
 
-  if (loading && consorcistas.length === 0 && !loadError) return <LoadingState />;
-  if (loadError && consorcistas.length === 0) {
-    return (
-      <LoadingState
-        status="error"
-        title={erroresUi.cargarPadron.titulo}
-        message={loadError}
-        action={
-          <Button mt="sm" onClick={() => void fetchConsorcistas()}>
-            Reintentar
-          </Button>
-        }
-      />
-    );
-  }
+  if (loading && !hasLoadedOnce && !search) return <LoadingState />;
 
-  return (
-    <Container size="xl" py="md">
-      <PageHeader
-        title="Padrón de Consorcistas"
-        subtitle="Administración de socios y datos del padrón"
-        actions={
-          <>
-            <Button leftSection={<IconPlus size={18} />} onClick={handleOpenCreate}>
-              Nuevo Consorcista
+  const renderRecordsBody = () => {
+    if (loading && consorcistas.length === 0) {
+      return <LoadingState />;
+    }
+    if (loadError) {
+      return (
+        <LoadingState
+          status="error"
+          title={erroresUi.cargarPadron.titulo}
+          message={loadError}
+          action={
+            <Button mt="sm" onClick={() => void fetchConsorcistas()}>
+              Reintentar
             </Button>
-            {canImportPadron && (
-              <Button variant="outline" onClick={openImport}>
-                Importar CSV/XLS
-              </Button>
-            )}
-          </>
-        }
-      />
-
-      <Paper shadow="sm" p="md" radius="md" mb="md">
-        <TextInput
-          aria-label="Buscar consorcistas"
-          placeholder="Buscar por Nombre, Apellido o CUIT..."
-          leftSection={<IconSearch size={16} />}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          }
         />
-      </Paper>
-
-      <Paper withBorder p="sm" radius="md" mb="md">
-        <Text size="sm" c="dimmed">
-          La gestión de pagos y cuotas no está disponible en esta versión.
-        </Text>
-      </Paper>
-
+      );
+    }
+    if (consorcistas.length === 0) {
+      return (
+        <Paper withBorder radius="md" p="md">
+          <EmptyState
+            title={
+              search.trim() ? 'No se encontraron consorcistas' : 'No hay consorcistas registrados'
+            }
+            description={
+              search.trim()
+                ? 'Probá con otro nombre, apellido o CUIT.'
+                : 'Agregá el primer consorcista o importá un archivo CSV/XLS.'
+            }
+          />
+        </Paper>
+      );
+    }
+    return (
       <Paper withBorder radius="md">
         <ResponsiveRecordList
           label="Tabla de consorcistas"
@@ -328,11 +345,51 @@ export default function PadronPanel() {
           }))}
         />
       </Paper>
+    );
+  };
+
+  return (
+    <Container size="xl" py="md">
+      <PageHeader
+        title="Padrón de Consorcistas"
+        subtitle="Administración de socios y datos del padrón"
+        actions={
+          <>
+            <Button leftSection={<IconPlus size={18} />} onClick={handleOpenCreate}>
+              Nuevo Consorcista
+            </Button>
+            {canImportPadron && (
+              <Button variant="outline" onClick={openImport}>
+                Importar CSV/XLS
+              </Button>
+            )}
+          </>
+        }
+      />
+
+      <Paper shadow="sm" p="md" radius="md" mb="md">
+        <TextInput
+          aria-label="Buscar consorcistas"
+          placeholder="Buscar por Nombre, Apellido o CUIT..."
+          leftSection={<IconSearch size={16} />}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </Paper>
+
+      <Paper withBorder p="sm" radius="md" mb="md">
+        <Text size="sm" c="dimmed">
+          La gestión de pagos y cuotas no está disponible en esta versión.
+        </Text>
+      </Paper>
+
+      {renderRecordsBody()}
 
       {/* Modal Nuevo / Editar Consorcista */}
       <Modal
         opened={opened}
         onClose={() => {
+          if (saving) return;
           close();
           setEditingConsorcista(null);
         }}
@@ -384,7 +441,7 @@ export default function PadronPanel() {
             />
             <TextInput label="Teléfono" placeholder="+54..." {...form.getInputProps('telefono')} />
           </SimpleGrid>
-          <Button type="submit" fullWidth mt="xl">
+          <Button type="submit" fullWidth mt="xl" loading={saving} disabled={saving}>
             Guardar en Padrón
           </Button>
         </form>

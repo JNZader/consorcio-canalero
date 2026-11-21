@@ -57,8 +57,9 @@ const renderPanel = () =>
 
 function mockFinanceApi() {
   vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
-    if (path === '/finanzas/gastos' && !options) return [gasto];
-    if (path === '/finanzas/ingresos' && !options) return [ingreso];
+    const method = options?.method ?? 'GET';
+    if (path === '/finanzas/gastos' && method === 'GET') return [gasto];
+    if (path === '/finanzas/ingresos' && method === 'GET') return [ingreso];
     if (path.startsWith('/finanzas/resumen/')) {
       return { total_ingresos: 50000, total_gastos: 20000, balance: 30000 };
     }
@@ -78,8 +79,8 @@ function mockFinanceApiWithHangingGastoPost() {
         resolvePost = resolve;
       });
     }
-    if (path === '/finanzas/gastos' && !options) return [gasto];
-    if (path === '/finanzas/ingresos' && !options) return [ingreso];
+    if (path === '/finanzas/gastos' && (!options?.method || options.method === 'GET')) return [gasto];
+    if (path === '/finanzas/ingresos' && (!options?.method || options.method === 'GET')) return [ingreso];
     if (path.startsWith('/finanzas/resumen/')) {
       return { total_ingresos: 50000, total_gastos: 20000, balance: 30000 };
     }

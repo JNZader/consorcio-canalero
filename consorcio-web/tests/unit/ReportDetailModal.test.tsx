@@ -204,4 +204,70 @@ describe('ReportDetailModal (ADM-05)', () => {
     });
     expect(screen.queryByText('No se pudo guardar la asignación')).not.toBeInTheDocument();
   });
+
+  it('ignores an earlier slow PATCH rejection after a newer assignee selection succeeds', async () => {
+    const user = userEvent.setup();
+    let rejectFirstPatch: ((reason?: unknown) => void) | undefined;
+    let resolveSecondPatch: ((val: unknown) => void) | undefined;
+    let patchCount = 0;
+
+    vi.mocked(apiFetch).mockImplementation(async (_path: string, options?: RequestInit) => {
+      if (options?.method === 'PATCH') {
+        patchCount += 1;
+        if (patchCount === 1) {
+          return new Promise((_resolve, reject) => {
+            rejectFirstPatch = reject;
+          });
+        }
+        return new Promise((resolve) => {
+          resolveSecondPatch = resolve;
+        });
+      }
+      return [
+        { id: 'op-7', nombre: 'Romina Torres', email: 'romina@consorcio.gob.ar' },
+        { id: 'op-9', nombre: 'Marcos Diaz', email: 'marcos@consorcio.gob.ar' },
+      ];
+    });
+
+    const onAssigneeChange = vi.fn();
+    render(
+      <MantineProvider env="test">
+        <ReportDetailModal
+          opened
+          onClose={vi.fn()}
+          selectedReport={{ ...sampleReport, asignado_a: null } as never}
+          history={[]}
+          loadingHistory={false}
+          newStatus="pendiente"
+          setNewStatus={vi.fn()}
+          publicComment=""
+          setPublicComment={vi.fn()}
+          adminNotes=""
+          setAdminNotes={vi.fn()}
+          onUpdate={vi.fn()}
+          updating={false}
+          onAssigneeChange={onAssigneeChange}
+        />
+      </MantineProvider>
+    );
+
+    const select = await screen.findByRole('combobox', { name: /Asignar operador/i });
+    await user.click(select);
+    await user.click(await screen.findByRole('option', { name: /Romina Torres/i }, { timeout: 5000 }));
+
+    await user.click(select);
+    await user.click(await screen.findByRole('option', { name: /Marcos Diaz/i }, { timeout: 5000 }));
+
+    resolveSecondPatch?.({});
+    await waitFor(() => {
+      expect(onAssigneeChange).toHaveBeenCalledWith('rep-101', 'op-9');
+    });
+
+    // Earlier stale PATCH fails after newer PATCH succeeded — must NOT revert select or show error
+    rejectFirstPatch?.(new Error('late timeout'));
+    await waitFor(() => {
+      expect(select).toHaveValue('Marcos Diaz (marcos@consorcio.gob.ar)');
+      expect(screen.queryByText('No se pudo guardar la asignación')).not.toBeInTheDocument();
+    });
+  });
 });

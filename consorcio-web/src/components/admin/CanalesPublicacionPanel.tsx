@@ -13,6 +13,7 @@ import {
 } from '@mantine/core';
 import type { FeatureCollection } from 'geojson';
 import { useEffect, useState } from 'react';
+import { isAbortError } from '../../lib/abortUtils';
 import {
   CANAL_ORIGEN,
   type CanalLineCollection,
@@ -135,15 +136,15 @@ export default function CanalesPublicacionPanel() {
   };
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     const applySrPa = (collection: FeatureCollection) => {
       const tagged = tagSrPaListIds(collection);
       setSrPa(tagged);
       setSrPaRows(parseSrPaRows(tagged));
     };
-    void listCanalPublicacion()
+    void listCanalPublicacion({ signal: controller.signal })
       .then(async (catalog) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         setItems(catalog.items);
         setGeojson(catalog.geojson ?? EMPTY_LINE_COLLECTION);
         setAprhiItems(catalog.aprhi_items ?? []);
@@ -152,18 +153,19 @@ export default function CanalesPublicacionPanel() {
           applySrPa(catalog.geojson_sr_pa);
           return;
         }
-        const response = await fetch(APRHI_SR_PA_URL);
+        const response = await fetch(APRHI_SR_PA_URL, { signal: controller.signal });
         const collection = response.ok ? ((await response.json()) as FeatureCollection) : null;
-        if (!cancelled && collection) applySrPa(collection);
+        if (!controller.signal.aborted && collection) applySrPa(collection);
       })
-      .catch(() => {
+      .catch((err) => {
+        if (isAbortError(err, controller.signal)) return;
         showToast({ color: 'red', message: 'No se pudo cargar el catálogo de canales' });
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       });
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, []);
 
