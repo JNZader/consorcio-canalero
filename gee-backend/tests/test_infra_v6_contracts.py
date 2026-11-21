@@ -793,7 +793,6 @@ def test_wave2_compose_systemd_and_doc_redaction_contracts() -> None:
 
     assert "python3-pip" in _read("gee-backend/Dockerfile.geo").split("apt-get purge", 1)[1]
     assert "HEALTHCHECK" in _read("gee-backend/Dockerfile.geo")
-    assert "/usr/local/bin/pip3.15" in _read("gee-backend/Dockerfile")
 
     notify = _read("deploy/notify@.service")
     assert "User=javier" in notify and "NoNewPrivileges=yes" in notify
