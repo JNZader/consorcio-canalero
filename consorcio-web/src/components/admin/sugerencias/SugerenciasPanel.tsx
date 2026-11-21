@@ -17,6 +17,7 @@ import { SugerenciasFilters } from './components/SugerenciasFilters';
 import { SugerenciasTableContent } from './components/SugerenciasTableContent';
 import { SuggestionDetailModal } from './components/SuggestionDetailModal';
 import { ITEMS_PER_PAGE } from './constants';
+import { formatLocalIsoDate, parseLocalIsoDate } from './sugerenciaDateUtils';
 import { getStatusBadge } from './sugerenciasPanelUtils';
 
 function readSugerenciaQuery() {
@@ -314,7 +315,7 @@ export default function SugerenciasPanel({
       // del bug del schema mismatch).
       setAdminNotes(merged.notas_internas ?? '');
       setPublicComment(merged.respuesta ?? '');
-      setAgendarFecha(merged.fecha_reunion ? new Date(merged.fecha_reunion) : null);
+      setAgendarFecha(parseLocalIsoDate(merged.fecha_reunion));
       openDetail();
     } catch (error) {
       if (isAbortError(error, controller.signal) || seq !== detailSeqRef.current) return;
@@ -370,7 +371,7 @@ export default function SugerenciasPanel({
 
     setAgendando(true);
     try {
-      const fechaStr = agendarFecha.toISOString().split('T')[0];
+      const fechaStr = formatLocalIsoDate(agendarFecha);
       await sugerenciasApi.agendar(selectedSugerencia.id, fechaStr);
       showInfo('Sugerencia agendada', `Agendada para el ${formatDate(fechaStr)}`, {
         icon: <IconCalendar size={16} />,

@@ -18,7 +18,9 @@ export interface Sugerencia {
     type: 'FeatureCollection';
     features: Array<{
       type: 'Feature';
-      geometry: { type: 'LineString'; coordinates: number[][] };
+      geometry:
+        | { type: 'LineString'; coordinates: number[][] }
+        | { type: 'Point'; coordinates: number[] };
       properties?: Record<string, unknown>;
     }>;
   } | null;
@@ -109,10 +111,11 @@ export const sugerenciasApi = {
    * exacto del flujo `POST /denuncias`). Esto es lo que permite que
    * la sugerencia aparezca después en `GET /sugerencias/mine`.
    */
-  create: (data: SugerenciaCreate): Promise<Sugerencia> =>
+  create: (data: SugerenciaCreate, idempotencyKey?: string): Promise<Sugerencia> =>
     apiFetch('/sugerencias', {
       method: 'POST',
       body: JSON.stringify(data),
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
     }),
 
   /**

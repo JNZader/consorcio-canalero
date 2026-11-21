@@ -20,10 +20,29 @@ import 'dayjs/locale/es';
 dayjs.locale('es');
 
 import type { Sugerencia } from '../../../../lib/api';
+import { withBasePath } from '../../../../lib/basePath';
 import { formatDate } from '../../../../lib/formatters';
 import { CATEGORIA_OPTIONS, getAllowedNextEstadosSugerencia } from '../constants';
+import { formatLocalIsoDate, parseLocalIsoDate } from '../sugerenciaDateUtils';
 import { SugerenciaGeometryMap } from './SugerenciaGeometryMap';
-import { withBasePath } from '../../../../lib/basePath';
+
+function extractAnchorPoint(
+  sugerencia: Sugerencia | null
+): readonly [number, number] | undefined {
+  const geom = sugerencia?.geometry?.features?.[0]?.geometry;
+  if (!geom) return undefined;
+  if (geom.type === 'Point') {
+    const [lng, lat] = geom.coordinates;
+    return typeof lng === 'number' && typeof lat === 'number' ? [lng, lat] : undefined;
+  }
+  if (geom.type === 'LineString') {
+    const first = geom.coordinates[0];
+    return Array.isArray(first) && typeof first[0] === 'number' && typeof first[1] === 'number'
+      ? [first[0], first[1]]
+      : undefined;
+  }
+  return undefined;
+}
 
 export function SuggestionDetailModal({
   opened,
@@ -72,7 +91,7 @@ export function SuggestionDetailModal({
   onUpdate: () => void;
   updating: boolean;
 }>) {
-  const point = selectedSugerencia?.geometry?.features?.[0]?.geometry?.coordinates?.[0];
+  const point = extractAnchorPoint(selectedSugerencia);
   const lng = point?.[0];
   const lat = point?.[1];
   return (
@@ -191,7 +210,7 @@ export function SuggestionDetailModal({
                 </Text>
                 {agendarFecha && (
                   <Text size="xs" c="institucional.7" fw={600}>
-                    {formatDate(agendarFecha.toISOString().split('T')[0])}
+                    {formatDate(formatLocalIsoDate(agendarFecha))}
                   </Text>
                 )}
               </Group>
@@ -214,7 +233,7 @@ export function SuggestionDetailModal({
                     <DatePicker
                       value={agendarFecha}
                       onChange={(value) =>
-                        setAgendarFecha(value ? new Date(value as unknown as string) : null)
+                        setAgendarFecha(parseLocalIsoDate(value as string | Date | null))
                       }
                       minDate={new Date()}
                       size="sm"
