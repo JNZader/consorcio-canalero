@@ -519,7 +519,7 @@ def task_generate_zonification(dem_layer_id: str, threshold: int = 2000) -> dict
 # ---------------------------------------------------------------------------
 
 
-@celery_app.task(queue="geo", name="geo.intelligence.evaluate_alerts")
+@celery_app.task(queue="celery", name="geo.intelligence.evaluate_alerts")
 def task_evaluate_alerts() -> dict:
     deps = _get_deps()
     db = _get_db()
@@ -591,7 +591,7 @@ def compute_road_flow_crossings(area_id: str, job_id: str | None = None) -> dict
 # ---------------------------------------------------------------------------
 
 
-@celery_app.task(queue="geo", name="geo.intelligence.refresh_materialized_views")
+@celery_app.task(queue="celery", name="geo.intelligence.refresh_materialized_views")
 def task_refresh_materialized_views() -> dict:
     """Refresh all geo materialized views (zone stats, alert summary, conflict density)."""
     from app.db.session import relax_statement_timeout

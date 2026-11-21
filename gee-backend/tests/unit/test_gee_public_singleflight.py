@@ -8,6 +8,8 @@ racing a worker thread, when the assertion runs.
 from __future__ import annotations
 
 import asyncio
+import contextvars
+import threading
 from datetime import date
 
 import pytest
@@ -93,6 +95,36 @@ def _reset_flights():
     router_gee_support._gee_flights.reset()
     yield
     router_gee_support._gee_flights.reset()
+
+
+@pytest.mark.asyncio
+async def test_gee_executor_offloads_ensure_and_blocking_with_contextvars_and_recreates():
+    ctx_var: contextvars.ContextVar[str] = contextvars.ContextVar("gee_ctx", default="missing")
+    token = ctx_var.set("req-trace-42")
+    loop_thread = threading.get_ident()
+    try:
+
+        def probe_ensure():
+            return (threading.get_ident(), threading.current_thread().name, ctx_var.get())
+
+        tid1, name1, val1 = await router_gee_support._ensure_gee_async(probe_ensure)
+        tid2, name2, val2 = await router_gee_support._run_blocking(probe_ensure)
+        assert tid1 != loop_thread
+        assert tid2 != loop_thread
+        assert name1.startswith("gee-io")
+        assert name2.startswith("gee-io")
+        assert val1 == "req-trace-42"
+        assert val2 == "req-trace-42"
+
+        router_gee_support.shutdown_gee_executor()
+        assert router_gee_support._GEE_EXECUTOR is None
+        tid3, name3, val3 = await router_gee_support._ensure_gee_async(probe_ensure)
+        assert tid3 != loop_thread
+        assert name3.startswith("gee-io")
+        assert val3 == "req-trace-42"
+    finally:
+        router_gee_support.shutdown_gee_executor()
+        ctx_var.reset(token)
 
 
 def _explorer(get_image):

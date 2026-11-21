@@ -121,6 +121,16 @@ celery_app.conf.update(
     # single-concurrency GDAL worker — without an explicit opt-in here,
     # mirroring how RECOVERABLE_LONG_TASKS is an explicit allowlist.
     task_routes={
+        # Pure-SQL maintenance tasks run on the default "celery" queue so they
+        # do not queue behind long GDAL/raster jobs on the "geo" worker. List
+        # exact names before "geo.*" so Celery's router matches them first.
+        "geo.informe_area.limpiar_vencidos": {"queue": "celery", "routing_key": "celery"},
+        "geo.reconcile_stale_jobs": {"queue": "celery", "routing_key": "celery"},
+        "geo.intelligence.evaluate_alerts": {"queue": "celery", "routing_key": "celery"},
+        "geo.intelligence.refresh_materialized_views": {
+            "queue": "celery",
+            "routing_key": "celery",
+        },
         "geo.*": {"queue": "geo", "routing_key": "geo"},
         "gee.analyze_flood": {"queue": "geo", "routing_key": "geo"},
         "gee.supervised_classification": {"queue": "geo", "routing_key": "geo"},
@@ -131,12 +141,12 @@ celery_app.conf.update(
         "evaluate-alerts-periodic": {
             "task": "geo.intelligence.evaluate_alerts",
             "schedule": crontab(minute="0", hour=f"*/{GEO_ALERT_EVAL_HOURS}"),
-            "options": {"queue": "geo"},
+            "options": {"queue": "celery"},
         },
         "refresh-mat-views-periodic": {
             "task": "geo.intelligence.refresh_materialized_views",
             "schedule": crontab(minute="30", hour=f"*/{GEO_MATVIEW_REFRESH_HOURS}"),
-            "options": {"queue": "geo"},
+            "options": {"queue": "celery"},
         },
         # Phase 2.1: purge expired / long-revoked refresh tokens so the
         # ``refresh_tokens`` table stays bounded. Daily at 04:15 UTC.
@@ -277,7 +287,7 @@ def publish_pending_celery_tasks_task() -> dict[str, int]:
     )
 
 
-@celery_app.task(name="geo.reconcile_stale_jobs")
+@celery_app.task(queue="celery", name="geo.reconcile_stale_jobs")
 def reconcile_stale_geo_jobs_task() -> dict[str, int]:
     """Fail DB jobs that remained active well beyond the delivery window."""
     from datetime import timedelta

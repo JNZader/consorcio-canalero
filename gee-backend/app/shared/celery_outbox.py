@@ -77,6 +77,9 @@ class CeleryTaskKey(StrEnum):
     COMPOSITE_ANALYSIS = "geo.composite_analysis"
     SAR_TEMPORAL = "gee.sar_temporal"
     COMPUTE_ROAD_FLOW_CROSSINGS = "geo.intelligence.compute_road_flow_crossings"
+    CALCULATE_HCI_ALL = "geo.intelligence.calculate_hci_all"
+    DETECT_ALL_CONFLICTS = "geo.intelligence.detect_all_conflicts"
+    GENERATE_ZONIFICATION = "geo.intelligence.generate_zonification"
     CLASSIFY_ROAD_SEGMENTS = "geo.relevamiento.classify_road_segments"
     NOTIFY_DENUNCIA_STATUS = "denuncias.notify_status"
     INFORME_AREA = "geo.informe_area.generar"
@@ -210,7 +213,12 @@ def get_celery_task_registry() -> TaskRegistry:
         sar_temporal_task,
         supervised_classification_task,
     )
-    from app.domains.geo.intelligence.tasks import compute_road_flow_crossings
+    from app.domains.geo.intelligence.tasks import (
+        compute_road_flow_crossings,
+        task_calculate_hci_all_zones,
+        task_detect_all_conflicts,
+        task_generate_zonification,
+    )
     from app.domains.denuncias.tasks import notify_denuncia_status
     from app.domains.geo.informe_area.tasks import generar_informe_area
     from app.domains.geo.relevamiento.tasks import classify_road_segments
@@ -246,6 +254,9 @@ def get_celery_task_registry() -> TaskRegistry:
         CeleryTaskKey.COMPOSITE_ANALYSIS: composite_analysis_task,
         CeleryTaskKey.SAR_TEMPORAL: sar_temporal_task,
         CeleryTaskKey.COMPUTE_ROAD_FLOW_CROSSINGS: compute_road_flow_crossings,
+        CeleryTaskKey.CALCULATE_HCI_ALL: task_calculate_hci_all_zones,
+        CeleryTaskKey.DETECT_ALL_CONFLICTS: task_detect_all_conflicts,
+        CeleryTaskKey.GENERATE_ZONIFICATION: task_generate_zonification,
         CeleryTaskKey.CLASSIFY_ROAD_SEGMENTS: classify_road_segments,
         CeleryTaskKey.NOTIFY_DENUNCIA_STATUS: notify_denuncia_status,
         CeleryTaskKey.INFORME_AREA: generar_informe_area,

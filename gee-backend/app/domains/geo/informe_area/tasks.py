@@ -722,7 +722,7 @@ def generar_informe_area(informe_id: str) -> dict:
         db.close()
 
 
-@celery_app.task(queue="geo", name="geo.informe_area.limpiar_vencidos")
+@celery_app.task(queue="celery", name="geo.informe_area.limpiar_vencidos")
 def limpiar_informes_vencidos() -> dict:
     """Daily retention sweep (S11): delete rows past their ``vence_at``.
 

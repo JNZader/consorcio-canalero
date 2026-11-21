@@ -171,6 +171,12 @@ async def lifespan(app: FastAPI):
         shutdown_gee_probe()
     except Exception as e:
         logger.warning("Error releasing GEE health probe", error=str(e))
+    try:
+        from app.domains.geo.router_gee_support import shutdown_gee_executor
+
+        shutdown_gee_executor()
+    except Exception as e:
+        logger.warning("Error releasing GEE threadpool executor", error=str(e))
     logger.info("Shutdown complete")
 
 
