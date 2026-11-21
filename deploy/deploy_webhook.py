@@ -24,6 +24,7 @@ import hmac
 import json
 import os
 import re
+import subprocess
 import sys
 import threading
 from collections.abc import Callable
@@ -39,6 +40,7 @@ GEO_IMAGE_RE = re.compile(
 )
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
 MAX_BODY_BYTES = 8192
+DEFAULT_SOCKET_TIMEOUT_S = 15.0
 WEBHOOK_PATH = "/hooks/deploy"
 
 
@@ -124,6 +126,17 @@ def write_digest_env(path: Path, revision: str, backend_digest: str, geo_digest:
     temporary.replace(path)
 
 
+def _restore_digest_env(path: Path, previous_bytes: bytes | None) -> None:
+    if previous_bytes is None:
+        path.unlink(missing_ok=True)
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_bytes(previous_bytes)
+    os.chmod(temporary, 0o600)
+    temporary.replace(path)
+
+
 def log_event(event: str, **fields: object) -> None:
     payload = {"event": event, **fields}
     sys.stdout.write(json.dumps(payload, sort_keys=True) + "\n")
@@ -134,8 +147,7 @@ ApplyFn = Callable[[str, str, str], None]
 
 
 def default_apply(stack_dir: Path, digest_env: Path, revision: str, backend: str, geo: str) -> None:
-    import subprocess
-
+    previous_bytes = digest_env.read_bytes() if digest_env.exists() else None
     write_digest_env(digest_env, revision, backend, geo)
     stack_env = stack_dir / ".env"
     command = [
@@ -151,16 +163,22 @@ def default_apply(stack_dir: Path, digest_env: Path, revision: str, backend: str
         "always",
         "--remove-orphans",
     ]
-    completed = subprocess.run(
-        command,
-        cwd=stack_dir,
-        check=False,
-        timeout=int(os.environ.get("DEPLOY_COMPOSE_TIMEOUT_S", "900")),
-        capture_output=True,
-        text=True,
-    )
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=stack_dir,
+            check=False,
+            timeout=int(os.environ.get("DEPLOY_COMPOSE_TIMEOUT_S", "900")),
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.TimeoutExpired as exc:
+        _restore_digest_env(digest_env, previous_bytes)
+        log_event("compose_timeout", revision=revision)
+        raise WebhookError(504, "compose_timeout") from exc
     if completed.returncode != 0:
-        # No se reenvía stderr: compose puede imprimir DATABASE_URL.
+        _restore_digest_env(digest_env, previous_bytes)
+        # No se reenvía salida de compose porque puede imprimir DATABASE_URL.
         log_event("compose_failed", revision=revision, returncode=completed.returncode)
         raise WebhookError(500, "compose_failed")
 
@@ -193,6 +211,10 @@ def handle_deploy(
 class _Handler(BaseHTTPRequestHandler):
     server: DeployWebhookServer
 
+    def setup(self) -> None:
+        self.timeout = getattr(self.server, "request_timeout", DEFAULT_SOCKET_TIMEOUT_S)
+        super().setup()
+
     def log_message(self, fmt: str, *args: object) -> None:
         log_event("http", peer=self.address_string(), message=fmt % args)
 
@@ -218,7 +240,12 @@ class _Handler(BaseHTTPRequestHandler):
         if length < 0 or length > MAX_BODY_BYTES:
             self._send(413, {"error": "body_too_large"})
             return
-        body = self.rfile.read(length)
+        try:
+            body = self.rfile.read(length)
+        except TimeoutError:
+            log_event("deploy_rejected", code="request_timeout", status=408)
+            self._send(408, {"error": "request_timeout"})
+            return
         try:
             with self.server.lock:
                 result = handle_deploy(
@@ -248,10 +275,13 @@ class DeployWebhookServer(ThreadingHTTPServer):
         expected_token: str,
         state_path: Path,
         apply: ApplyFn,
+        *,
+        request_timeout: float = DEFAULT_SOCKET_TIMEOUT_S,
     ) -> None:
         self.expected_token = expected_token
         self.state_path = state_path
         self.apply = apply
+        self.request_timeout = request_timeout
         self.lock = threading.Lock()
         super().__init__(address, _Handler)
 
@@ -266,7 +296,9 @@ def build_apply(stack_dir: Path, digest_env: Path) -> ApplyFn:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Receptor local del webhook de deploy")
     parser.add_argument("--bind", default=os.environ.get("DEPLOY_WEBHOOK_BIND", "127.0.0.1"))
-    parser.add_argument("--port", type=int, default=int(os.environ.get("DEPLOY_WEBHOOK_PORT", "8090")))
+    parser.add_argument(
+        "--port", type=int, default=int(os.environ.get("DEPLOY_WEBHOOK_PORT", "8090"))
+    )
     parser.add_argument(
         "--state",
         type=Path,
@@ -295,11 +327,15 @@ def main(argv: list[str] | None = None) -> int:
     if len(token) < 32:
         print("DEPLOY_WEBHOOK_SECRET must be at least 32 characters", file=sys.stderr)
         return 2
+    request_timeout = float(
+        os.environ.get("DEPLOY_WEBHOOK_SOCKET_TIMEOUT_S", str(DEFAULT_SOCKET_TIMEOUT_S))
+    )
     server = DeployWebhookServer(
         (args.bind, args.port),
         token,
         args.state,
         build_apply(args.stack_dir, args.digest_env),
+        request_timeout=request_timeout,
     )
     log_event("listen", bind=args.bind, port=args.port)
     try:

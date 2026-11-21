@@ -89,13 +89,13 @@ services:
     environment:
       DB_HOST: ${POSTGRES_HOST:-postgres}
       DB_PORT: "5432"
-      DB_USER: ${POSTGRES_USER:-consorcio}
+      DB_USER: ${PGBOUNCER_DB_USER:-${POSTGRES_USER:-consorcio}}
       # ``:?`` makes docker-compose fail loudly at ``up`` time if
       # ``.env`` doesn't set the var — otherwise the substitution is
       # an empty string and PgBouncer reports a cryptic
       # ``FATAL: password authentication failed`` that looks like a
       # creds problem instead of a config problem.
-      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required when pgbouncer is in the stack}
+      DB_PASSWORD: ${PGBOUNCER_DB_PASSWORD:-${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required when pgbouncer is in the stack}}
       DB_NAME: ${POSTGRES_DB:-consorcio}
       POOL_MODE: transaction
       MAX_CLIENT_CONN: "200"
@@ -121,6 +121,10 @@ services:
       timeout: 5s
       retries: 5
       start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
     logging:
       driver: "json-file"
       options:
@@ -171,6 +175,10 @@ services:
       - backend
       - consorcio-internal
     restart: "no"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
     logging:
       driver: "json-file"
       options:
@@ -212,6 +220,7 @@ services:
     environment:
       HOME: /tmp
       TMPDIR: /tmp
+      DATABASE_URL: ${APP_DATABASE_URL:-${DATABASE_URL}}
       # Exact proxy IPs/CIDRs or Docker DNS names. The launcher resolves
       # "caddy" to its current peer IP before binding; no subnet or wildcard.
       FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1,caddy}
@@ -219,7 +228,7 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - geo-data:/data/geo
-      - ./gee-backend/data/waterways:/app/data/waterways:ro
+      - ./gee-backend/data/waterways:/app/data/waterways
       # User-uploaded denuncia photos live here. Without a named volume the
       # files vanish on every `docker compose up -d --pull` (image rebuild),
       # which is exactly what happened in past deploys.
@@ -277,6 +286,7 @@ services:
     env_file: .env
     volumes:
       - geo-data:/data/geo
+      - denuncia-uploads:/app/uploads
       - ${GEE_CREDENTIALS_DIR:-./secrets/gee}:/app/credentials:ro
     networks:
       - backend
@@ -284,11 +294,14 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      uploads-init:
+        condition: service_completed_successfully
       pgbouncer:
         condition: service_healthy
     environment:
       HOME: /tmp
       TMPDIR: /tmp
+      DATABASE_URL: ${APP_DATABASE_URL:-${DATABASE_URL}}
     healthcheck:
       test: ["CMD-SHELL", "celery -A app.core.celery_app inspect ping --timeout 5 || exit 1"]
       interval: 30s
@@ -370,6 +383,7 @@ services:
     environment:
       HOME: /tmp
       TMPDIR: /tmp
+      DATABASE_URL: ${APP_DATABASE_URL:-${DATABASE_URL}}
     healthcheck:
       test: ["CMD", "python", "-m", "app.beat_healthcheck"]
       interval: 30s
@@ -397,6 +411,8 @@ services:
     ports:
       - "127.0.0.1:8001:8001"
     env_file: .env
+    environment:
+      DATABASE_URL: ${APP_DATABASE_URL:-${DATABASE_URL}}
     volumes:
       - geo-data:/data/geo
       - ${GEE_CREDENTIALS_DIR:-./secrets/gee}:/app/credentials:ro
@@ -419,7 +435,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1536M
     logging:
       driver: "json-file"
       options:
@@ -482,6 +498,10 @@ services:
     restart: "no"
     env_file: .env  # supplies DATABASE_URL + the BACKUP_* / B2_* / HETZNER_SB_* vars
     command: ["/opt/backup/backup_postgres.sh"]
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     networks:
       - backend
       - consorcio-internal
@@ -501,6 +521,10 @@ services:
       - geo-data:/data/geo:ro
       - denuncia-uploads:/app/uploads:ro
     command: ["/opt/backup/backup_volumes.sh"]
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     networks:
       - backend
       - consorcio-internal

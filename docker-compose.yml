@@ -103,7 +103,7 @@ services:
       - DEBUG=${DEBUG:-true}
       - RATE_LIMIT_DISABLED=${RATE_LIMIT_DISABLED:-true}
       - DATABASE_URL=${DATABASE_URL:-postgresql://consorcio:consorcio_dev@postgres:5432/consorcio}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - REDIS_URL=${REDIS_URL:-redis://:${REDIS_PASSWORD:-consorcio_dev_redis}@redis:6379/0}
       - GEO_WORKER_TILE_URL=http://geo-worker:8001
       - MARTIN_INTERNAL_URL=${MARTIN_INTERNAL_URL:-http://martin:3000}
       - MARTIN_PUBLIC_URL=${MARTIN_PUBLIC_URL:-}
@@ -194,7 +194,7 @@ services:
   # REDIS - Broker for Celery
   # ============================================
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     container_name: consorcio-redis
     restart: unless-stopped
     # Dev default keeps `docker compose up` working on a fresh clone; prod
@@ -224,10 +224,11 @@ services:
       - ./gee-backend/app:/app/app:ro
       - ./gee-backend/credentials:/app/credentials:ro
       - geo-data:/data/geo
+      - denuncia-uploads:/app/uploads
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - DATABASE_URL=${DATABASE_URL:-postgresql://consorcio:consorcio_dev@postgres:5432/consorcio}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - REDIS_URL=${REDIS_URL:-redis://:${REDIS_PASSWORD:-consorcio_dev_redis}@redis:6379/0}
       # F4.X-1: same reasoning as the backend service above. Without
       # this propagation, async celery tasks hit
       # ``DuplicatePreparedStatementError`` the moment they run
@@ -283,7 +284,7 @@ services:
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - DATABASE_URL=${DATABASE_URL:-postgresql://consorcio:consorcio_dev@postgres:5432/consorcio}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - REDIS_URL=${REDIS_URL:-redis://:${REDIS_PASSWORD:-consorcio_dev_redis}@redis:6379/0}
       - USE_PGBOUNCER=${USE_PGBOUNCER:-false}
       - USE_ONE_TIME_CODES=${USE_ONE_TIME_CODES:-false}
     volumes:
@@ -332,7 +333,7 @@ services:
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - DATABASE_URL=${DATABASE_URL:-postgresql://consorcio:consorcio_dev@postgres:5432/consorcio}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - REDIS_URL=${REDIS_URL:-redis://:${REDIS_PASSWORD:-consorcio_dev_redis}@redis:6379/0}
     env_file:
       - ./gee-backend/.env
     depends_on:

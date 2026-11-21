@@ -43,3 +43,12 @@ def test_checkout_umask_keeps_the_bind_mount_readable():
 def test_health_uses_the_container_probe_not_localhost():
     assert "python -m app.healthcheck" in TEXT
     assert "127.0.0.1:8000/health" not in TEXT.split("wait_for_health()", 1)[1]
+
+
+def test_backup_retention_and_worker_health_verification():
+    assert 'BACKUP_RETENTION_COUNT="${BACKUP_RETENTION_COUNT:-14}"' in TEXT
+    assert "consorcio-predeploy-*.dump" in TEXT
+    health = TEXT.split("wait_for_health()", 1)[1]
+    for container in ("consorcio-worker", "consorcio-celery-beat", "consorcio-geo-worker"):
+        assert container in health
+    assert "{{.State.Running}}" in health

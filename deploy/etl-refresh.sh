@@ -100,9 +100,11 @@ log() {
   printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$LOG_FILE"
 }
 
+COMPOSE_ENV_ARGS=()
+
 #: True while `$SERVICE` has a running container in this compose project.
 service_is_running() {
-  docker compose ps --status running --format '{{.Service}}' 2>/dev/null \
+  docker compose "${COMPOSE_ENV_ARGS[@]}" ps --status running --format '{{.Service}}' 2>/dev/null \
     | grep -qx "$SERVICE"
 }
 
@@ -157,6 +159,15 @@ main() {
   : >"$LOG_FILE"
   cd "$STACK_DIR"
 
+  COMPOSE_ENV_ARGS=()
+  if [[ -f "${STACK_DIR}/.env" ]]; then
+    COMPOSE_ENV_ARGS+=(--env-file "${STACK_DIR}/.env")
+  fi
+  DIGEST_ENV_FILE="${DEPLOY_DIGEST_ENV:-${STACK_DIR}/deploy-digests.env}"
+  if [[ -f "${DIGEST_ENV_FILE}" ]]; then
+    COMPOSE_ENV_ARGS+=(--env-file "${DIGEST_ENV_FILE}")
+  fi
+
   log "START stack_dir=$STACK_DIR service=$SERVICE steps=${#ETL_MODULES[@]}"
   purge_old_logs
   wait_for_stack || { log "END   result=FAILED reason=stack-not-up log=$LOG_FILE"; return 1; }
@@ -168,7 +179,7 @@ main() {
     # the MODULE's own (docker compose exec propagates it), never a pipe's:
     # everything is appended to the log with `>>`, deliberately not piped.
     set +e
-    timeout "$STEP_TIMEOUT_S" docker compose exec -T "$SERVICE" python -m "$module" \
+    timeout "$STEP_TIMEOUT_S" docker compose "${COMPOSE_ENV_ARGS[@]}" exec -T "$SERVICE" python -m "$module" \
       >>"$LOG_FILE" 2>&1
     status=$?
     set -e

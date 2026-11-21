@@ -48,6 +48,7 @@ COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
 BACKUP_DIR="${BACKUP_DIR:-$HOME/backups}"
 BACKUP_MIN_BYTES="${BACKUP_MIN_BYTES:-102400}"
 BACKUP_MIN_TABLES="${BACKUP_MIN_TABLES:-10}"
+BACKUP_RETENTION_COUNT="${BACKUP_RETENTION_COUNT:-14}"
 ALLOW_DIRTY_TREE="${ALLOW_DIRTY_TREE:-0}"
 HEALTH_TIMEOUT_SECS="${HEALTH_TIMEOUT_SECS:-180}"
 PG_CONTAINER="${PG_CONTAINER:-consorcio-postgres}"
@@ -171,6 +172,11 @@ backup_database() {
   fi
   mv "$partial" "$BACKUP_FILE"
   log "backup OK: ${BACKUP_FILE} (${size} bytes, ${tables} tablas en el TOC)"
+  if [ "$BACKUP_RETENTION_COUNT" -gt 0 ]; then
+    ls -1t "${BACKUP_DIR}"/consorcio-predeploy-*.dump 2>/dev/null \
+      | awk "NR > ${BACKUP_RETENTION_COUNT}" \
+      | xargs -r rm -f -- || true
+  fi
 }
 
 tag_running_images() {
@@ -211,6 +217,15 @@ wait_for_health() {
   while true; do
     if docker exec consorcio-backend python -m app.healthcheck >/dev/null 2>&1; then
       log "backend sano (python -m app.healthcheck)"
+      local container running
+      for container in consorcio-worker consorcio-celery-beat consorcio-geo-worker; do
+        running="$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null || echo false)"
+        if [ "$running" != "true" ]; then
+          docker compose ps || true
+          die "el worker '${container}' no quedo corriendo tras el deploy"
+        fi
+      done
+      log "workers activos: consorcio-worker, consorcio-celery-beat, consorcio-geo-worker"
       return 0
     fi
     now="$(date +%s)"

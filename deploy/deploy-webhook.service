@@ -12,6 +12,8 @@ Type=simple
 User=javier
 Group=javier
 SupplementaryGroups=docker
+StateDirectory=consorcio-deploy
+StateDirectoryMode=0750
 Environment=HOME=/home/javier
 EnvironmentFile=-/etc/consorcio/deploy-webhook.env
 ExecStart=/usr/bin/python3 /usr/local/bin/consorcio-deploy-webhook.py
