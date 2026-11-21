@@ -223,9 +223,13 @@ class DenunciaService:
         from app.auth.models import User, UserRole
 
         user = db.get(User, data.asignado_a)
-        if user is None or user.role not in (UserRole.OPERADOR, UserRole.ADMIN):
+        if (
+            user is None
+            or not user.is_active
+            or user.role not in (UserRole.OPERADOR, UserRole.ADMIN)
+        ):
             raise HTTPException(
-                status_code=400, detail="El asignado tiene que ser operador o admin"
+                status_code=400, detail="El asignado tiene que ser un operador o admin activo"
             )
 
     def bulk_update(

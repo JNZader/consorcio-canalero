@@ -10,9 +10,10 @@ from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.domains.padron.models import Consorcista
+from app.domains.padron.models import Consorcista, EstadoConsorcista
 from app.domains.padron.repository import PadronRepository
 from app.domains.padron.schemas import ConsorcistaCreate, ConsorcistaUpdate
+from app.shared.enum_params import require_choice
 
 
 _NON_DIGITS = re.compile(r"\D")
@@ -85,6 +86,7 @@ class PadronService:
         categoria: Optional[str] = None,
         search: Optional[str] = None,
     ) -> tuple[list[Consorcista], int]:
+        estado = require_choice(estado, EstadoConsorcista, "estado")
         return self.repo.get_all(
             db,
             page=page,
@@ -330,7 +332,7 @@ class PadronService:
         if decoded is None:
             raise ValueError("No se pudo decodificar CSV. Use UTF-8 o Latin-1")
 
-        reader = csv.DictReader(io.StringIO(decoded))
+        reader = csv.DictReader(io.StringIO(decoded, newline=""))
         rows: list[tuple[int, dict[str, Any]]] = []
         for index, row in enumerate(reader, start=2):
             rows.append((index, dict(row)))

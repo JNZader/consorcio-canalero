@@ -726,12 +726,37 @@ class TestDenunciaServiceBulkUpdate:
         db = _MM()
         operator = _MM()
         operator.role = UserRole.OPERADOR
+        operator.is_active = True
         db.get.return_value = operator
 
         import uuid as _uuid
 
         update = DenunciaUpdate(asignado_a=_uuid.uuid4())
         svc._validate_assignee(db, update)  # No raise
+
+    def test_validate_assignee_rejects_inactive_operator(self):
+        from app.auth.models import UserRole
+        from app.domains.denuncias.schemas import DenunciaUpdate
+
+        svc, _repo = _make_denuncia_service()
+
+        from unittest.mock import MagicMock as _MM
+
+        db = _MM()
+        operator = _MM()
+        operator.role = UserRole.OPERADOR
+        operator.is_active = False
+        db.get.return_value = operator
+
+        import uuid as _uuid
+
+        update = DenunciaUpdate(asignado_a=_uuid.uuid4())
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc_info:
+            svc._validate_assignee(db, update)
+        assert exc_info.value.status_code == 400
+        assert "activo" in exc_info.value.detail
 
     def test_validate_assignee_none_returns_early(self):
         from app.domains.denuncias.schemas import DenunciaUpdate

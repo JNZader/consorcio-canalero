@@ -27,6 +27,7 @@ from unittest.mock import MagicMock
 from fastapi import HTTPException
 from pydantic import ValidationError
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from app.domains.finanzas.models import CATEGORIAS_GASTO, CATEGORIAS_INGRESO
 from app.domains.finanzas.schemas import (
@@ -35,6 +36,7 @@ from app.domains.finanzas.schemas import (
     IngresoCreate,
     IngresoUpdate,
     PresupuestoCreate,
+    PresupuestoUpdate,
 )
 from app.domains.finanzas.service import FinanzasService
 
@@ -294,6 +296,25 @@ class TestCreateIngreso:
             svc.create_ingreso(db, _ingreso_create("obras"), uuid.uuid4())
         repo.create_ingreso.assert_not_called()
 
+    def test_missing_consorcista_id_raises_404(self) -> None:
+        svc, repo, db = _service()
+        db.get.return_value = None
+        data = IngresoCreate(
+            descripcion="Cuota marzo",
+            monto=Decimal("900.00"),
+            categoria="cuotas",
+            fecha=date(2026, 3, 1),
+            consorcista_id=uuid.uuid4(),
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            svc.create_ingreso(db, data, uuid.uuid4())
+
+        assert exc.value.status_code == 404
+        assert exc.value.detail == "Consorcista no encontrado"
+        repo.create_ingreso.assert_not_called()
+        db.commit.assert_not_called()
+
 
 class TestUpdateIngreso:
     def test_valid_category_updates_commits_and_refreshes(self) -> None:
@@ -335,6 +356,18 @@ class TestUpdateIngreso:
 
         assert exc.value.status_code == 404
         assert exc.value.detail == "Ingreso no encontrado"
+        db.commit.assert_not_called()
+
+    def test_missing_consorcista_id_raises_404_on_update(self) -> None:
+        svc, repo, db = _service()
+        db.get.return_value = None
+
+        with pytest.raises(HTTPException) as exc:
+            svc.update_ingreso(db, uuid.uuid4(), IngresoUpdate(consorcista_id=uuid.uuid4()))
+
+        assert exc.value.status_code == 404
+        assert exc.value.detail == "Consorcista no encontrado"
+        repo.update_ingreso.assert_not_called()
         db.commit.assert_not_called()
 
 
@@ -402,6 +435,52 @@ class TestPresupuestoAndReports:
         from app.domains.finanzas.repository import FinanzasRepository
 
         assert isinstance(FinanzasService().repo, FinanzasRepository)
+
+    def test_presupuesto_update_forbids_explicit_null_and_maps_integrity_errors(self) -> None:
+        with pytest.raises(ValidationError):
+            PresupuestoUpdate(monto_proyectado=None)
+
+        svc, repo, db = _service()
+        raw_null = PresupuestoUpdate.model_construct(
+            _fields_set={"monto_proyectado"},
+            monto_proyectado=None,
+        )
+        with pytest.raises(HTTPException) as exc_null:
+            svc.update_presupuesto(db, uuid.uuid4(), raw_null)
+        assert exc_null.value.status_code == 422
+
+        repo.update_presupuesto.side_effect = IntegrityError(
+            "UPDATE", {}, Exception("check constraint")
+        )
+        with pytest.raises(HTTPException) as exc_check:
+            svc.update_presupuesto(
+                db, uuid.uuid4(), PresupuestoUpdate(monto_proyectado=Decimal("10"))
+            )
+        assert exc_check.value.status_code == 422
+
+        orig = type("_UniqueOrig", (), {"sqlstate": "23505"})()
+        repo.update_presupuesto.side_effect = IntegrityError("UPDATE", {}, orig)
+        with pytest.raises(HTTPException) as exc_dup:
+            svc.update_presupuesto(
+                db, uuid.uuid4(), PresupuestoUpdate(monto_proyectado=Decimal("10"))
+            )
+        assert exc_dup.value.status_code == 409
+
+    def test_delete_presupuesto_commits_or_raises_404(self) -> None:
+        svc, repo, db = _service()
+        target_id = uuid.uuid4()
+        repo.delete_presupuesto.return_value = True
+
+        svc.delete_presupuesto(db, target_id)
+        repo.delete_presupuesto.assert_called_once_with(db, target_id)
+        db.commit.assert_called_once()
+
+        db.commit.reset_mock()
+        repo.delete_presupuesto.return_value = False
+        with pytest.raises(HTTPException) as exc:
+            svc.delete_presupuesto(db, target_id)
+        assert exc.value.status_code == 404
+        db.commit.assert_not_called()
 
 
 # ===========================================================================

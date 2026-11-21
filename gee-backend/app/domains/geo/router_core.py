@@ -17,7 +17,13 @@ from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.db.session import get_db
-from app.domains.geo.models import GeoLayer
+from app.domains.geo.models import (
+    EstadoGeoJob,
+    FuenteGeoLayer,
+    GeoLayer,
+    TipoGeoJob,
+    TipoGeoLayer,
+)
 from app.domains.geo.repository import GeoRepository
 from app.domains.geo.rescale_policy import validate_rescale
 from app.domains.geo.router_common import (
@@ -36,6 +42,7 @@ from app.domains.geo.schemas import (
     GeoLayerResponse,
 )
 from app.domains.geo.service import dispatch_job
+from app.shared.enum_params import require_choice
 from app.shared.pagination import PaginatedResponse
 
 logger = get_logger(__name__)
@@ -209,6 +216,8 @@ def list_geo_jobs(
     _user=Depends(_require_operator()),
 ) -> PaginatedResponse[GeoJobListResponse]:
     """List geo processing jobs with pagination and filters."""
+    estado = require_choice(estado, EstadoGeoJob, "estado")
+    tipo = require_choice(tipo, TipoGeoJob, "tipo")
     items, total = repo.get_jobs(
         db,
         page=page,
@@ -255,6 +264,8 @@ def list_geo_layers(
     _user=Depends(_require_operator()),
 ) -> PaginatedResponse[GeoLayerListResponse]:
     """List available geo layers with pagination and filters."""
+    tipo = require_choice(tipo, TipoGeoLayer, "tipo")
+    fuente = require_choice(fuente, FuenteGeoLayer, "fuente")
     items, total = repo.get_layers(
         db,
         page=page,
