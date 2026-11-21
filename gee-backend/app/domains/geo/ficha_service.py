@@ -405,6 +405,13 @@ def _sqlstate_of(exc: BaseException) -> str | None:
     return getattr(orig, "pgcode", None)
 
 
+def _es_error_proyeccion(exc: BaseException) -> bool:
+    if _sqlstate_of(exc) != "XX000":
+        return False
+    msg = f"{exc} {getattr(exc, 'orig', '') or ''}".lower()
+    return any(tok in msg for tok in ("transform", "proj", "tolerance", "latitude", "out of range"))
+
+
 @contextmanager
 def _traducir_fallas_db() -> Iterator[None]:
     """Map a DB fault to a clean FichaError instead of a bare 500 (R4-001).
@@ -429,6 +436,10 @@ def _traducir_fallas_db() -> Iterator[None]:
     except (OperationalError, DBAPIError) as exc:
         if _sqlstate_of(exc) == _SQLSTATE_QUERY_CANCELED:
             raise ficha_errors.analisis_timeout() from exc
+        if _es_error_proyeccion(exc):
+            raise ficha_errors.geometria_invalida(
+                "geometria fuera del dominio de proyeccion"
+            ) from exc
         raise ficha_errors.base_de_datos_no_disponible() from exc
 
 
@@ -1287,9 +1298,12 @@ def _anual_mm(layer: GeoLayer | None, geom4326: dict[str, Any], area_m2: float) 
 # predate the recompute render None («—») rather than a mislabeled figure.
 _ALTO_CRITICO_SQL = text(
     """
-    SELECT zona_id, area_high_risk_ha
+    SELECT zona_id, (ha_alto + ha_critico) AS area_high_risk_ha
     FROM composite_zonal_stats
-    WHERE tipo = 'flood_risk' AND zona_id = ANY(CAST(:ids AS uuid[]))
+    WHERE tipo = 'flood_risk'
+      AND zona_id = ANY(CAST(:ids AS uuid[]))
+      AND ha_alto IS NOT NULL
+      AND ha_critico IS NOT NULL
     """
 )
 

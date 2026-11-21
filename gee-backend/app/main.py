@@ -27,6 +27,7 @@ from app.core.logging import (
     get_logger,
     configure_structlog,
     RequestIdMiddleware,
+    redact_sensitive_path,
 )
 from app.core.exceptions import AppException, RateLimitExceededError
 from app.core.metrics import RequestMetricsMiddleware, render_prometheus
@@ -231,7 +232,11 @@ install_ficha_openapi_schemas(app)
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
-    logger.exception("Unhandled exception", error=str(exc), path=request.url.path)
+    logger.exception(
+        "Unhandled exception",
+        error=str(exc),
+        path=redact_sensitive_path(request.url.path),
+    )
     detail = str(exc) if settings.debug else "Error interno del servidor"
     return JSONResponse(
         status_code=500,

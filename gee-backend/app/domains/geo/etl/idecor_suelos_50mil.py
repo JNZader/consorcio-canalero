@@ -185,21 +185,35 @@ def bajar_features(
     """
     features: dict[int, dict[str, Any]] = {}
     start = 0
+    paginas = 0
+    max_paginas = (max_features // max(page_size, 1)) + 2
     while True:
+        paginas += 1
+        if paginas > max_paginas:
+            raise EtlAssertionError(
+                f"la descarga superó {max_paginas} páginas WFS sin converger — se aborta"
+            )
         pagina = fetch_json(url_pagina(bbox, start, page_size))
         lote = pagina.get("features") or []
+        if not lote:
+            break
+        antes = len(features)
         for feature in lote:
             fid = _feature_id(feature)
             if fid is None:
                 raise EtlAssertionError(f"feature sin id numérico: {feature.get('id')!r}")
             features[fid] = feature
-        if len(lote) < page_size:
-            break
-        start += page_size
         if len(features) > max_features:
             raise EtlAssertionError(
                 f"la descarga superó {max_features} features — bbox o capa erróneos, no se carga"
             )
+        if len(features) == antes:
+            raise EtlAssertionError(
+                f"página WFS repetida en start={start} (sin features nuevos) — posible loop de paginación"
+            )
+        if len(lote) < page_size:
+            break
+        start += page_size
     return [features[k] for k in sorted(features)]
 
 

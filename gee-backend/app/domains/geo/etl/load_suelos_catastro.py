@@ -446,20 +446,27 @@ def refresh_materialized_view(db: Session) -> int:
     """
     engine = db.get_bind().engine
     with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        previous_timeout = conn.execute(text("SHOW statement_timeout")).scalar_one()
         conn.execute(text("SET statement_timeout = '300s'"))
         try:
-            conn.execute(text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {MATERIALIZED_VIEW}"))
-        except Exception as exc:  # noqa: BLE001 — the fallback IS the handling
-            conn.rollback()
-            print(
-                f"refresco CONCURRENTLY de {MATERIALIZED_VIEW} falló ({exc}); "
-                "se reintenta con REFRESH común, que bloquea lectores. Si la base "
-                "quedó en el esquema de 0015 la vista no tiene índice único y el "
-                "modo concurrente NUNCA va a andar: correr `alembic upgrade head`.",
-                file=sys.stderr,
+            try:
+                conn.execute(text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {MATERIALIZED_VIEW}"))
+            except Exception as exc:  # noqa: BLE001 — the fallback IS the handling
+                conn.rollback()
+                print(
+                    f"refresco CONCURRENTLY de {MATERIALIZED_VIEW} falló ({exc}); "
+                    "se reintenta con REFRESH común, que bloquea lectores. Si la base "
+                    "quedó en el esquema de 0015 la vista no tiene índice único y el "
+                    "modo concurrente NUNCA va a andar: correr `alembic upgrade head`.",
+                    file=sys.stderr,
+                )
+                conn.execute(text(f"REFRESH MATERIALIZED VIEW {MATERIALIZED_VIEW}"))
+            return int(conn.execute(text(f"SELECT count(*) FROM {MATERIALIZED_VIEW}")).scalar_one())  # nosec B608  # internal constant, not user input
+        finally:
+            conn.execute(
+                text("SELECT set_config('statement_timeout', :timeout, false)"),
+                {"timeout": str(previous_timeout)},
             )
-            conn.execute(text(f"REFRESH MATERIALIZED VIEW {MATERIALIZED_VIEW}"))
-        return int(conn.execute(text(f"SELECT count(*) FROM {MATERIALIZED_VIEW}")).scalar_one())  # nosec B608  # internal constant, not user input
 
 
 def resolve_source(explicit: str | None) -> Path:

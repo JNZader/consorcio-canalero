@@ -71,6 +71,9 @@ SAR_VH_UMBRAL_DB = -18.0
 
 SAR_COLLECTION = "COPERNICUS/S1_GRD"
 
+#: Byte sentinel for pixels masked by GEE (cloud/shadow/orbit gaps) in water masks.
+AGUA_NODATA = 255
+
 #: Curated anchor events (the three lluvia_ext_002 seeded) + their rank-1
 #: imagery candidate — the informe's own queries, reused verbatim so the
 #: validation table and section 8 miniatures can never disagree about scenes.
@@ -160,6 +163,8 @@ def clasificar_agua_por_clase(flood_path: str, agua_tif: bytes) -> list[FilaClas
     with rasterio.open(flood_path) as src:
         clases_raster = src.read(1)
         nodata = src.nodata
+        flood_crs = src.crs
+        flood_transform = src.transform
         _, pixel_ha = _pixel_area(src)
 
     with rasterio.open(BytesIO(agua_tif)) as agua:
@@ -168,13 +173,27 @@ def clasificar_agua_por_clase(flood_path: str, agua_tif: bytes) -> list[FilaClas
                 f"grilla de agua ({agua.width}x{agua.height}) no coincide con la del "
                 f"raster de riesgo ({clases_raster.shape[1]}x{clases_raster.shape[0]})"
             )
+        if agua.crs != flood_crs or not all(
+            abs(a - b) <= 1e-6 for a, b in zip(agua.transform[:6], flood_transform[:6])
+        ):
+            raise ValueError(
+                f"grilla de agua (crs={agua.crs}, transform={agua.transform[:6]}) no coincide "
+                f"con la del raster de riesgo (crs={flood_crs}, transform={flood_transform[:6]})"
+            )
         agua_arr = agua.read(1)
+        agua_nodata = agua.nodata
 
     datos = clases_raster.astype(np.float64, copy=False)
     valido = ~np.isnan(datos)
     if nodata is not None:
         valido &= datos != nodata
-    con_agua = agua_arr > 0
+
+    observado = agua_arr != AGUA_NODATA
+    if np.issubdtype(agua_arr.dtype, np.floating):
+        observado &= ~np.isnan(agua_arr)
+    if agua_nodata is not None and not (isinstance(agua_nodata, float) and np.isnan(agua_nodata)):
+        observado &= agua_arr != agua_nodata
+    con_agua = observado & (agua_arr > 0)
 
     filas: list[FilaClase] = []
     ultimo = len(RANGE_CONFIGS["flood_risk"]) - 1
@@ -185,13 +204,14 @@ def clasificar_agua_por_clase(flood_path: str, agua_tif: bytes) -> list[FilaClas
         else:
             miembro = (datos >= minimo) & (datos < maximo)
         pixels = int(np.count_nonzero(miembro & valido))
+        observados = int(np.count_nonzero(miembro & valido & observado))
         mojados = int(np.count_nonzero(miembro & valido & con_agua))
         filas.append(
             FilaClase(
                 clase=str(cfg["label"]),
                 ha_clase=round(pixels * pixel_ha, 4),
                 ha_con_agua=round(mojados * pixel_ha, 4),
-                pct_con_agua=round(mojados / pixels * 100.0, 2) if pixels else 0.0,
+                pct_con_agua=round(mojados / observados * 100.0, 2) if observados else 0.0,
             )
         )
     return filas
@@ -269,7 +289,12 @@ def mascara_agua_gee(
         if int(coleccion.size().getInfo() or 0) == 0:
             return None
         agua = (
-            coleccion.first().select("VH").lt(SAR_VH_UMBRAL_DB).unmask(0).toByte().rename("water")
+            coleccion.first()
+            .select("VH")
+            .lt(SAR_VH_UMBRAL_DB)
+            .unmask(AGUA_NODATA)
+            .toByte()
+            .rename("water")
         )
         return _descarga_gee(agua, grilla, req_mod)
 
@@ -286,7 +311,7 @@ def mascara_agua_gee(
     verde = imagen.select(spec["green"]).divide(spec["reflectance"])
     swir = imagen.select(spec["swir"]).divide(spec["reflectance"])
     mndwi = verde.subtract(swir).divide(verde.add(swir))
-    agua = mndwi.gte(MNDWI_WATER).unmask(0).toByte().rename("water")
+    agua = mndwi.gte(MNDWI_WATER).unmask(AGUA_NODATA).toByte().rename("water")
     return _descarga_gee(agua, grilla, req_mod)
 
 
@@ -387,26 +412,27 @@ def run_calibracion(
                 continue
             filas = clasificar_agua_por_clase(flood_path, agua_tif)
             lluvia = fetch_lluvia(fecha)
-            db.execute(BORRAR_EVENTO_SQL, {"evento_key": clave})
-            db.add_all(
-                [
-                    RiesgoValidacionEvento(
-                        id=uuid.uuid4(),
-                        evento_key=clave,
-                        fecha=fecha,
-                        clase=fila.clase,
-                        ha_clase=fila.ha_clase,
-                        ha_con_agua=fila.ha_con_agua,
-                        pct_con_agua=fila.pct_con_agua,
-                        lluvia_30d_mm=lluvia,
-                        sensor=str(candidato.sensor),
-                        escena_id=str(candidato.scene_id),
-                        version_flood_risk=str(version_flood_risk),
-                    )
-                    for fila in filas
-                ]
-            )
-            db.flush()
+            with db.begin_nested():
+                db.execute(BORRAR_EVENTO_SQL, {"evento_key": clave})
+                db.add_all(
+                    [
+                        RiesgoValidacionEvento(
+                            id=uuid.uuid4(),
+                            evento_key=clave,
+                            fecha=fecha,
+                            clase=fila.clase,
+                            ha_clase=fila.ha_clase,
+                            ha_con_agua=fila.ha_con_agua,
+                            pct_con_agua=fila.pct_con_agua,
+                            lluvia_30d_mm=lluvia,
+                            sensor=str(candidato.sensor),
+                            escena_id=str(candidato.scene_id),
+                            version_flood_risk=str(version_flood_risk),
+                        )
+                        for fila in filas
+                    ]
+                )
+                db.flush()
             entrada["filas"] = len(filas)
             entrada["lluvia_30d_mm"] = lluvia
             entrada["sensor"] = str(candidato.sensor)

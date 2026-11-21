@@ -13,7 +13,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
 from app.config import settings
-from app.core.logging import get_logger
+from app.core.logging import get_logger, redact_sensitive_path
 from app.core.rate_limit import DistributedRateLimiter, get_auth_rate_limiter
 
 logger = get_logger(__name__)
@@ -46,6 +46,10 @@ def _if_none_match_hits(header: Optional[str], etag: str) -> bool:
         if candidate == "*" or candidate == etag:
             return True
     return False
+
+
+etag_for_body = _etag_for_body
+if_none_match_hits = _if_none_match_hits
 
 
 async def _apply_public_map_cache(request: Request, response: Response) -> Response:
@@ -392,11 +396,12 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         start_time = time.time()
+        safe_path = redact_sensitive_path(request.url.path)
 
         logger.info(
             "Request started",
             method=request.method,
-            path=request.url.path,
+            path=safe_path,
             client_ip=request.client.host if request.client else "unknown",
         )
 
@@ -406,7 +411,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             logger.info(
                 "Request completed",
                 method=request.method,
-                path=request.url.path,
+                path=safe_path,
                 status_code=response.status_code,
                 duration_ms=duration_ms,
             )
@@ -416,7 +421,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             logger.error(
                 "Request failed",
                 method=request.method,
-                path=request.url.path,
+                path=safe_path,
                 error=str(e),
                 duration_ms=duration_ms,
             )
