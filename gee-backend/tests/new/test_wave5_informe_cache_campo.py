@@ -290,6 +290,13 @@ def test_public_campo_route_emits_private_no_cache_etag_304_and_redacts_logs(
     finally:
         app.dependency_overrides.clear()
 
-    combined_logs = caplog.text + str([r.msg for r in caplog.records]) + capsys.readouterr().out
+    server_records = [r for r in caplog.records if not r.name.startswith(("httpx", "httpcore"))]
+    combined_logs = (
+        "\n".join(r.getMessage() for r in server_records)
+        + "\n"
+        + str([r.msg for r in server_records])
+        + "\n"
+        + capsys.readouterr().out
+    )
     assert secret_token not in combined_logs
     assert "/api/v2/public/campo/[REDACTED]" in combined_logs
