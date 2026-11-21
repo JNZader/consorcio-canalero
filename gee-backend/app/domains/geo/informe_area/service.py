@@ -34,6 +34,7 @@ import json
 import re
 import unicodedata
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Any, NamedTuple, Sequence
 from urllib.parse import quote
@@ -143,10 +144,11 @@ _SELECCION_SQL = text(
         FROM partes
     ), zona_consorcio AS (
         SELECT ST_CollectionExtract(ST_MakeValid(ST_Union(
-                   ST_Transform(geometria, 32720)
+                   ST_Transform(z.geometria, 32720)
                )), 3) AS g
-        FROM zonas_operativas
+        FROM zonas_operativas z
         WHERE :con_geometrias
+          AND ST_Intersects(z.geometria, (SELECT g4326 FROM unida))
     ), normalizada AS (
         SELECT ST_SnapToGrid(g4326, 0.0000001) AS snap, g4326, g32720 FROM unida
     )
@@ -158,9 +160,11 @@ _SELECCION_SQL = text(
            ST_Area(ST_Envelope(g32720)) / 10000.0 AS envelope_ha,
            ST_NPoints(ST_SimplifyPreserveTopology(g32720, :tolerancia)) AS vertices,
            ST_AsGeoJSON(g4326) AS geojson,
-           COALESCE(
-               ST_Area(ST_Difference(g32720, zona_consorcio.g)) / 10000.0, 0.0
-           ) AS fuera_zona_ha,
+           CASE
+               WHEN NOT :con_geometrias THEN 0.0
+               WHEN zona_consorcio.g IS NULL THEN ST_Area(g32720) / 10000.0
+               ELSE COALESCE(ST_Area(ST_Difference(g32720, zona_consorcio.g)) / 10000.0, 0.0)
+           END AS fuera_zona_ha,
            (ST_NumGeometries(ST_Multi(g4326)) > 1) AS poligonos_separados
     FROM normalizada, zona_consorcio
     """
@@ -321,6 +325,7 @@ def previsualizar(db: Session, payload: InformeAreaPreviewRequest) -> InformeAre
     PUBLIC ficha preview, this route is ``current_active_user``-only and the
     Ley 25.326 trace the ficha preview carries is about anonymous traffic.
     """
+    ficha_service._aplicar_statement_timeout(db)  # noqa: SLF001 — bound /preview query
     seleccion = resolver_seleccion(
         db, list(payload.zona_ids), payload.geometrias, aplicar_caps=False
     )
@@ -942,63 +947,84 @@ def _recurrencia_estivales(
 ) -> dict[str, float] | None:
     """Hectareas con cultivo estival en 3 / 2 / 1 / 0 campañas (pixel-exacto).
 
-    The ETL downloads every estival cover onto the SAME 10 m grid, so the
-    three reads stack without resampling: a pixel counts for a campaign
-    when it is not nodata there (NaN = sin cultivo estival). The
-    selection is rasterized once onto that grid; each cell contributes
-    its whole 0,01 ha — at 10 m against selections of thousands of ha the
-    boundary error sits far below S7's ±0,1 % reconciliation budget.
+    Reads only the clipped raster window covering ``geom4326`` over the newest
+    3 aligned campaigns and derives pixel area dynamically from ``ref.transform``.
     """
     if len(estivales) < 3:
         return None
+    seleccionadas = estivales[-3:]
     try:
         import numpy as np
         import rasterio
         from pyproj import Transformer
         from rasterio.features import rasterize
+        from rasterio.windows import Window, from_bounds as window_from_bounds
         from shapely.geometry import shape
         from shapely.ops import transform as shapely_transform
     except Exception:  # noqa: BLE001 — worker deps; tests inject their own grids
         return None
 
+    vacio = {f"{n}_campanias_ha": 0.0 for n in (3, 2, 1, 0)}
     try:
-        with rasterio.open(estivales[0]["archivo_path"]) as ref:
-            grid_transform = ref.transform
+        with rasterio.open(seleccionadas[0]["archivo_path"]) as ref:
+            ref_transform = ref.transform
+            ref_crs = str(ref.crs) if ref.crs is not None else "EPSG:22174"
             ancho, alto = ref.width, ref.height
-            presentes = np.zeros((alto, ancho), dtype="uint8")
-            for capa in estivales:
-                with rasterio.open(capa["archivo_path"]) as src:
-                    if src.width != ancho or src.height != alto:
-                        logger.warning(
-                            "informe_area.cobertura_grillas_desalineadas", capa=capa["capa"]
-                        )
-                        return None
-                    # The estival covers carry NaN values WITHOUT a nodata
-                    # tag (verified live: rasterio reports nodata=None), so
-                    # ``read(masked=True)`` would mask nothing — validity is
-                    # finiteness itself. Same rule ``extract_zonal_profile``
-                    # applies (~np.isnan) for the per-class tables.
-                    datos = src.read(1)
-                    presentes += np.isfinite(datos).astype("uint8")
+            reproj = Transformer.from_crs("EPSG:4326", ref_crs, always_xy=True)
+            geom_proj = shapely_transform(reproj.transform, shape(geom4326))
+            if geom_proj.is_empty:
+                return vacio
+            full_win = Window(0, 0, ancho, alto)
+            raw_win = (
+                window_from_bounds(*geom_proj.bounds, transform=ref_transform)
+                .round_offsets()
+                .round_lengths()
+            )
+            try:
+                win = raw_win.intersection(full_win)
+            except Exception:
+                return vacio
+            win_h, win_w = int(win.height), int(win.width)
+            if win_h <= 0 or win_w <= 0:
+                return vacio
+            win_transform = ref.window_transform(win)
+
+        presentes = np.zeros((win_h, win_w), dtype="uint8")
+        for capa in seleccionadas:
+            with rasterio.open(capa["archivo_path"]) as src:
+                src_crs = str(src.crs) if src.crs is not None else "EPSG:22174"
+                if (
+                    src.width != ancho
+                    or src.height != alto
+                    or src_crs != ref_crs
+                    or not all(
+                        abs(a - b) <= 1e-6 for a, b in zip(src.transform[:6], ref_transform[:6])
+                    )
+                ):
+                    logger.warning("informe_area.cobertura_grillas_desalineadas", capa=capa["capa"])
+                    return None
+                # The estival covers carry NaN values WITHOUT a nodata tag,
+                # so validity is finiteness itself (~np.isnan).
+                datos = src.read(1, window=win)
+                presentes += np.isfinite(datos).astype("uint8")
     except Exception:  # noqa: BLE001 — a missing/unreadable file degrades
         logger.warning(
-            "informe_area.cobertura_archivo_ilegible", rutas=[c["archivo_path"] for c in estivales]
+            "informe_area.cobertura_archivo_ilegible",
+            rutas=[c["archivo_path"] for c in seleccionadas],
         )
         return None
 
-    reproj = Transformer.from_crs("EPSG:4326", "EPSG:22174", always_xy=True)
-    geom_22174 = shapely_transform(reproj.transform, shape(geom4326))
     mascara = rasterize(
-        [(geom_22174, 1)],
-        out_shape=(alto, ancho),
-        transform=grid_transform,
+        [(geom_proj, 1)],
+        out_shape=(win_h, win_w),
+        transform=win_transform,
         fill=0,
         dtype="uint8",
         all_touched=False,
     ).astype(bool)
 
     dentro = presentes[mascara]
-    area_px_ha = 100.0 / 10_000.0  # 10 m × 10 m
+    area_px_ha = abs(float(ref_transform.a) * float(ref_transform.e)) / 10_000.0
     return {
         f"{n}_campanias_ha": round(float((dentro == n).sum()) * area_px_ha, 2) for n in (3, 2, 1, 0)
     }
@@ -1332,6 +1358,51 @@ _BANDAS_FALSO_COLOR: dict[str, tuple[list[str], float, float]] = {
 #: Thumbnail budget (S6 «miniatura»; GEE caps thumbnails at 1024 px —
 #: 768 keeps every one of the three requests comfortably inside quota).
 MINIATURA_PX = 768
+MINIATURA_MAX_BYTES = 10 * 1024 * 1024
+
+
+def _leer_respuesta_acotada(
+    requests_module: Any,
+    url: str,
+    *,
+    timeout: int,
+    max_bytes: int = MINIATURA_MAX_BYTES,
+) -> bytes:
+    """Fetch HTTP body enforcing both Content-Length and streaming size caps."""
+    try:
+        respuesta = requests_module.get(url, timeout=timeout, stream=True)
+    except TypeError:
+        respuesta = requests_module.get(url, timeout=timeout)
+    try:
+        respuesta.raise_for_status()
+        headers = getattr(respuesta, "headers", None)
+        if headers is not None and hasattr(headers, "get"):
+            raw_len = headers.get("Content-Length") or headers.get("content-length")
+            if isinstance(raw_len, (int, str)):
+                try:
+                    parsed_len = int(raw_len)
+                except ValueError:
+                    parsed_len = None
+                if parsed_len is not None and parsed_len > max_bytes:
+                    raise ValueError(f"miniatura excede limite de {max_bytes} bytes")
+        iter_content = getattr(respuesta, "iter_content", None)
+        if callable(iter_content):
+            buf = bytearray()
+            for chunk in iter_content(65536):
+                if not chunk:
+                    continue
+                buf.extend(chunk)
+                if len(buf) > max_bytes:
+                    raise ValueError(f"miniatura excede limite de {max_bytes} bytes")
+            return bytes(buf)
+        data = bytes(respuesta.content)
+        if len(data) > max_bytes:
+            raise ValueError(f"miniatura excede limite de {max_bytes} bytes")
+        return data
+    finally:
+        cerrar = getattr(respuesta, "close", None)
+        if callable(cerrar):
+            cerrar()
 
 
 def miniatura_falso_color_impl(
@@ -1394,9 +1465,7 @@ def miniatura_falso_color_impl(
                 # clip geometry — force WGS84 for the thumbnail render (layer 7).
             }
         )
-    respuesta = requests_module.get(url, timeout=90)
-    respuesta.raise_for_status()
-    return respuesta.content
+    return _leer_respuesta_acotada(requests_module, url, timeout=90)
 
 
 def _miniatura_por_defecto(scene_id: str, sensor: str, region_geojson: dict[str, Any]) -> bytes:
@@ -1459,6 +1528,7 @@ def imagenes_eventos_ancla(
         )  # defensive copy: ee must not see a mutated dict
 
     filas: list[dict[str, Any]] = []
+    con_candidato: list[tuple[dict[str, Any], Any]] = []
     for evento in eventos:
         fila: dict[str, Any] = {
             "event_key": str(evento.event_key),
@@ -1469,9 +1539,9 @@ def imagenes_eventos_ancla(
             "nubes_pct": None,
             "png": None,
         }
+        filas.append(fila)
         candidato = candidatos.get(str(evento.event_key))
         if candidato is None:
-            filas.append(fila)
             continue
         fila.update(
             {
@@ -1480,16 +1550,29 @@ def imagenes_eventos_ancla(
                 "nubes_pct": candidato.cloud_pct,
             }
         )
+        con_candidato.append((fila, candidato))
+
+    def _cargar_uno(fila_dest: dict[str, Any], candidato: Any) -> None:
         try:
-            fila["png"] = fetch(str(candidato.scene_id), str(candidato.sensor), region)
+            fila_dest["png"] = fetch(str(candidato.scene_id), str(candidato.sensor), region)
         except Exception:  # noqa: BLE001 — GEE degradation is the contract (S7)
             logger.warning(
                 "informe_area.miniatura_fallo",
-                event_key=str(evento.event_key),
+                event_key=str(fila_dest["event_key"]),
                 scene=str(candidato.scene_id),
                 exc_info=True,
             )
-        filas.append(fila)
+
+    if len(con_candidato) > 1:
+        with ThreadPoolExecutor(
+            max_workers=min(3, len(con_candidato)),
+            thread_name_prefix="gee-thumb",
+        ) as pool:
+            futures = [pool.submit(_cargar_uno, f, c) for f, c in con_candidato]
+            for fut in futures:
+                fut.result()
+    elif len(con_candidato) == 1:
+        _cargar_uno(*con_candidato[0])
     return filas
 
 
@@ -1560,9 +1643,12 @@ def suelos_geometrias_clase(db: Session, geojson_4326: str) -> list[dict[str, An
     for fila in filas:
         clase = (fila.clase or "").strip() or "sin clasificar"
         try:
-            por_clase.setdefault(clase, []).append(shape(json.loads(fila.geo)))
+            geom = shape(json.loads(fila.geo))
         except (ValueError, TypeError):
             continue  # a malformed unit never fails the theme
+        if geom.is_empty:
+            continue
+        por_clase.setdefault(clase, []).append(geom)
     if not por_clase:
         return []
 
@@ -1574,6 +1660,19 @@ def suelos_geometrias_clase(db: Session, geojson_4326: str) -> list[dict[str, An
     clases: list[dict[str, Any]] = []
     for clase, geoms in sorted(por_clase.items()):
         disuelta = unary_union(geoms).simplify(tol_deg, preserve_topology=True)
+        if disuelta.is_empty:
+            continue
+        if disuelta.geom_type == "GeometryCollection":
+            poligonos = [
+                g
+                for g in disuelta.geoms
+                if g.geom_type in {"Polygon", "MultiPolygon"} and not g.is_empty
+            ]
+            if not poligonos:
+                continue
+            disuelta = unary_union(poligonos)
+        elif disuelta.geom_type not in {"Polygon", "MultiPolygon"}:
+            continue
         clases.append({"clase": clase, "geometrias": [disuelta.__geo_interface__]})
     return clases
 
