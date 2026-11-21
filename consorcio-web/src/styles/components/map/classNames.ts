@@ -16,7 +16,6 @@ const mapClass = {
   bottomToolbar: 'bottomToolbar',
   bottomToolbarRow: 'bottomToolbarRow',
   canvasHeightBudget: 'canvasHeightBudget',
-  captureMode: 'captureMode',
   comparisonDateLeft: 'comparisonDateLeft',
   comparisonDateRight: 'comparisonDateRight',
   fichaPanel: 'fichaPanel',

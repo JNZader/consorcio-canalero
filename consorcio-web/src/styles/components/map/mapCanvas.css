@@ -40,10 +40,6 @@
   border-radius: var(--mantine-radius-md);
 }
 
-.captureMode .leaflet-control-container {
-  display: none;
-}
-
 /* Cooperative-gestures hint overlay (task 1.6). MapLibre paints a dimmed
    screen with centered text when the user tries to wheel-zoom without Ctrl.
    Force a dark scrim + white text so it stays legible over BOTH light and

@@ -189,7 +189,7 @@ describe('design tokens', () => {
     expect(headerCss).toContain('var(--cc-color-surface)');
     expect(headerCss).toContain('var(--cc-color-border)');
     expect(headerCss).toContain('z-index: var(--z-header, 100)');
-    expect(globalCss).toContain('z-index: var(--z-base, 0)');
+    expect(globalCss).not.toContain('.leaflet-');
     expect(globalCss).toContain('z-index: var(--z-portal, 9999)');
     expect(globalCss).toContain('z-index: var(--z-popover, 10000)');
     expect(globalCss).toContain('z-index: var(--z-overlay, 10001)');

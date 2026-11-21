@@ -70,8 +70,8 @@ const ConocimientoPanel = lazy(() => import('./components/admin/ConocimientoPane
 const CanalesPublicacionPanel = lazy(() => import('./components/admin/CanalesPublicacionPanel'));
 const ThemeLabPanel = lazy(() => import('./components/admin/ThemeLabPanel'));
 
-// Import admin layout directly (not lazy) to prevent flicker
-import { AdminLayoutContent } from './components/admin/AdminLayout';
+// Lazy-load admin shell out of the public entry chunk
+const AdminLayout = lazy(() => import('./components/admin/AdminLayout'));
 
 // Suspense fallback for lazy loaded components.
 // 100dvh, not 50vh: with a half-viewport fallback the (static, full-height)
@@ -613,11 +613,13 @@ function AdminLayoutWrapper() {
 
   return (
     <RootLayout title="Admin" noindex={true} hideHeader={true} hideFooter={true}>
-      <AdminLayoutContent currentPath={location.pathname}>
-        <Suspense fallback={<AdminContentLoader />}>
-          <Outlet />
-        </Suspense>
-      </AdminLayoutContent>
+      <Suspense fallback={<PageLoader />}>
+        <AdminLayout currentPath={location.pathname}>
+          <Suspense fallback={<AdminContentLoader />}>
+            <Outlet />
+          </Suspense>
+        </AdminLayout>
+      </Suspense>
     </RootLayout>
   );
 }

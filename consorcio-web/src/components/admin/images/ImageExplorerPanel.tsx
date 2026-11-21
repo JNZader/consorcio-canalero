@@ -9,7 +9,6 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import '@mantine/dates/styles.css';
 import { useState } from 'react';
 
 import { IconCalendar } from '../../ui/icons';
