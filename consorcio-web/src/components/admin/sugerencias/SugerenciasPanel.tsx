@@ -2,6 +2,7 @@ import { Container, Paper, SimpleGrid } from '@mantine/core';
 import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useCanales } from '../../../hooks/useCanales';
+import { isAbortError } from '../../../lib/abortUtils';
 import { apiFetch, type Sugerencia, type SugerenciasStats, sugerenciasApi } from '../../../lib/api';
 import { formatDate } from '../../../lib/formatters';
 import { logger } from '../../../lib/logger';
@@ -16,6 +17,7 @@ import { SugerenciasFilters } from './components/SugerenciasFilters';
 import { SugerenciasTableContent } from './components/SugerenciasTableContent';
 import { SuggestionDetailModal } from './components/SuggestionDetailModal';
 import { ITEMS_PER_PAGE } from './constants';
+import { formatLocalIsoDate, parseLocalIsoDate } from './sugerenciaDateUtils';
 import { getStatusBadge } from './sugerenciasPanelUtils';
 
 function readSugerenciaQuery() {
@@ -174,57 +176,105 @@ export default function SugerenciasPanel({
   const announceRef = useRef(announce);
   announceRef.current = announce;
 
+  const statsAbortRef = useRef<AbortController | null>(null);
+  const statsSeqRef = useRef(0);
+  const proximaAbortRef = useRef<AbortController | null>(null);
+  const proximaSeqRef = useRef(0);
+  const listAbortRef = useRef<AbortController | null>(null);
+  const listSeqRef = useRef(0);
+  const detailAbortRef = useRef<AbortController | null>(null);
+  const detailSeqRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      statsAbortRef.current?.abort();
+      proximaAbortRef.current?.abort();
+      listAbortRef.current?.abort();
+      detailAbortRef.current?.abort();
+    };
+  }, []);
+
   // Load stats
   const loadStats = useCallback(async () => {
+    statsAbortRef.current?.abort();
+    const controller = new AbortController();
+    statsAbortRef.current = controller;
+    const seq = ++statsSeqRef.current;
+
     setLoadingStats(true);
     try {
-      const data = await sugerenciasApi.getStats();
+      const data = await sugerenciasApi.getStats({ signal: controller.signal });
+      if (controller.signal.aborted || seq !== statsSeqRef.current) return;
       setStats(data);
     } catch (error) {
+      if (isAbortError(error, controller.signal) || seq !== statsSeqRef.current) return;
       logger.error('Error loading stats:', error);
     } finally {
-      setLoadingStats(false);
+      if (seq === statsSeqRef.current) {
+        setLoadingStats(false);
+      }
     }
   }, []);
 
   // Load proxima reunion
   const loadProximaReunion = useCallback(async () => {
+    proximaAbortRef.current?.abort();
+    const controller = new AbortController();
+    proximaAbortRef.current = controller;
+    const seq = ++proximaSeqRef.current;
+
     setLoadingProxima(true);
     try {
-      const data = await sugerenciasApi.getProximaReunion();
+      const data = await sugerenciasApi.getProximaReunion({ signal: controller.signal });
+      if (controller.signal.aborted || seq !== proximaSeqRef.current) return;
       setProximaReunion(data);
     } catch (error) {
+      if (isAbortError(error, controller.signal) || seq !== proximaSeqRef.current) return;
       logger.error('Error loading próxima reunion:', error);
     } finally {
-      setLoadingProxima(false);
+      if (seq === proximaSeqRef.current) {
+        setLoadingProxima(false);
+      }
     }
   }, []);
 
   const loadSugerencias = useCallback(async () => {
+    listAbortRef.current?.abort();
+    const controller = new AbortController();
+    listAbortRef.current = controller;
+    const seq = ++listSeqRef.current;
+
     setLoading(true);
     announceRef.current('Cargando sugerencias...');
     try {
-      const data = await sugerenciasApi.getAll({
-        page,
-        limit: ITEMS_PER_PAGE,
-        estado: filterEstado || undefined,
-        tipo: filterTipo || undefined,
-        sort,
-        order,
-        ...(searchQuery ? { search: searchQuery } : {}),
-      });
+      const data = await sugerenciasApi.getAll(
+        {
+          page,
+          limit: ITEMS_PER_PAGE,
+          estado: filterEstado || undefined,
+          tipo: filterTipo || undefined,
+          sort,
+          order,
+          ...(searchQuery ? { search: searchQuery } : {}),
+        },
+        { signal: controller.signal }
+      );
+      if (controller.signal.aborted || seq !== listSeqRef.current) return;
       setSugerencias(data.items);
       setTotalPages(Math.max(1, Math.ceil(data.total / ITEMS_PER_PAGE)));
       setLoadError(null);
       announceRef.current(`${data.items.length} sugerencias cargadas`);
     } catch (error) {
+      if (isAbortError(error, controller.signal) || seq !== listSeqRef.current) return;
       logger.error('Error loading sugerencias:', error);
       setSugerencias([]);
       setLoadError('No se pudieron cargar las sugerencias');
       showError('Error', 'No se pudieron cargar las sugerencias');
       announceRef.current('No se pudieron cargar las sugerencias');
     } finally {
-      setLoading(false);
+      if (seq === listSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, [page, filterEstado, filterTipo, searchQuery, sort, order]);
 
@@ -245,8 +295,17 @@ export default function SugerenciasPanel({
   }, [loadSugerencias, loadStats, loadProximaReunion]);
 
   const handleViewDetail = async (sug: Sugerencia) => {
+    detailAbortRef.current?.abort();
+    const controller = new AbortController();
+    detailAbortRef.current = controller;
+    const seq = ++detailSeqRef.current;
+
     try {
-      const full = await sugerenciasApi.get(sug.id).catch(() => sug);
+      const full = await sugerenciasApi.get(sug.id, { signal: controller.signal }).catch((err) => {
+        if (isAbortError(err, controller.signal)) throw err;
+        return sug;
+      });
+      if (controller.signal.aborted || seq !== detailSeqRef.current) return;
       const merged = { ...sug, ...full };
       setSelectedSugerencia(merged);
       setNewEstado(merged.estado);
@@ -256,12 +315,18 @@ export default function SugerenciasPanel({
       // del bug del schema mismatch).
       setAdminNotes(merged.notas_internas ?? '');
       setPublicComment(merged.respuesta ?? '');
-      setAgendarFecha(merged.fecha_reunion ? new Date(merged.fecha_reunion) : null);
+      setAgendarFecha(parseLocalIsoDate(merged.fecha_reunion));
       openDetail();
     } catch (error) {
+      if (isAbortError(error, controller.signal) || seq !== detailSeqRef.current) return;
       logger.error('Error loading sugerencia detail:', error);
       showError('Error', 'No se pudo cargar el detalle de la sugerencia');
     }
+  };
+
+  const handleCloseDetail = () => {
+    detailAbortRef.current?.abort();
+    closeDetail();
   };
 
   const handleUpdate = async () => {
@@ -306,7 +371,7 @@ export default function SugerenciasPanel({
 
     setAgendando(true);
     try {
-      const fechaStr = agendarFecha.toISOString().split('T')[0];
+      const fechaStr = formatLocalIsoDate(agendarFecha);
       await sugerenciasApi.agendar(selectedSugerencia.id, fechaStr);
       showInfo('Sugerencia agendada', `Agendada para el ${formatDate(fechaStr)}`, {
         icon: <IconCalendar size={16} />,
@@ -395,7 +460,7 @@ export default function SugerenciasPanel({
 
       <SuggestionDetailModal
         opened={detailOpened}
-        onClose={closeDetail}
+        onClose={handleCloseDetail}
         selectedSugerencia={selectedSugerencia}
         canales={canales}
         newEstado={newEstado}

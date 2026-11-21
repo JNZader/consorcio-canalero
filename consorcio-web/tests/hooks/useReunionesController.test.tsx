@@ -2,16 +2,15 @@ import { notifications } from '@mantine/notifications';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { apiFetchMock, getAuthTokenMock, loggerMock } = vi.hoisted(() => ({
+const { apiFetchMock, fetchAuthenticatedFileMock, loggerMock } = vi.hoisted(() => ({
   apiFetchMock: vi.fn(),
-  getAuthTokenMock: vi.fn().mockResolvedValue('token'),
+  fetchAuthenticatedFileMock: vi.fn(),
   loggerMock: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
 
 vi.mock('../../src/lib/api', () => ({
-  API_URL: 'http://localhost:8000',
   apiFetch: apiFetchMock,
-  getAuthToken: getAuthTokenMock,
+  fetchAuthenticatedFile: fetchAuthenticatedFileMock,
 }));
 
 vi.mock('../../src/lib/logger', () => ({ logger: loggerMock }));
@@ -19,6 +18,7 @@ vi.mock('../../src/lib/logger', () => ({ logger: loggerMock }));
 vi.mock('@mantine/notifications', () => ({ notifications: { show: vi.fn() } }));
 
 import { useReunionesController } from '../../src/components/admin/management/reuniones/useReunionesController';
+import { QueryError } from '../../src/lib/queryError';
 
 const reunion = {
   id: 'r1',
@@ -47,8 +47,16 @@ function stubApi(handlers: Handlers = {}) {
       const [method, path] = key.split(' ');
       if ((options?.method ?? 'GET') === method && url === path) return handler?.(url, options);
     }
-    if (url === '/reuniones' && !options) return { items: [reunion], total: 1 };
-    if (url.startsWith('/reuniones/') && url.endsWith('/agenda') && !options) return [agendaItem];
+    if (url === '/reuniones' && (!options?.method || options.method === 'GET')) {
+      return { items: [reunion], total: 1 };
+    }
+    if (
+      url.startsWith('/reuniones/') &&
+      url.endsWith('/agenda') &&
+      (!options?.method || options.method === 'GET')
+    ) {
+      return [agendaItem];
+    }
     if (url.startsWith('/denuncias')) {
       return { items: [{ id: 'd1', tipo: 'canal_obstruido', ubicacion_texto: 'Lote 5' }] };
     }
@@ -76,10 +84,11 @@ beforeEach(() => {
   stubApi();
   window.URL.createObjectURL = vi.fn().mockReturnValue('blob:pdf');
   window.URL.revokeObjectURL = vi.fn();
-  vi.mocked(global.fetch).mockResolvedValue({
-    ok: true,
-    blob: async () => new Blob(['pdf']),
-  } as unknown as Response);
+  fetchAuthenticatedFileMock.mockResolvedValue({
+    blob: new Blob(['pdf'], { type: 'application/pdf' }),
+    filename: 'agenda.pdf',
+    contentType: 'application/pdf',
+  });
 });
 
 describe('useReunionesController — initial load', () => {
@@ -155,7 +164,7 @@ describe('useReunionesController — agenda', () => {
     await waitFor(() => expect(result.current.agenda).toEqual([agendaItem]));
   });
 
-  it('accepts a wrapped { items } agenda payload and degrades to [] on failure', async () => {
+  it('accepts a wrapped { items } agenda payload and shows an error toast on failure', async () => {
     stubApi({ 'GET /reuniones/r1/agenda': () => ({ items: [agendaItem] }) });
     const { result } = await mountController();
 
@@ -169,6 +178,15 @@ describe('useReunionesController — agenda', () => {
       result.current.handleViewAgenda(reunion);
     });
     await waitFor(() => expect(result.current.agenda).toEqual([]));
+    await waitFor(() => {
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'No se pudo cargar la agenda',
+          message: 'down',
+          color: 'alerta',
+        })
+      );
+    });
   });
 
   it('handleAddTopic posts the next order plus resolved references and reloads the agenda', async () => {
@@ -208,7 +226,7 @@ describe('useReunionesController — agenda', () => {
     expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
-  it('logs when adding a topic fails', async () => {
+  it('logs and shows error toast when adding a topic fails', async () => {
     const { result } = await mountController();
     await act(async () => {
       result.current.handleViewAgenda(reunion);
@@ -221,6 +239,13 @@ describe('useReunionesController — agenda', () => {
     });
 
     expect(loggerMock.error).toHaveBeenCalledWith('Error adding agenda topic:', expect.anything());
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'No se pudo agregar el tema',
+        message: 'nope',
+        color: 'alerta',
+      })
+    );
   });
 });
 
@@ -357,7 +382,10 @@ describe('useReunionesController — create meeting', () => {
     expect(result.current.createOpened).toBe(false);
     expect(result.current.reunionForm.values.titulo).toBe('');
     // Reloaded the list after creating.
-    expect(apiFetchMock).toHaveBeenCalledWith('/reuniones');
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      '/reuniones',
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
   });
 
   it('keeps the modal open and notifies in red when creation fails', async () => {
@@ -391,11 +419,11 @@ describe('useReunionesController — PDF export', () => {
       await result.current.handleExportPDF();
     });
 
-    expect(global.fetch).not.toHaveBeenCalled();
+    expect(fetchAuthenticatedFileMock).not.toHaveBeenCalled();
     expect(result.current.exporting).toBe(false);
   });
 
-  it('downloads the agenda PDF with an authorization header and a safe filename', async () => {
+  it('downloads the agenda PDF through fetchAuthenticatedFile and uses a safe filename', async () => {
     const clickSpy = vi.fn();
     const originalCreate = document.createElement.bind(document);
     vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
@@ -413,17 +441,17 @@ describe('useReunionesController — PDF export', () => {
       await result.current.handleExportPDF();
     });
 
-    expect(global.fetch).toHaveBeenCalledWith(
-      'http://localhost:8000/api/v2/reuniones/r1/export-pdf',
-      { headers: { Authorization: 'Bearer token' } }
+    expect(fetchAuthenticatedFileMock).toHaveBeenCalledWith(
+      '/reuniones/r1/export-pdf',
+      { headers: { Accept: 'application/pdf' } }
     );
     expect(clickSpy).toHaveBeenCalled();
     expect(result.current.exporting).toBe(false);
     vi.mocked(document.createElement).mockRestore();
   });
 
-  it('logs and releases the exporting flag when the server rejects the export', async () => {
-    vi.mocked(global.fetch).mockResolvedValue({ ok: false, status: 500 } as unknown as Response);
+  it('logs, shows error toast and releases the exporting flag when the server rejects the export', async () => {
+    fetchAuthenticatedFileMock.mockRejectedValueOnce(new QueryError('server error', 500));
     const { result } = await mountController();
     await act(async () => {
       result.current.handleViewAgenda(reunion);
@@ -434,6 +462,13 @@ describe('useReunionesController — PDF export', () => {
     });
 
     expect(loggerMock.error).toHaveBeenCalledWith('Export error:', expect.anything());
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'No pudimos generar el PDF',
+        message: expect.stringContaining('500'),
+        color: 'alerta',
+      })
+    );
     expect(result.current.exporting).toBe(false);
   });
 });

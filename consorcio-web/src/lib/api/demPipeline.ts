@@ -88,20 +88,26 @@ export const demPipelineApi = {
   /**
    * Get job status by ID.
    */
-  getJob: (jobId: string): Promise<GeoJobResponse> => apiFetch(`/geo/jobs/${jobId}`),
+  getJob: (jobId: string, options?: { signal?: AbortSignal }): Promise<GeoJobResponse> =>
+    options?.signal
+      ? apiFetch(`/geo/jobs/${jobId}`, { signal: options.signal })
+      : apiFetch(`/geo/jobs/${jobId}`),
 
   /**
    * List generated geo layers.
    */
-  getLayers: (tipo?: string): Promise<GeoLayerListResponse> => {
+  getLayers: (tipo?: string, options?: { signal?: AbortSignal }): Promise<GeoLayerListResponse> => {
     const params = tipo ? `?tipo=${tipo}&limit=50` : '?limit=50';
-    return apiFetch(`/geo/layers${params}`);
+    return options?.signal
+      ? apiFetch(`/geo/layers${params}`, { signal: options.signal })
+      : apiFetch(`/geo/layers${params}`);
   },
 
   /**
    * Get basin polygons as GeoJSON.
    */
-  getBasins: (): Promise<BasinsGeoJSON> => apiFetch('/geo/basins', { skipAuth: true }),
+  getBasins: (options?: { signal?: AbortSignal }): Promise<BasinsGeoJSON> =>
+    apiFetch('/geo/basins', { skipAuth: true, ...(options?.signal ? { signal: options.signal } : {}) }),
 
   /**
    * Get download URL for a layer file.

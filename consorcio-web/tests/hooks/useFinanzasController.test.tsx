@@ -2,16 +2,15 @@ import { notifications } from '@mantine/notifications';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { apiFetchMock, getAuthTokenMock, loggerMock } = vi.hoisted(() => ({
+const { apiFetchMock, fetchAuthenticatedFileMock, loggerMock } = vi.hoisted(() => ({
   apiFetchMock: vi.fn(),
-  getAuthTokenMock: vi.fn().mockResolvedValue('token'),
+  fetchAuthenticatedFileMock: vi.fn(),
   loggerMock: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
 
 vi.mock('../../src/lib/api', () => ({
-  API_URL: 'http://localhost:8000',
   apiFetch: apiFetchMock,
-  getAuthToken: getAuthTokenMock,
+  fetchAuthenticatedFile: fetchAuthenticatedFileMock,
 }));
 
 vi.mock('../../src/lib/logger', () => ({ logger: loggerMock }));
@@ -19,6 +18,7 @@ vi.mock('../../src/lib/logger', () => ({ logger: loggerMock }));
 vi.mock('@mantine/notifications', () => ({ notifications: { show: vi.fn() } }));
 
 import { useFinanzasController } from '../../src/components/admin/management/finanzas/useFinanzasController';
+import { QueryError } from '../../src/lib/queryError';
 
 const gasto = {
   id: 'g1',
@@ -72,21 +72,21 @@ const bodyOf = (path: string, method: string) => {
   return call ? JSON.parse(call[1].body) : null;
 };
 
-const pdfResponse = (overrides: Record<string, unknown> = {}) =>
-  ({
-    ok: true,
-    status: 200,
-    headers: { get: () => 'application/pdf' },
-    blob: async () => new Blob(['pdf']),
-    ...overrides,
-  }) as unknown as Response;
+const pdfFileResult = (
+  overrides: Partial<{ blob: Blob; filename: string | null; contentType: string | null }> = {}
+) => ({
+  blob: new Blob(['pdf'], { type: 'application/pdf' }),
+  filename: `resumen_financiero_${currentYear}.pdf`,
+  contentType: 'application/pdf',
+  ...overrides,
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
   stubApi();
   window.URL.createObjectURL = vi.fn().mockReturnValue('blob:pdf');
   window.URL.revokeObjectURL = vi.fn();
-  vi.mocked(global.fetch).mockResolvedValue(pdfResponse());
+  fetchAuthenticatedFileMock.mockResolvedValue(pdfFileResult());
 });
 
 describe('useFinanzasController — initial load', () => {
@@ -96,7 +96,10 @@ describe('useFinanzasController — initial load', () => {
     expect(result.current.gastos).toEqual([gasto]);
     expect(result.current.ingresos).toEqual([ingreso]);
     expect(result.current.balance).toEqual(balance);
-    expect(apiFetchMock).toHaveBeenCalledWith(`/finanzas/resumen/${currentYear}`);
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      `/finanzas/resumen/${currentYear}`,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
     expect(result.current.activeTab).toBe('balance');
     expect(result.current.categoryData.map((option) => option.value)).toEqual([
       'obras',
@@ -148,7 +151,10 @@ describe('useFinanzasController — gastos', () => {
     });
     expect(result.current.gastoOpened).toBe(false);
     expect(result.current.form.values.descripcion).toBe('');
-    expect(apiFetchMock).toHaveBeenCalledWith('/finanzas/gastos');
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      '/finanzas/gastos',
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Gasto registrado', color: 'exito' })
     );
@@ -279,7 +285,10 @@ describe('useFinanzasController — ingresos', () => {
 
     expect(bodyOf('/finanzas/ingresos', 'POST')).toEqual(values);
     expect(result.current.ingresoOpened).toBe(false);
-    expect(apiFetchMock).toHaveBeenCalledWith('/finanzas/ingresos');
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      '/finanzas/ingresos',
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Ingreso registrado', color: 'exito' })
     );
@@ -365,7 +374,7 @@ describe('useFinanzasController — ingresos', () => {
 });
 
 describe('useFinanzasController — summary PDF', () => {
-  it('downloads the yearly summary with the bearer token and releases the flag', async () => {
+  it('downloads the yearly summary through fetchAuthenticatedFile and releases the flag', async () => {
     const clickSpy = vi.fn();
     const originalCreate = document.createElement.bind(document);
     vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
@@ -379,30 +388,17 @@ describe('useFinanzasController — summary PDF', () => {
       await result.current.handleDownloadSummaryPdf();
     });
 
-    expect(global.fetch).toHaveBeenCalledWith(
-      `http://localhost:8000/api/v2/finanzas/resumen/${currentYear}/export-pdf`,
-      { headers: { Accept: 'application/pdf', Authorization: 'Bearer token' } }
+    expect(fetchAuthenticatedFileMock).toHaveBeenCalledWith(
+      `/finanzas/resumen/${currentYear}/export-pdf`,
+      { headers: { Accept: 'application/pdf' } }
     );
     expect(clickSpy).toHaveBeenCalled();
     expect(result.current.exportingSummaryPdf).toBe(false);
     vi.mocked(document.createElement).mockRestore();
   });
 
-  it('omits the Authorization header when there is no token', async () => {
-    getAuthTokenMock.mockResolvedValueOnce(null);
-    const { result } = await mountController();
-
-    await act(async () => {
-      await result.current.handleDownloadSummaryPdf();
-    });
-
-    expect(global.fetch).toHaveBeenCalledWith(expect.any(String), {
-      headers: { Accept: 'application/pdf' },
-    });
-  });
-
   it('surfaces the HTTP status when the export request fails', async () => {
-    vi.mocked(global.fetch).mockResolvedValue(pdfResponse({ ok: false, status: 503 }));
+    fetchAuthenticatedFileMock.mockRejectedValueOnce(new QueryError('unavailable', 503));
     const { result } = await mountController();
 
     await act(async () => {
@@ -422,8 +418,8 @@ describe('useFinanzasController — summary PDF', () => {
   });
 
   it('rejects a non-PDF body instead of downloading an HTML error page', async () => {
-    vi.mocked(global.fetch).mockResolvedValue(
-      pdfResponse({ headers: { get: () => 'text/html' } })
+    fetchAuthenticatedFileMock.mockResolvedValueOnce(
+      pdfFileResult({ contentType: 'text/html' })
     );
     const { result } = await mountController();
 
@@ -438,7 +434,7 @@ describe('useFinanzasController — summary PDF', () => {
   });
 
   it('handles a missing content-type header', async () => {
-    vi.mocked(global.fetch).mockResolvedValue(pdfResponse({ headers: { get: () => null } }));
+    fetchAuthenticatedFileMock.mockResolvedValueOnce(pdfFileResult({ contentType: null }));
     const { result } = await mountController();
 
     await act(async () => {

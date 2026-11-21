@@ -206,8 +206,15 @@ async function check(base) {
     }
   });
 
-  await run('SPA /reports', async () => {
-    assertSpa('/reports', await fetchManual(`${origin}/reports`));
+  await run('301 /reports', async () => {
+    const { response } = await fetchManual(`${origin}/reports`);
+    if (response.status !== 301) {
+      throw new Error(`/reports deberia ser 301 y fue ${response.status}`);
+    }
+    const location = header(response, 'location');
+    if (!location.endsWith('/participacion')) {
+      throw new Error(`/reports redirige a ${location || '<vacio>'}`);
+    }
   });
 
   await run('301 /reportes', async () => {

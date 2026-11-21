@@ -4,6 +4,7 @@
 # generico en vez del destino real. El orden importa: reglas especificas
 # ANTES de cualquier splat futuro.
 /reportes /participacion 301
+/reports /participacion 301
 /sugerencias /participacion?tab=sugerencias 301
 
 # SPA: NO poner un `404.html` en la raiz de public/ y NO agregar

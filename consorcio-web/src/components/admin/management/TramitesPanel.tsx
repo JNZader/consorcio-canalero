@@ -13,11 +13,13 @@ import {
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatTramiteEstado } from '../../../constants/tramites';
-import { API_URL, apiFetch, getAuthToken } from '../../../lib/api';
+import { isAbortError } from '../../../lib/abortUtils';
+import { apiFetch, fetchAuthenticatedFile } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
 import { showError, showSuccess } from '../../../lib/notifications';
+import { QueryError } from '../../../lib/queryError';
 import { erroresUi, textoError } from '../../../lib/userFacingError';
 import { IconButton } from '../../ui/IconButton';
 import { IconDownload, IconHistory, IconPlus } from '../../ui/icons';
@@ -83,31 +85,55 @@ export default function TramitesPanel() {
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [opened, { open, close }] = useDisclosure(false);
   const [historyOpened, { open: openHistory, close: closeHistory }] = useDisclosure(false);
+  const listAbortRef = useRef<AbortController | null>(null);
+  const listSeqRef = useRef(0);
+  const detailAbortRef = useRef<AbortController | null>(null);
+  const detailSeqRef = useRef(0);
 
   const fetchTramites = useCallback(async () => {
+    listAbortRef.current?.abort();
+    const controller = new AbortController();
+    listAbortRef.current = controller;
+    const seq = ++listSeqRef.current;
+
     setLoading(true);
     try {
-      const response = await apiFetch<{ items: TramiteListItem[]; total: number }>('/tramites');
+      const response = await apiFetch<{ items: TramiteListItem[]; total: number }>('/tramites', {
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted || seq !== listSeqRef.current) return;
       setTramites(response.items ?? []);
       setLoadError(false);
     } catch (err) {
+      if (isAbortError(err, controller.signal) || seq !== listSeqRef.current) return;
       logger.error('Error fetching trámites:', err);
       // FE-6: sin este estado, un fallo de carga se renderiza igual que una
       // tabla vacía ("no hay trámites") y el operador no distingue un backend
       // caído de un padrón sin expedientes.
       setLoadError(true);
     } finally {
-      setLoading(false);
+      if (seq === listSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   const fetchDetalle = async (id: string) => {
+    detailAbortRef.current?.abort();
+    const controller = new AbortController();
+    detailAbortRef.current = controller;
+    const seq = ++detailSeqRef.current;
+
     try {
-      const detail = await apiFetch<TramiteDetail>(`/tramites/${id}`);
+      const detail = await apiFetch<TramiteDetail>(`/tramites/${id}`, {
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted || seq !== detailSeqRef.current) return;
       setSelectedTramite({ ...detail, seguimiento: detail.seguimiento ?? [] });
       setNewSeguimiento('');
       openHistory();
     } catch (err) {
+      if (isAbortError(err, controller.signal) || seq !== detailSeqRef.current) return;
       logger.error('Error fetching trámite detail:', err);
       showError(
         'No se pudo cargar el seguimiento',
@@ -118,6 +144,10 @@ export default function TramitesPanel() {
 
   useEffect(() => {
     fetchTramites();
+    return () => {
+      listAbortRef.current?.abort();
+      detailAbortRef.current?.abort();
+    };
   }, [fetchTramites]);
 
   const form = useForm<TramiteFormValues>({
@@ -189,12 +219,17 @@ export default function TramitesPanel() {
       setNewSeguimiento('');
     } catch (err) {
       logger.error('Error adding trámite follow-up:', err);
+      showError(
+        'No se pudo agregar el seguimiento',
+        err instanceof Error ? err.message : 'Intentá nuevamente en unos minutos.'
+      );
     } finally {
       setAddingSeguimiento(false);
     }
   };
 
   const handleCloseHistory = () => {
+    detailAbortRef.current?.abort();
     setSelectedTramite(null);
     setNewSeguimiento('');
     closeHistory();
@@ -205,23 +240,14 @@ export default function TramitesPanel() {
 
     setDownloadingPdf(true);
     try {
-      const token = await getAuthToken();
-      const response = await fetch(`${API_URL}/api/v2/tramites/${selectedTramite.id}/export-pdf`, {
-        headers: {
-          Accept: 'application/pdf',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
-      if (!response.ok) {
-        throw new Error(textoError(erroresUi.descargarTramite, `Respuesta ${response.status}.`));
-      }
-
-      const contentType = response.headers.get('content-type') ?? '';
-      if (!contentType.includes('application/pdf')) {
+      const { blob, contentType } = await fetchAuthenticatedFile(
+        `/tramites/${selectedTramite.id}/export-pdf`,
+        { headers: { Accept: 'application/pdf' } }
+      );
+      if (!(contentType ?? blob.type).toLowerCase().includes('application/pdf')) {
         throw new Error(textoError(erroresUi.pdfInvalido));
       }
 
-      const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
@@ -234,10 +260,13 @@ export default function TramitesPanel() {
       showSuccess('PDF descargado', `Se descargó el expediente de ${selectedTramite.titulo}`);
     } catch (error) {
       logger.error('Error downloading trámite PDF:', error);
-      showError(
-        'No se pudo descargar el trámite',
-        error instanceof Error ? error.message : 'Intentá nuevamente en unos minutos.'
-      );
+      const detail =
+        error instanceof QueryError && error.statusCode
+          ? textoError(erroresUi.descargarTramite, `Respuesta ${error.statusCode}.`)
+          : error instanceof Error
+            ? error.message
+            : 'Intentá nuevamente en unos minutos.';
+      showError('No se pudo descargar el trámite', detail);
     } finally {
       setDownloadingPdf(false);
     }
@@ -318,7 +347,7 @@ export default function TramitesPanel() {
           <Stack gap="sm">
             <NativeSelect
               label="Tipo"
-              data={TRAMITE_TYPES}
+              data={[{ value: '', label: 'Seleccioná un tipo...' }, ...TRAMITE_TYPES]}
               required
               {...form.getInputProps('tipo')}
             />

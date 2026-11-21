@@ -37,15 +37,18 @@ export const reportsApi = {
           assigned_to?: string;
           sort?: string;
           order?: string;
+          signal?: AbortSignal;
         } = 1,
     limit = 10,
     status?: string,
     categoria?: string,
     search?: string,
     sort?: string,
-    order?: string
+    order?: string,
+    options?: { signal?: AbortSignal }
   ): Promise<{ items: Report[]; total: number; page: number }> => {
     const searchParams = new URLSearchParams();
+    let requestSignal = options?.signal;
 
     if (typeof pageOrParams === 'number') {
       searchParams.set('page', pageOrParams.toString());
@@ -66,9 +69,11 @@ export const reportsApi = {
       if (pageOrParams.assigned_to) searchParams.set('assigned_to', pageOrParams.assigned_to);
       if (pageOrParams.sort) searchParams.set('sort', pageOrParams.sort);
       if (pageOrParams.order) searchParams.set('order', pageOrParams.order);
+      requestSignal = requestSignal ?? pageOrParams.signal;
     }
 
-    return apiFetch(`/denuncias?${searchParams.toString()}`);
+    const endpoint = `/denuncias?${searchParams.toString()}`;
+    return requestSignal ? apiFetch(endpoint, { signal: requestSignal }) : apiFetch(endpoint);
   },
 
   /**
@@ -140,7 +145,10 @@ export const reportsApi = {
   /**
    * Obtener estadisticas.
    */
-  getStats: (): Promise<DenunciaStatsResponse> => apiFetch('/denuncias/stats'),
+  getStats: (options?: { signal?: AbortSignal }): Promise<DenunciaStatsResponse> =>
+    options?.signal
+      ? apiFetch('/denuncias/stats', { signal: options.signal })
+      : apiFetch('/denuncias/stats'),
 };
 
 /**
@@ -264,12 +272,16 @@ export const statsApi = {
    * TODO: v2 does not have a dedicated historical stats endpoint yet.
    * Falling back to monitoring/analyses.
    */
-  getHistorical: (params: { cuenca?: string; limit?: number } = {}) => {
+  getHistorical: (
+    params: { cuenca?: string; limit?: number } = {},
+    options?: { signal?: AbortSignal }
+  ) => {
     const searchParams = new URLSearchParams();
     if (params.cuenca) searchParams.set('cuenca', params.cuenca);
     if (params.limit) searchParams.set('limit', params.limit.toString());
 
-    return apiFetch(`/monitoring/analyses?${searchParams.toString()}`);
+    const endpoint = `/monitoring/analyses?${searchParams.toString()}`;
+    return options?.signal ? apiFetch(endpoint, { signal: options.signal }) : apiFetch(endpoint);
   },
 
   /**

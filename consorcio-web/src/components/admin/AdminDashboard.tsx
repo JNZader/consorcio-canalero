@@ -16,12 +16,13 @@ import { useDisclosure } from '@mantine/hooks';
 import { lazy, Suspense, useState } from 'react';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { CUENCA_COLORS as DEFAULT_CUENCA_COLORS } from '../../constants';
-import { API_URL, getAuthToken } from '../../lib/api';
+import { apiFetch, fetchAuthenticatedFile, LONG_TIMEOUT } from '../../lib/api';
 import { withBasePath } from '../../lib/basePath';
 import { formatDate } from '../../lib/formatters';
 import { logger } from '../../lib/logger';
 import { showError, showNotification, showSuccess } from '../../lib/notifications';
 import { useMonitoringDashboard, useReports } from '../../lib/query';
+import { QueryError } from '../../lib/queryError';
 import { erroresUi, textoError } from '../../lib/userFacingError';
 import { useConfigStore } from '../../stores/configStore';
 import { IconDownload } from '../ui/icons';
@@ -50,6 +51,7 @@ export default function AdminDashboard() {
   const [basinsFile, setBasinsFile] = useState<File | null>(null);
   const [confirmBasins, confirmBasinsModal] = useDisclosure(false);
   const [confirmZones, confirmZonesModal] = useDisclosure(false);
+  const [confirmBundle, confirmBundleModal] = useDisclosure(false);
   const [approvedZonesFile, setApprovedZonesFile] = useState<File | null>(null);
   const [bundleFile, setBundleFile] = useState<File | null>(null);
   const [importingBasins, setImportingBasins] = useState(false);
@@ -77,16 +79,9 @@ export default function AdminDashboard() {
   const handleExportDashboardData = async () => {
     setExporting(true);
     try {
-      const token = await getAuthToken();
-      const response = await fetch(`${API_URL}/api/v2/monitoring/dashboard`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      const payload = await apiFetch<unknown>('/monitoring/dashboard', {
+        timeout: LONG_TIMEOUT,
       });
-
-      if (!response.ok) throw new Error(textoError(erroresUi.exportarDashboard));
-
-      const payload: unknown = await response.json();
       const { blob, filename } = createDashboardJsonExport(payload);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -119,27 +114,17 @@ export default function AdminDashboard() {
       return;
     }
 
-    const token = await getAuthToken();
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await fetch(`${API_URL}${endpoint}`, {
-      method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: formData,
-    });
-
-    const payload = (await response.json().catch(() => null)) as {
+    const payload = await apiFetch<{
       importedCount?: number;
       metadata?: Record<string, unknown>;
-      detail?: string;
-    } | null;
-
-    if (!response.ok) {
-      throw new Error(
-        payload?.detail || textoError(erroresUi.importarArchivo, `Respuesta ${response.status}.`)
-      );
-    }
+    }>(endpoint, {
+      method: 'POST',
+      body: formData,
+      timeout: LONG_TIMEOUT,
+    });
 
     showSuccess(
       successTitle,
@@ -153,7 +138,7 @@ export default function AdminDashboard() {
     try {
       await handleImportGeoJson(
         basinsFile,
-        '/api/v2/geo/basins/import',
+        '/geo/basins/import',
         'Subcuencas importadas',
         () => setBasinsFile(null)
       );
@@ -173,7 +158,7 @@ export default function AdminDashboard() {
     try {
       await handleImportGeoJson(
         approvedZonesFile,
-        '/api/v2/geo/basins/approved-zones/import',
+        '/geo/basins/approved-zones/import',
         'Zonificación aprobada importada',
         () => setApprovedZonesFile(null)
       );
@@ -191,20 +176,13 @@ export default function AdminDashboard() {
   const handleExportBundle = async () => {
     setExportingBundle(true);
     try {
-      const token = await getAuthToken();
-      const response = await fetch(`${API_URL}/api/v2/geo/bundle/export`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      const { blob, filename } = await fetchAuthenticatedFile('/geo/bundle/export', {
+        timeout: LONG_TIMEOUT,
       });
-
-      if (!response.ok) {
-        throw new Error(textoError(erroresUi.exportarBundle, `Respuesta ${response.status}.`));
-      }
-
-      const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `geo_bundle_${new Date().toISOString().slice(0, 10)}.zip`;
+      a.download = filename || `geo_bundle_${new Date().toISOString().slice(0, 10)}.zip`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -213,10 +191,13 @@ export default function AdminDashboard() {
       showSuccess('Bundle exportado', 'Se descargó el bundle geoespacial correctamente.');
     } catch (error) {
       logger.error('Bundle export error:', error);
-      showError(
-        erroresUi.exportarBundle.titulo,
-        error instanceof Error ? error.message : 'No se pudo exportar el bundle.'
-      );
+      const detail =
+        error instanceof QueryError && error.statusCode
+          ? textoError(erroresUi.exportarBundle, `Respuesta ${error.statusCode}.`)
+          : error instanceof Error
+            ? error.message
+            : 'No se pudo exportar el bundle.';
+      showError(erroresUi.exportarBundle.titulo, detail);
     } finally {
       setExportingBundle(false);
     }
@@ -234,27 +215,17 @@ export default function AdminDashboard() {
 
     setImportingBundle(true);
     try {
-      const token = await getAuthToken();
       const formData = new FormData();
       formData.append('file', bundleFile);
 
-      const response = await fetch(`${API_URL}/api/v2/geo/bundle/import`, {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
-      });
-
-      const payload = (await response.json().catch(() => null)) as {
+      const payload = await apiFetch<{
         layersImported?: number;
         vectorsImported?: Record<string, number>;
-        detail?: string;
-      } | null;
-
-      if (!response.ok) {
-        throw new Error(
-          payload?.detail || textoError(erroresUi.importarBundle, `Respuesta ${response.status}.`)
-        );
-      }
+      }>('/geo/bundle/import', {
+        method: 'POST',
+        body: formData,
+        timeout: LONG_TIMEOUT,
+      });
 
       showSuccess(
         'Bundle importado',
@@ -337,6 +308,18 @@ export default function AdminDashboard() {
         onConfirm={() => {
           confirmZonesModal.close();
           void handleImportApprovedZones();
+        }}
+      />
+      <ConfirmDialog
+        opened={confirmBundle}
+        title="Importar bundle geoespacial"
+        message="Esto reemplaza las capas y vectores geoespaciales actuales con el contenido del bundle ZIP. ¿Seguimos?"
+        confirmLabel="Importar bundle"
+        onClose={confirmBundleModal.close}
+        loading={importingBundle}
+        onConfirm={() => {
+          confirmBundleModal.close();
+          void handleImportBundle();
         }}
       />
       <Divider my="xl" label="Detalle de Operaciones" labelPosition="center" />
@@ -441,7 +424,7 @@ export default function AdminDashboard() {
 
             <Button
               variant="light"
-              onClick={handleImportBundle}
+              onClick={confirmBundleModal.open}
               loading={importingBundle}
               disabled={!bundleFile}
             >

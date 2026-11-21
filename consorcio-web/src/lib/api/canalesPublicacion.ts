@@ -37,8 +37,12 @@ export interface CanalPublicacionCatalog {
   readonly geojson_sr_pa?: CanalLineCollection;
 }
 
-export function listCanalPublicacion(): Promise<CanalPublicacionCatalog> {
-  return apiFetch('/geo/canales/publicacion');
+export function listCanalPublicacion(
+  options?: { signal?: AbortSignal }
+): Promise<CanalPublicacionCatalog> {
+  return options?.signal
+    ? apiFetch('/geo/canales/publicacion', { signal: options.signal })
+    : apiFetch('/geo/canales/publicacion');
 }
 
 export function fetchAprhiReferencia(): Promise<CanalLineCollection> {

@@ -1,9 +1,11 @@
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { useCallback, useEffect, useState } from 'react';
-import { API_URL, apiFetch, getAuthToken } from '../../../../lib/api';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { isAbortError } from '../../../../lib/abortUtils';
+import { apiFetch, fetchAuthenticatedFile } from '../../../../lib/api';
 import { logger } from '../../../../lib/logger';
 import { showError, showSuccess } from '../../../../lib/notifications';
+import { QueryError } from '../../../../lib/queryError';
 import { erroresUi, textoError } from '../../../../lib/userFacingError';
 import { GASTO_CATEGORIES, INGRESO_CATEGORIES } from './constants';
 import type { Balance, Gasto, Ingreso } from './finanzasTypes';
@@ -83,29 +85,46 @@ export function useFinanzasController() {
     },
   });
 
+  const fetchAbortRef = useRef<AbortController | null>(null);
+  const fetchSeqRef = useRef(0);
+
   const fetchFinanzas = useCallback(async () => {
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    const seq = ++fetchSeqRef.current;
+
     setLoading(true);
     try {
       const [gastosRaw, ingresosRaw, balanceData] = await Promise.all([
-        apiFetch<Gasto[] | { items: Gasto[] }>('/finanzas/gastos'),
-        apiFetch<Ingreso[] | { items: Ingreso[] }>('/finanzas/ingresos'),
-        apiFetch<Balance>(`/finanzas/resumen/${currentYear}`),
+        apiFetch<Gasto[] | { items: Gasto[] }>('/finanzas/gastos', { signal: controller.signal }),
+        apiFetch<Ingreso[] | { items: Ingreso[] }>('/finanzas/ingresos', {
+          signal: controller.signal,
+        }),
+        apiFetch<Balance>(`/finanzas/resumen/${currentYear}`, { signal: controller.signal }),
       ]);
+      if (controller.signal.aborted || seq !== fetchSeqRef.current) return;
       setGastos(normalizeArray(gastosRaw));
       setIngresos(normalizeArray(ingresosRaw));
       setBalance(balanceData);
       setLoadError(null);
     } catch (error) {
+      if (isAbortError(error, controller.signal) || seq !== fetchSeqRef.current) return;
       logger.error('Error fetching finanzas:', error);
       setBalance(null);
       setLoadError(textoError(erroresUi.cargarFinanzas));
     } finally {
-      setLoading(false);
+      if (seq === fetchSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, [currentYear]);
 
   useEffect(() => {
     fetchFinanzas();
+    return () => {
+      fetchAbortRef.current?.abort();
+    };
   }, [fetchFinanzas]);
 
   const handleCreateGasto = async (values: typeof form.values) => {
@@ -228,22 +247,14 @@ export function useFinanzasController() {
   const handleDownloadSummaryPdf = async () => {
     setExportingSummaryPdf(true);
     try {
-      const token = await getAuthToken();
-      const response = await fetch(`${API_URL}/api/v2/finanzas/resumen/${currentYear}/export-pdf`, {
-        headers: {
-          Accept: 'application/pdf',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
-      if (!response.ok) {
-        throw new Error(textoError(erroresUi.descargarResumen, `Respuesta ${response.status}.`));
-      }
-      const contentType = response.headers.get('content-type') ?? '';
-      if (!contentType.includes('application/pdf')) {
+      const { blob, contentType } = await fetchAuthenticatedFile(
+        `/finanzas/resumen/${currentYear}/export-pdf`,
+        { headers: { Accept: 'application/pdf' } }
+      );
+      if (!(contentType ?? '').toLowerCase().includes('application/pdf')) {
         throw new Error(textoError(erroresUi.pdfInvalido));
       }
 
-      const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
@@ -254,10 +265,13 @@ export function useFinanzasController() {
       setTimeout(() => window.URL.revokeObjectURL(url), 1000);
     } catch (error) {
       logger.error('Error downloading financial summary PDF:', error);
-      showError(
-        'No se pudo descargar el resumen',
-        error instanceof Error ? error.message : 'Intentá nuevamente en unos minutos.'
-      );
+      const detail =
+        error instanceof QueryError && error.statusCode
+          ? textoError(erroresUi.descargarResumen, `Respuesta ${error.statusCode}.`)
+          : error instanceof Error
+            ? error.message
+            : 'Intentá nuevamente en unos minutos.';
+      showError('No se pudo descargar el resumen', detail);
     } finally {
       setExportingSummaryPdf(false);
     }

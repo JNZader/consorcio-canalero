@@ -209,6 +209,50 @@ describe('useSuggestionFormState', () => {
 
     expect(sugerenciasApi.create).toHaveBeenCalledTimes(1);
   });
+
+  it('reuses the same Idempotency-Key on offline retry and rotates it after success', async () => {
+    sessionStorage.clear();
+    vi.mocked(sugerenciasApi.create)
+      .mockRejectedValueOnce(new QueryError('API Error: 503', 503, '/sugerencias'))
+      .mockResolvedValueOnce({ id: 'sug-1' } as never)
+      .mockResolvedValueOnce({ id: 'sug-2' } as never);
+
+    const values = {
+      titulo: 'Limpiar cuneta',
+      descripcion: 'Hay acumulacion de sedimentos en el cruce',
+      categoria: 'infraestructura',
+    };
+
+    const { result } = renderHook(() =>
+      useSuggestionFormState({
+        contactoVerificado: true,
+        userEmail: 'vecino@example.com',
+        userName: 'Vecino',
+        logout: vi.fn(),
+        form: { reset: vi.fn() },
+      })
+    );
+
+    await act(async () => {
+      await result.current.handleSubmit(values);
+    });
+    await act(async () => {
+      await result.current.handleSubmit(values);
+    });
+
+    const firstKey = vi.mocked(sugerenciasApi.create).mock.calls[0]?.[1];
+    const retryKey = vi.mocked(sugerenciasApi.create).mock.calls[1]?.[1];
+    expect(firstKey).toBeTruthy();
+    expect(retryKey).toBe(firstKey);
+
+    // After a successful submit, submitting again generates a fresh Idempotency-Key
+    await act(async () => {
+      await result.current.handleSubmit(values);
+    });
+    const nextKey = vi.mocked(sugerenciasApi.create).mock.calls[2]?.[1];
+    expect(nextKey).toBeTruthy();
+    expect(nextKey).not.toBe(firstKey);
+  });
 });
 
 describe('saveSuggestionDraft', () => {

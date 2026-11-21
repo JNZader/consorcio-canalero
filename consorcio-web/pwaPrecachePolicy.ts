@@ -28,6 +28,41 @@ export const MAP_PRECACHE_EXCLUDED_STEMS = [
   'vendor-mantine-dates',
 ] as const;
 
+export const ADMIN_AND_AUX_PRECACHE_EXCLUDED_STEMS = [
+  'AdminLayout',
+  'AdminDashboard',
+  'DashboardEstadisticas',
+  'ParticipacionPanel',
+  'ReportsPanel',
+  'SugerenciasPanel',
+  'PadronPanel',
+  'TramitesPanel',
+  'ReunionesPanel',
+  'FinanzasPanel',
+  'DemPipelinePanel',
+  'ImageExplorerPanel',
+  'ConocimientoPanel',
+  'CanalesPublicacionPanel',
+  'CanalesPublicacionMap',
+  'ThemeLabPanel',
+  'PilarVerdeWidget',
+  'CampoPage',
+  'CampoMap',
+  'InformeAreaDrawer',
+  'ElevationProfileChart',
+  'jszip',
+  'togeojson',
+  'qrcode',
+  'vendor-jszip',
+  'vendor-togeojson',
+  'vendor-qrcode',
+] as const;
+
+export const PRECACHE_EXCLUDED_STEMS = [
+  ...MAP_PRECACHE_EXCLUDED_STEMS,
+  ...ADMIN_AND_AUX_PRECACHE_EXCLUDED_STEMS,
+] as const;
+
 export const PRECACHE_GLOB_PATTERNS = ['**/*.{js,css,html,png,svg,json,woff2}'] as const;
 
 export const PRECACHE_GLOB_IGNORES = [
@@ -38,17 +73,26 @@ export const PRECACHE_GLOB_IGNORES = [
   '**/*.geojson',
   // Freshness probe. A precached copy would hide new deploys from the banner.
   'version.json',
-  // Pages executes ``dist/_worker.js``. Clients must not cache that source.
+  // Cloudflare Pages edge files; clients must never precache them.
   '_worker.js',
-  ...MAP_PRECACHE_EXCLUDED_STEMS.flatMap((stem) => [`**/${stem}*.js`, `**/${stem}*.css`]),
+  '_headers',
+  '_redirects',
+  ...PRECACHE_EXCLUDED_STEMS.flatMap((stem) => [`**/${stem}*.js`, `**/${stem}*.css`]),
 ] as const;
 
 export function isExcludedFromInstallPrecache(url: string): boolean {
   const path = url.split(/[?#]/, 1)[0]?.replaceAll('\\', '/') ?? '';
   const base = path.split('/').pop() ?? path;
-  if (MAP_PRECACHE_EXCLUDED_STEMS.some((stem) => base.startsWith(stem))) return true;
+  if (PRECACHE_EXCLUDED_STEMS.some((stem) => base.startsWith(stem))) return true;
   if (base.endsWith('.geojson')) return true;
-  if (base === 'version.json' || base === '_worker.js') return true;
+  if (
+    base === 'version.json' ||
+    base === '_worker.js' ||
+    base === '_headers' ||
+    base === '_redirects'
+  ) {
+    return true;
+  }
   if (base.startsWith('icon-512')) return true;
   if (/(?:^|\/)data\/.+\.json$/i.test(path)) return true;
   return false;
@@ -104,3 +148,22 @@ export const CAMPO_PACKAGE_CACHE_NAME = 'campo-packages';
  */
 export const CAMPO_MAP_ENGINE_CACHE_FIRST =
   /\/assets\/(?:vendor-maplibre|maplibre-gl-worker)-[^/]+\.(?:js|css)$/i;
+
+/**
+ * Self-contained Workbox urlPattern predicate so CacheFirst for MapLibre engine
+ * chunks applies ONLY when requested from a `/campo/*` document referrer,
+ * leaving `/mapa` and admin maps governed by `MAP_ENGINE_NETWORK_ONLY`.
+ */
+export function matchCampoMapEngineAsset({
+  url,
+  request,
+}: {
+  url: URL;
+  request: Request;
+}): boolean {
+  if (!/\/assets\/(?:vendor-maplibre|maplibre-gl-worker)-[^/]+\.(?:js|css)$/i.test(url.pathname)) {
+    return false;
+  }
+  const referrer = request?.referrer ?? '';
+  return /\/campo(?:\/|$)/i.test(referrer);
+}

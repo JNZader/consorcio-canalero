@@ -164,7 +164,10 @@ describe('PadronPanel', () => {
     await user.type(search, 'Ana');
 
     await waitFor(() => {
-      expect(apiFetch).toHaveBeenCalledWith('/padron?search=Ana');
+      expect(apiFetch).toHaveBeenCalledWith(
+        '/padron?search=Ana',
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      );
     });
     expect(screen.getByText('Perez, Ana')).toBeInTheDocument();
   });
@@ -177,7 +180,10 @@ describe('PadronPanel', () => {
     await user.type(screen.getByRole('textbox', { name: /buscar consorcistas/i }), 'a&b#c');
 
     await waitFor(() => {
-      expect(apiFetch).toHaveBeenCalledWith('/padron?search=a%26b%23c');
+      expect(apiFetch).toHaveBeenCalledWith(
+        '/padron?search=a%26b%23c',
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      );
     });
   });
 
@@ -216,6 +222,107 @@ describe('PadronPanel', () => {
       expect(apiFetch).toHaveBeenCalledWith(`/padron/${consorcista.id}`, {
         method: 'DELETE',
       });
+    });
+  });
+
+  it('prevents double submit while saving a consorcista', async () => {
+    const user = userEvent.setup();
+    let resolvePost: (val: unknown) => void = () => {};
+    vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
+      if (path.startsWith('/padron?search=')) return [consorcista];
+      if (path === '/padron' && options?.method === 'POST') {
+        return new Promise((resolve) => {
+          resolvePost = resolve;
+        });
+      }
+      return {};
+    });
+
+    renderPanel();
+    await screen.findByText('Padrón de Consorcistas');
+
+    await user.click(screen.getByRole('button', { name: /nuevo consorcista/i }));
+    const dialog = await screen.findByRole('dialog', { name: /registrar nuevo consorcista/i });
+    await user.type(within(dialog).getByLabelText(/nombre/i), 'Carlos');
+    await user.type(within(dialog).getByLabelText(/apellido/i), 'Gomez');
+    await user.type(within(dialog).getByLabelText(/cuit/i), '20-99887766-1');
+
+    const submit = within(dialog).getByRole('button', { name: /guardar en padrón/i });
+    await user.click(submit);
+
+    await waitFor(() => expect(submit).toBeDisabled());
+    expect(
+      vi.mocked(apiFetch).mock.calls.filter(([path, opts]) => path === '/padron' && opts?.method === 'POST')
+    ).toHaveLength(1);
+
+    resolvePost({ id: 'new-1' });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /registrar nuevo consorcista/i })).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows EmptyState when there are no consorcistas', async () => {
+    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+      if (path.startsWith('/padron?search=')) return [];
+      return {};
+    });
+
+    renderPanel();
+
+    expect(await screen.findByText('No hay consorcistas registrados')).toBeInTheDocument();
+  });
+
+  it('preserves the search input when a search fetch fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+      if (path === '/padron?search=') return [consorcista];
+      if (path.startsWith('/padron?search=')) throw new Error('network down');
+      return {};
+    });
+
+    renderPanel();
+    await screen.findByText('Perez, Ana');
+
+    const searchInput = screen.getByRole('textbox', { name: /buscar consorcistas/i });
+    await user.type(searchInput, 'Gomez');
+
+    expect(await screen.findByRole('button', { name: /reintentar/i })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /buscar consorcistas/i })).toHaveValue('Gomez');
+  });
+
+  it('ignores stale search responses that resolve out of order', async () => {
+    const user = userEvent.setup();
+    const slowMatch = { ...consorcista, id: 'slow', nombre: 'Viejo', apellido: 'Stale' };
+    const fastMatch = { ...consorcista, id: 'fast', nombre: 'Lucia', apellido: 'Reciente' };
+    let resolveFirstSearch: (rows: unknown) => void = () => {};
+
+    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+      if (path === '/padron?search=') return [consorcista];
+      if (path === '/padron?search=a') {
+        return new Promise((resolve) => {
+          resolveFirstSearch = resolve;
+        });
+      }
+      if (path === '/padron?search=ab') return [fastMatch];
+      return [];
+    });
+
+    renderPanel();
+    await screen.findByText('Perez, Ana');
+
+    const searchInput = screen.getByRole('textbox', { name: /buscar consorcistas/i });
+    await user.type(searchInput, 'a');
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith('/padron?search=a', expect.anything())
+    );
+
+    await user.type(searchInput, 'b');
+    expect(await screen.findByText('Reciente, Lucia')).toBeInTheDocument();
+
+    resolveFirstSearch([slowMatch]);
+    await waitFor(() => {
+      expect(screen.getByText('Reciente, Lucia')).toBeInTheDocument();
+      expect(screen.queryByText('Stale, Viejo')).not.toBeInTheDocument();
     });
   });
 });

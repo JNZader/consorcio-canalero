@@ -18,7 +18,9 @@ export interface Sugerencia {
     type: 'FeatureCollection';
     features: Array<{
       type: 'Feature';
-      geometry: { type: 'LineString'; coordinates: number[][] };
+      geometry:
+        | { type: 'LineString'; coordinates: number[][] }
+        | { type: 'Point'; coordinates: number[] };
       properties?: Record<string, unknown>;
     }>;
   } | null;
@@ -109,10 +111,11 @@ export const sugerenciasApi = {
    * exacto del flujo `POST /denuncias`). Esto es lo que permite que
    * la sugerencia aparezca después en `GET /sugerencias/mine`.
    */
-  create: (data: SugerenciaCreate): Promise<Sugerencia> =>
+  create: (data: SugerenciaCreate, idempotencyKey?: string): Promise<Sugerencia> =>
     apiFetch('/sugerencias', {
       method: 'POST',
       body: JSON.stringify(data),
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
     }),
 
   /**
@@ -139,7 +142,8 @@ export const sugerenciasApi = {
       prioridad?: string;
       sort?: string;
       order?: string;
-    } = {}
+    } = {},
+    options?: { signal?: AbortSignal }
   ): Promise<{ items: Sugerencia[]; total: number; page: number; limit: number }> => {
     const searchParams = new URLSearchParams();
     if (params.page) searchParams.set('page', params.page.toString());
@@ -152,7 +156,8 @@ export const sugerenciasApi = {
     if (params.sort) searchParams.set('sort', params.sort);
     if (params.order) searchParams.set('order', params.order);
 
-    return apiFetch(`/sugerencias?${searchParams.toString()}`);
+    const endpoint = `/sugerencias?${searchParams.toString()}`;
+    return options?.signal ? apiFetch(endpoint, { signal: options.signal }) : apiFetch(endpoint);
   },
 
   /**
@@ -168,17 +173,26 @@ export const sugerenciasApi = {
   /**
    * Obtener estadisticas.
    */
-  getStats: (): Promise<SugerenciasStats> => apiFetch('/sugerencias/stats'),
+  getStats: (options?: { signal?: AbortSignal }): Promise<SugerenciasStats> =>
+    options?.signal
+      ? apiFetch('/sugerencias/stats', { signal: options.signal })
+      : apiFetch('/sugerencias/stats'),
 
   /**
    * Obtener temas para proxima reunion.
    */
-  getProximaReunion: (): Promise<Sugerencia[]> => apiFetch('/sugerencias/proxima-reunion'),
+  getProximaReunion: (options?: { signal?: AbortSignal }): Promise<Sugerencia[]> =>
+    options?.signal
+      ? apiFetch('/sugerencias/proxima-reunion', { signal: options.signal })
+      : apiFetch('/sugerencias/proxima-reunion'),
 
   /**
    * Obtener detalle de sugerencia.
    */
-  get: (id: string): Promise<Sugerencia> => apiFetch(`/sugerencias/${id}`),
+  get: (id: string, options?: { signal?: AbortSignal }): Promise<Sugerencia> =>
+    options?.signal
+      ? apiFetch(`/sugerencias/${id}`, { signal: options.signal })
+      : apiFetch(`/sugerencias/${id}`),
 
   /**
    * Actualizar sugerencia.

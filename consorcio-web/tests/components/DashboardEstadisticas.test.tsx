@@ -6,7 +6,6 @@ import { DashboardEstadisticas } from '../../src/components/admin/management/Das
 import { apiFetch, statsApi } from '../../src/lib/api';
 
 vi.mock('../../src/lib/query', () => ({
-  useDashboardStats: vi.fn(),
   useMonitoringDashboard: vi.fn(),
 }));
 
@@ -17,7 +16,7 @@ vi.mock('../../src/lib/api', () => ({
   },
 }));
 
-import { useDashboardStats, useMonitoringDashboard } from '../../src/lib/query';
+import { useMonitoringDashboard } from '../../src/lib/query';
 
 const renderPanel = () =>
   render(
@@ -32,13 +31,13 @@ describe('DashboardEstadisticas', () => {
   });
 
   it('renders KPI cards and charts with fetched optional data', async () => {
-    vi.mocked(useDashboardStats).mockReturnValue({
-      stats: {
+    vi.mocked(useMonitoringDashboard).mockReturnValue({
+      data: {
         denuncias: { pendiente: 2, en_revision: 3, resuelto: 1 },
         denuncias_nuevas_semana: 4,
+        summary: {},
       },
     } as never);
-    vi.mocked(useMonitoringDashboard).mockReturnValue({ data: { summary: {} } } as never);
 
     vi.mocked(apiFetch)
       .mockResolvedValueOnce({ total_ingresos: 1000, total_gastos: 250 } as never)
@@ -66,7 +65,6 @@ describe('DashboardEstadisticas', () => {
   });
 
   it('shows fallback empty states when optional calls fail', async () => {
-    vi.mocked(useDashboardStats).mockReturnValue({ stats: undefined } as never);
     vi.mocked(useMonitoringDashboard).mockReturnValue({ data: undefined } as never);
 
     vi.mocked(apiFetch).mockRejectedValue(new Error('network'));
@@ -90,13 +88,13 @@ describe('DashboardEstadisticas', () => {
       [100, 500, '20%'],    // 100/500 = 20%
       [50, 200, '25%'],     // 50/200 = 25%
     ])('calculates correct budget ratio: gastos=%d / ingresos=%d = %s', async (gastos, ingresos, expectedRatio) => {
-      vi.mocked(useDashboardStats).mockReturnValue({
-        stats: {
+      vi.mocked(useMonitoringDashboard).mockReturnValue({
+        data: {
           denuncias: { pendiente: 1, en_revision: 1, resuelto: 1 },
           denuncias_nuevas_semana: 1,
+          summary: {},
         },
       } as never);
-      vi.mocked(useMonitoringDashboard).mockReturnValue({ data: { summary: {} } } as never);
 
       vi.mocked(apiFetch)
         .mockResolvedValueOnce({ total_ingresos: ingresos, total_gastos: gastos } as never)
@@ -116,13 +114,13 @@ describe('DashboardEstadisticas', () => {
       [5, 10, 15],         // 5 + 10 = 15
       [10, 1, 11],         // 10 + 1 = 11
     ])('calculates active reports: pendiente=%d + en_revision=%d = %d', async (pendiente, en_revision, expected) => {
-      vi.mocked(useDashboardStats).mockReturnValue({
-        stats: {
+      vi.mocked(useMonitoringDashboard).mockReturnValue({
+        data: {
           denuncias: { pendiente, en_revision, resuelto: 1 },
           denuncias_nuevas_semana: 2,
+          summary: {},
         },
       } as never);
-      vi.mocked(useMonitoringDashboard).mockReturnValue({ data: { summary: {} } } as never);
 
       vi.mocked(apiFetch)
         .mockResolvedValueOnce({ total_ingresos: 1000, total_gastos: 250 } as never)
@@ -138,13 +136,13 @@ describe('DashboardEstadisticas', () => {
 
   describe('flood history parsing', () => {
     it('calculates flood variation correctly with multiple data points', async () => {
-      vi.mocked(useDashboardStats).mockReturnValue({
-        stats: {
+      vi.mocked(useMonitoringDashboard).mockReturnValue({
+        data: {
           denuncias: { pendiente: 1, en_revision: 1, resuelto: 1 },
           denuncias_nuevas_semana: 1,
+          summary: {},
         },
       } as never);
-      vi.mocked(useMonitoringDashboard).mockReturnValue({ data: { summary: {} } } as never);
 
       vi.mocked(apiFetch)
         .mockResolvedValueOnce({ total_ingresos: 1000, total_gastos: 250 } as never)
@@ -168,14 +166,12 @@ describe('DashboardEstadisticas', () => {
     });
 
     it('uses monitoring summary data as fallback for flood percentage', async () => {
-      vi.mocked(useDashboardStats).mockReturnValue({
-        stats: {
+      vi.mocked(useMonitoringDashboard).mockReturnValue({
+        data: {
           denuncias: { pendiente: 1, en_revision: 1, resuelto: 1 },
           denuncias_nuevas_semana: 1,
+          summary: { porcentaje_problematico: 8.5 },
         },
-      } as never);
-      vi.mocked(useMonitoringDashboard).mockReturnValue({
-        data: { summary: { porcentaje_problematico: 8.5 } },
       } as never);
 
       vi.mocked(apiFetch)
@@ -194,14 +190,10 @@ describe('DashboardEstadisticas', () => {
     });
 
     it('falls back to latest_analyses porcentaje_area from real backend /monitoring/dashboard contract (C16)', async () => {
-      vi.mocked(useDashboardStats).mockReturnValue({
-        stats: {
-          denuncias: { pendiente: 3, en_revision: 2, resuelto: 1 },
-          denuncias_nuevas_semana: 5,
-        },
-      } as never);
       vi.mocked(useMonitoringDashboard).mockReturnValue({
         data: {
+          denuncias: { pendiente: 3, en_revision: 2, resuelto: 1 },
+          denuncias_nuevas_semana: 5,
           latest_analyses: [
             {
               id: 'an-1',

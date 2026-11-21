@@ -1,6 +1,7 @@
 import { Badge, Button, Container, Group, Paper } from '@mantine/core';
 import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { isAbortError } from '../../../lib/abortUtils';
 import { apiFetch, type DenunciaStatsResponse, type Report, reportsApi } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
 import { showError, showSuccess } from '../../../lib/notifications';
@@ -104,11 +105,31 @@ export default function ReportsPanel({ active = true }: Readonly<{ active?: bool
   const [publicComment, setPublicComment] = useState('');
   const [updating, setUpdating] = useState(false);
 
+  // Abort & stale-request tracking for async fetches
+  const listAbortRef = useRef<AbortController | null>(null);
+  const listSeqRef = useRef(0);
+  const historyAbortRef = useRef<AbortController | null>(null);
+  const historySeqRef = useRef(0);
+  // Keep one idempotency key per selected batch across retries; rotate only on new selection or non-error server response
+  const bulkIdempotencyRef = useRef<{ signature: string; key: string } | null>(null);
+
   // Hook para anuncios de accesibilidad
   const { announce } = useLiveRegion();
   // Use ref to avoid recreating loadReports on announce changes
   const announceRef = useRef(announce);
   announceRef.current = announce;
+
+  useEffect(() => {
+    setSelectedIds([]);
+    bulkIdempotencyRef.current = null;
+  }, [page, filterStatus, filterCategory, searchQuery, sort, order]);
+
+  useEffect(() => {
+    return () => {
+      listAbortRef.current?.abort();
+      historyAbortRef.current?.abort();
+    };
+  }, []);
 
   const handleFilterStatusChange = useCallback((value: string | null) => {
     setFilterStatus(value);
@@ -146,11 +167,20 @@ export default function ReportsPanel({ active = true }: Readonly<{ active?: bool
   }, []);
 
   const loadReports = useCallback(async () => {
+    listAbortRef.current?.abort();
+    const controller = new AbortController();
+    listAbortRef.current = controller;
+    const seq = ++listSeqRef.current;
+
     setLoading(true);
     announceRef.current('Cargando reportes...');
     try {
       const getStatsFn = (
-        reportsApi as { getStats?: () => Promise<DenunciaStatsResponse | ReportStatusCounts> }
+        reportsApi as {
+          getStats?: (options?: {
+            signal?: AbortSignal;
+          }) => Promise<DenunciaStatsResponse | ReportStatusCounts>;
+        }
       ).getStats;
       const [data, statsResponse] = await Promise.all([
         reportsApi.getAll(
@@ -160,14 +190,16 @@ export default function ReportsPanel({ active = true }: Readonly<{ active?: bool
           filterCategory || undefined,
           searchQuery || undefined,
           sort,
-          order
+          order,
+          { signal: controller.signal }
         ),
         typeof getStatsFn === 'function'
           ? Promise.resolve()
-              .then(() => getStatsFn())
+              .then(() => getStatsFn({ signal: controller.signal }))
               .catch(() => null)
           : Promise.resolve(null),
       ]);
+      if (controller.signal.aborted || seq !== listSeqRef.current) return;
       setReports(data.items);
       setTotalPages(Math.max(1, Math.ceil(data.total / ITEMS_PER_PAGE)));
       const parsedGlobal = parseGlobalStats(statsResponse);
@@ -179,13 +211,16 @@ export default function ReportsPanel({ active = true }: Readonly<{ active?: bool
       setLoadError(null);
       announceRef.current(`${data.items.length} reportes cargados`);
     } catch (error) {
+      if (isAbortError(error, controller.signal) || seq !== listSeqRef.current) return;
       logger.error('Error loading reports:', error);
       setReports([]);
       setLoadError(textoError(erroresUi.cargarDenuncias));
       showError(erroresUi.cargarDenuncias.titulo, erroresUi.cargarDenuncias.detalle);
       announceRef.current(textoError(erroresUi.cargarDenuncias));
     } finally {
-      setLoading(false);
+      if (seq === listSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, [page, filterStatus, filterCategory, searchQuery, sort, order]);
 
@@ -210,11 +245,22 @@ export default function ReportsPanel({ active = true }: Readonly<{ active?: bool
 
   const runBulk = async () => {
     setBulkRunning(true);
+    const signature = `${[...selectedIds].sort().join(',')}:en_revision`;
+    if (bulkIdempotencyRef.current?.signature !== signature) {
+      bulkIdempotencyRef.current = { signature, key: crypto.randomUUID() };
+    }
     try {
-      const result = await reportsApi.bulkUpdate(selectedIds, 'en_revision', crypto.randomUUID());
+      const result = await reportsApi.bulkUpdate(
+        selectedIds,
+        'en_revision',
+        bulkIdempotencyRef.current.key
+      );
       const failed = result.resultados.filter((row) => !row.ok);
-      if (failed.length === 0) showSuccess('Listo', 'Se actualizaron las denuncias seleccionadas');
-      else
+      bulkIdempotencyRef.current = null;
+      if (failed.length === 0) {
+        showSuccess('Listo', 'Se actualizaron las denuncias seleccionadas');
+        setSelectedIds([]);
+      } else {
         showError(
           'Algunas no se actualizaron',
           failed
@@ -222,7 +268,8 @@ export default function ReportsPanel({ active = true }: Readonly<{ active?: bool
             .filter(Boolean)
             .join(' ')
         );
-      setSelectedIds([]);
+        setSelectedIds(failed.map((row) => row.id));
+      }
       setBulkOpen(false);
       await loadReports();
     } catch (error) {
@@ -231,7 +278,7 @@ export default function ReportsPanel({ active = true }: Readonly<{ active?: bool
       logger.error('Error running bulk update:', error);
       showError(erroresUi.actualizarDenuncia.titulo, erroresUi.actualizarDenuncia.detalle);
       announceRef.current(textoError(erroresUi.actualizarDenuncia));
-      // Se cierra el diálogo, pero la selección queda intacta para que
+      // Se cierra el diálogo, pero la selección y key quedan intactas para que
       // el operador pueda reintentar sin volver a tildar filas.
       setBulkOpen(false);
     } finally {
@@ -251,15 +298,31 @@ export default function ReportsPanel({ active = true }: Readonly<{ active?: bool
    * and the modal showed an empty timeline forever).
    */
   const loadHistory = async (id: string) => {
+    historyAbortRef.current?.abort();
+    const controller = new AbortController();
+    historyAbortRef.current = controller;
+    const seq = ++historySeqRef.current;
+
     setLoadingHistory(true);
     try {
-      const denuncia = await apiFetch<{ historial?: SeguimientoEntry[] }>(`/denuncias/${id}`);
+      const denuncia = await apiFetch<{ historial?: SeguimientoEntry[] }>(`/denuncias/${id}`, {
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted || seq !== historySeqRef.current) return;
       setHistory(denuncia.historial ?? []);
     } catch (err) {
+      if (isAbortError(err, controller.signal) || seq !== historySeqRef.current) return;
       logger.error('Error loading report history:', err);
     } finally {
-      setLoadingHistory(false);
+      if (seq === historySeqRef.current) {
+        setLoadingHistory(false);
+      }
     }
+  };
+
+  const handleCloseDetail = () => {
+    historyAbortRef.current?.abort();
+    closeDetail();
   };
 
   const handleViewDetail = (report: Report) => {
@@ -405,7 +468,7 @@ export default function ReportsPanel({ active = true }: Readonly<{ active?: bool
 
       <ReportDetailModal
         opened={detailOpened}
-        onClose={closeDetail}
+        onClose={handleCloseDetail}
         selectedReport={selectedReport}
         history={history}
         loadingHistory={loadingHistory}

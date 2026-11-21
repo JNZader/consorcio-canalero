@@ -22,6 +22,10 @@ import { describe, expect, it, vi } from 'vitest';
 import React from 'react';
 
 import { SuggestionDetailModal } from '../../src/components/admin/sugerencias/components/SuggestionDetailModal';
+import {
+  formatLocalIsoDate,
+  parseLocalIsoDate,
+} from '../../src/components/admin/sugerencias/sugerenciaDateUtils';
 
 // ── Stub SugerenciaGeometryMap so the test does NOT boot MapLibre ───────────
 // We capture the props it receives so assertions can pin the prop bridge.
@@ -145,5 +149,62 @@ describe('SuggestionDetailModal — canales migration (Batch 5)', () => {
       | undefined;
     expect(Array.isArray(lastArgs?.canales)).toBe(true);
     expect(lastArgs?.canales).toHaveLength(0);
+  });
+
+  it('renders Ver en el mapa deep link for both Point and LineString geometries', () => {
+    const pointSug = makeSelectedSugerencia();
+    pointSug.geometry = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [-62.71, -32.65] },
+          properties: {},
+        },
+      ],
+    };
+
+    const { rerender } = renderModal({ selectedSugerencia: pointSug });
+    expect(screen.getByRole('link', { name: /ver en el mapa/i })).toHaveAttribute(
+      'href',
+      '/mapa?lat=-32.65&lng=-62.71&zoom=15'
+    );
+
+    const lineSug = makeSelectedSugerencia();
+    rerender(
+      <MantineProvider env="test">
+        <SuggestionDetailModal
+          opened
+          onClose={vi.fn()}
+          selectedSugerencia={lineSug}
+          canales={makeCanales()}
+          newEstado="pendiente"
+          setNewEstado={vi.fn()}
+          publicComment=""
+          setPublicComment={vi.fn()}
+          adminNotes=""
+          setAdminNotes={vi.fn()}
+          agendarFecha={null}
+          setAgendarFecha={vi.fn()}
+          onAgendar={vi.fn()}
+          agendando={false}
+          onUpdate={vi.fn()}
+          updating={false}
+        />
+      </MantineProvider>
+    );
+    expect(screen.getByRole('link', { name: /ver en el mapa/i })).toHaveAttribute(
+      'href',
+      '/mapa?lat=0&lng=0&zoom=15'
+    );
+  });
+
+  it('parses and formats ISO dates in local calendar time without UTC day shift', () => {
+    const parsed = parseLocalIsoDate('2026-04-10');
+    expect(parsed).not.toBeNull();
+    expect(parsed?.getFullYear()).toBe(2026);
+    expect(parsed?.getMonth()).toBe(3);
+    expect(parsed?.getDate()).toBe(10);
+    expect(formatLocalIsoDate(parsed as Date)).toBe('2026-04-10');
   });
 });

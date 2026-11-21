@@ -1,7 +1,7 @@
 import { Badge, Grid, Group, Paper, Stack, Text, Title } from '@mantine/core';
 import { memo, useEffect, useMemo, useState } from 'react';
 import { apiFetch, statsApi } from '../../../lib/api';
-import { useDashboardStats, useMonitoringDashboard } from '../../../lib/query';
+import { useMonitoringDashboard } from '../../../lib/query';
 import {
   IconAlertTriangle,
   IconChartBar,
@@ -140,25 +140,26 @@ function parseFloodHistory(payload: unknown): FloodHistoryPoint[] {
 }
 
 export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
-  const { stats } = useDashboardStats();
   const { data: monitoringData } = useMonitoringDashboard();
   const [financeSummary, setFinanceSummary] = useState<FinanceBalanceSummary | null>(null);
   const [financeData, setFinanceData] = useState<FinanceChartRow[]>([]);
   const [floodHistoryData, setFloodHistoryData] = useState<FloodHistoryPoint[]>([]);
 
   useEffect(() => {
-    let mounted = true;
+    const controller = new AbortController();
 
     async function fetchOptionalData() {
       const currentYear = new Date().getFullYear();
 
       const [balanceResult, budgetResult, historicalResult] = await Promise.allSettled([
-        apiFetch<FinanceBalanceSummary>(`/finanzas/resumen/${currentYear}`),
-        apiFetch<unknown>(`/finanzas/ejecucion/${currentYear}`),
-        statsApi.getHistorical({ limit: 6 }),
+        apiFetch<FinanceBalanceSummary>(`/finanzas/resumen/${currentYear}`, {
+          signal: controller.signal,
+        }),
+        apiFetch<unknown>(`/finanzas/ejecucion/${currentYear}`, { signal: controller.signal }),
+        statsApi.getHistorical({ limit: 6 }, { signal: controller.signal }),
       ]);
 
-      if (!mounted) {
+      if (controller.signal.aborted) {
         return;
       }
 
@@ -178,26 +179,27 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
     fetchOptionalData();
 
     return () => {
-      mounted = false;
+      controller.abort();
     };
   }, []);
 
   const reportStats = useMemo(() => {
-    if (!stats?.denuncias) {
+    const denuncias = monitoringData?.denuncias;
+    if (!denuncias) {
       return [] as Array<{ name: string; value: number; color: string }>;
     }
 
     return [
-      { name: 'Pendientes', value: stats.denuncias.pendiente ?? 0, color: 'red.6' },
-      { name: 'En Proceso', value: stats.denuncias.en_revision ?? 0, color: 'orange.6' },
-      { name: 'Resueltos', value: stats.denuncias.resuelto ?? 0, color: 'green.6' },
+      { name: 'Pendientes', value: denuncias.pendiente ?? 0, color: 'red.6' },
+      { name: 'En Proceso', value: denuncias.en_revision ?? 0, color: 'orange.6' },
+      { name: 'Resueltos', value: denuncias.resuelto ?? 0, color: 'green.6' },
     ];
-  }, [stats]);
+  }, [monitoringData]);
 
-  const reportesActivos = stats?.denuncias
-    ? (stats.denuncias.pendiente ?? 0) + (stats.denuncias.en_revision ?? 0)
+  const reportesActivos = monitoringData?.denuncias
+    ? (monitoringData.denuncias.pendiente ?? 0) + (monitoringData.denuncias.en_revision ?? 0)
     : null;
-  const reportesNuevosSemana = asNumber(stats?.denuncias_nuevas_semana);
+  const reportesNuevosSemana = asNumber(monitoringData?.denuncias_nuevas_semana);
 
   const budgetRatio =
     financeSummary && financeSummary.total_ingresos > 0

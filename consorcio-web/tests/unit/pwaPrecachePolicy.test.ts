@@ -14,6 +14,7 @@ import {
   isExcludedFromInstallPrecache,
   MAP_ENGINE_NETWORK_ONLY,
   MARTIN_TILE_NETWORK_ONLY,
+  matchCampoMapEngineAsset,
   PRECACHE_GLOB_IGNORES,
   PRECACHE_GLOB_PATTERNS,
   TERRAIN_TILE_NETWORK_ONLY,
@@ -51,8 +52,31 @@ const EXCLUDED = [
   'assets/vendor-charts-q80CQEk6.js',
   'assets/vendor-mantine-dates-CX0f9IBc.js',
   'assets/vendor-mantine-dates-CrbPQ12V.css',
+  'assets/AdminLayout-A1b2C3d4.js',
+  'assets/AdminDashboard-E5f6G7h8.js',
+  'assets/ReportsPanel-I9j0K1l2.js',
+  'assets/SugerenciasPanel-M3n4O5p6.js',
+  'assets/ParticipacionPanel-Q7r8S9t0.js',
+  'assets/PadronPanel-U1v2W3x4.js',
+  'assets/TramitesPanel-Y5z6A7b8.js',
+  'assets/ReunionesPanel-C9d0E1f2.js',
+  'assets/FinanzasPanel-G3h4I5j6.js',
+  'assets/DemPipelinePanel-K7l8M9n0.js',
+  'assets/ImageExplorerPanel-O1p2Q3r4.js',
+  'assets/ConocimientoPanel-S5t6U7v8.js',
+  'assets/CanalesPublicacionPanel-W9x0Y1z2.js',
+  'assets/ThemeLabPanel-A3b4C5d6.js',
+  'assets/DashboardEstadisticas-E7f8G9h0.js',
+  'assets/CampoPage-I1j2K3l4.js',
+  'assets/InformeAreaDrawer-M5n6O7p8.js',
+  'assets/ElevationProfileChart-Q9r0S1t2.js',
+  'assets/jszip-U3v4W5x6.js',
+  'assets/togeojson-Y7z8A9b0.js',
+  'assets/qrcode-C1d2E3f4.js',
   'version.json',
   '_worker.js',
+  '_headers',
+  '_redirects',
   'icons/icon-512.png',
   'data/pilar-verde/bpa_enriched.json',
   'capas/zona.geojson',
@@ -152,6 +176,63 @@ describe('map runtime stays on the network', () => {
     expect(CAMPO_MAP_ENGINE_CACHE_FIRST.test('/assets/maplibre-gl-worker-Br3j0JGE.js')).toBe(true);
     expect(CAMPO_MAP_ENGINE_CACHE_FIRST.test('/assets/vendor-mantine-B5HaKcPQ.js')).toBe(false);
     expect(CAMPO_MAP_ENGINE_CACHE_FIRST.test('/assets/MapaPage-DvhaKh9P.js')).toBe(false);
+
+    expect(
+      matchCampoMapEngineAsset({
+        url: new URL('https://app.example/assets/vendor-maplibre-OhB1yxs2.js'),
+        request: { referrer: 'https://app.example/campo/tok-1' } as Request,
+      })
+    ).toBe(true);
+    expect(
+      matchCampoMapEngineAsset({
+        url: new URL('https://app.example/assets/vendor-maplibre-qvkd0SPb.css'),
+        request: { referrer: 'https://app.example/campo/tok-1' } as Request,
+      })
+    ).toBe(true);
+    expect(
+      matchCampoMapEngineAsset({
+        url: new URL('https://app.example/assets/maplibre-gl-worker-Br3j0JGE.js'),
+        request: { referrer: 'https://app.example/campo/tok-1' } as Request,
+      })
+    ).toBe(true);
+    expect(
+      matchCampoMapEngineAsset({
+        url: new URL('https://app.example/assets/vendor-maplibre-OhB1yxs2.js'),
+        request: { referrer: 'https://app.example/mapa' } as Request,
+      })
+    ).toBe(false);
+    expect(
+      matchCampoMapEngineAsset({
+        url: new URL('https://app.example/assets/vendor-maplibre-OhB1yxs2.js'),
+        request: { referrer: '' } as Request,
+      })
+    ).toBe(false);
+    expect(
+      matchCampoMapEngineAsset({
+        url: new URL('https://app.example/assets/vendor-mantine-B5HaKcPQ.js'),
+        request: { referrer: 'https://app.example/campo/tok-1' } as Request,
+      })
+    ).toBe(false);
+  });
+
+  it('uses status 200 only on same-origin and CORS SW caches while keeping 0 for opaque Esri tiles', () => {
+    const viteConfig = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '../../vite.config.ts'),
+      'utf8'
+    );
+    expect(viteConfig).toContain('urlPattern: matchCampoMapEngineAsset');
+
+    const sliceFor = (cacheName: string) => {
+      const idx = viteConfig.indexOf(`cacheName: '${cacheName}'`);
+      expect(idx).toBeGreaterThan(-1);
+      return viteConfig.slice(idx, idx + 450);
+    };
+
+    expect(sliceFor('campo-map-engine')).toContain('statuses: [200]');
+    expect(sliceFor('lazy-vendor-chunks')).toContain('statuses: [200]');
+    expect(sliceFor('api-public')).toContain('statuses: [200]');
+    expect(sliceFor('geo-public-vectors')).toContain('statuses: [200]');
+    expect(sliceFor('arcgis-tiles')).toContain('statuses: [0, 200]');
   });
 
   it('keeps /api/v2/public/campo/* NetworkOnly in SW before generic public NetworkFirst', () => {
@@ -183,5 +264,28 @@ describe('frontend image', () => {
       expect(line).toContain('pwaPrecachePolicy.ts');
       expect(line).toContain('vite.modulePreload.ts');
     }
+  });
+
+  it('prevents 1-year caching of SW files, preserves security headers in locations, and strips Cloudflare files', () => {
+    const dockerfile = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '../../Dockerfile'),
+      'utf8'
+    );
+
+    const staticAssetIdx = dockerfile.indexOf('location ~* \\.(js|css');
+    expect(staticAssetIdx).toBeGreaterThan(-1);
+    for (const swLoc of ['location = /sw.js', 'location = /registerSW.js', 'location ~ ^/workbox-.*\\.js$']) {
+      const idx = dockerfile.indexOf(swLoc);
+      expect(idx, swLoc).toBeGreaterThan(-1);
+      expect(idx, swLoc).toBeLessThan(staticAssetIdx);
+    }
+
+    expect(dockerfile).toContain('/etc/nginx/security-headers.conf');
+    expect(dockerfile).toContain('X-Frame-Options "DENY"');
+    expect(dockerfile).toContain('Permissions-Policy');
+    expect(dockerfile).toContain('location ~ ^/_(worker\\.js|headers|redirects)$');
+    expect(dockerfile).toContain(
+      'rm -f /usr/share/nginx/html/_worker.js /usr/share/nginx/html/_headers /usr/share/nginx/html/_redirects'
+    );
   });
 });

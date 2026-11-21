@@ -4,13 +4,13 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import FinanzasPanel from '../../src/components/admin/management/FinanzasPanel';
-import { API_URL, apiFetch, getAuthToken } from '../../src/lib/api';
+import { apiFetch, fetchAuthenticatedFile } from '../../src/lib/api';
+import { QueryError } from '../../src/lib/queryError';
 import contracts from '../fixtures/admin-api-contracts.json';
 
 vi.mock('../../src/lib/api', () => ({
-  API_URL: 'http://localhost:8000',
   apiFetch: vi.fn(),
-  getAuthToken: vi.fn().mockResolvedValue('token'),
+  fetchAuthenticatedFile: vi.fn(),
 }));
 
 vi.mock('@mantine/notifications', () => ({
@@ -57,8 +57,9 @@ const renderPanel = () =>
 
 function mockFinanceApi() {
   vi.mocked(apiFetch).mockImplementation(async (path: string, options?: RequestInit) => {
-    if (path === '/finanzas/gastos' && !options) return [gasto];
-    if (path === '/finanzas/ingresos' && !options) return [ingreso];
+    const method = options?.method ?? 'GET';
+    if (path === '/finanzas/gastos' && method === 'GET') return [gasto];
+    if (path === '/finanzas/ingresos' && method === 'GET') return [ingreso];
     if (path.startsWith('/finanzas/resumen/')) {
       return { total_ingresos: 50000, total_gastos: 20000, balance: 30000 };
     }
@@ -78,8 +79,8 @@ function mockFinanceApiWithHangingGastoPost() {
         resolvePost = resolve;
       });
     }
-    if (path === '/finanzas/gastos' && !options) return [gasto];
-    if (path === '/finanzas/ingresos' && !options) return [ingreso];
+    if (path === '/finanzas/gastos' && (!options?.method || options.method === 'GET')) return [gasto];
+    if (path === '/finanzas/ingresos' && (!options?.method || options.method === 'GET')) return [ingreso];
     if (path.startsWith('/finanzas/resumen/')) {
       return { total_ingresos: 50000, total_gastos: 20000, balance: 30000 };
     }
@@ -317,13 +318,11 @@ describe('FinanzasPanel', () => {
   it('downloads the authenticated year-specific financial summary PDF', async () => {
     const user = userEvent.setup();
     const currentYear = new Date().getFullYear();
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(new Blob(['pdf'], { type: 'application/pdf' }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/pdf' },
-      })
-    );
-    vi.stubGlobal('fetch', fetchMock);
+    vi.mocked(fetchAuthenticatedFile).mockResolvedValueOnce({
+      blob: new Blob(['pdf'], { type: 'application/pdf' }),
+      filename: `resumen_financiero_${currentYear}.pdf`,
+      contentType: 'application/pdf',
+    });
     const appendSpy = vi.spyOn(document.body, 'appendChild');
 
     renderPanel();
@@ -334,17 +333,15 @@ describe('FinanzasPanel', () => {
     );
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        `${API_URL}/api/v2/finanzas/resumen/${currentYear}/export-pdf`,
+      expect(fetchAuthenticatedFile).toHaveBeenCalledWith(
+        `/finanzas/resumen/${currentYear}/export-pdf`,
         {
           headers: {
             Accept: 'application/pdf',
-            Authorization: 'Bearer token',
           },
         }
       );
     });
-    expect(getAuthToken).toHaveBeenCalledTimes(1);
 
     const appendedAnchor = appendSpy.mock.calls
       .map(([node]) => node)
@@ -355,15 +352,7 @@ describe('FinanzasPanel', () => {
 
   it('reports a truthful error when the financial PDF cannot be downloaded', async () => {
     const user = userEvent.setup();
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ detail: 'unavailable' }), {
-          status: 503,
-          headers: { 'Content-Type': 'application/json' },
-        })
-      )
-    );
+    vi.mocked(fetchAuthenticatedFile).mockRejectedValueOnce(new QueryError('unavailable', 503));
 
     renderPanel();
     await screen.findByText('Administración Financiera');

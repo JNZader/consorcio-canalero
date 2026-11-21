@@ -33,6 +33,25 @@ describe('sugerenciasApi', () => {
     // retiraron junto con el flujo anónimo.
     const [, options] = vi.mocked(apiFetch).mock.calls[0];
     expect(options).not.toHaveProperty('skipAuth');
+    expect((options as { headers?: unknown })?.headers).toBeUndefined();
+  });
+
+  it('forwards Idempotency-Key header when provided to create', async () => {
+    await sugerenciasApi.create(
+      {
+        titulo: 'Canal obstruido',
+        descripcion: 'Hay maleza en la compuerta principal',
+      },
+      'idem-key-123'
+    );
+
+    expect(apiFetch).toHaveBeenCalledWith(
+      '/sugerencias',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Idempotency-Key': 'idem-key-123' },
+      })
+    );
   });
 
   it('checkLimit hits the real backend endpoint', async () => {

@@ -57,6 +57,7 @@ export function useSuggestionFormState({
   // reusa el callback que todavía ve `false`. El ref se toma en el mismo
   // turno, antes de cualquier await.
   const inFlightRef = useRef(false);
+  const attemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
 
   const checkRateLimit = useCallback(async () => {
     // El endpoint exige auth — si el usuario no verificó contacto/login
@@ -123,7 +124,20 @@ export function useSuggestionFormState({
 
       try {
         onAttemptStart?.();
-        await sugerenciasApi.create(buildSugerenciaPayload(values, userEmail, userName, geometry));
+        const fingerprint = JSON.stringify({
+          titulo: values.titulo,
+          descripcion: values.descripcion,
+          categoria: values.categoria,
+          geometry,
+        });
+        if (attemptRef.current?.fingerprint !== fingerprint) {
+          attemptRef.current = { fingerprint, key: crypto.randomUUID() };
+        }
+        await sugerenciasApi.create(
+          buildSugerenciaPayload(values, userEmail, userName, geometry),
+          attemptRef.current.key
+        );
+        attemptRef.current = null;
         showSuggestionNotification(
           'Sugerencia enviada',
           'Tu propuesta fue recibida. La comisión la verá en su próxima reunión.',

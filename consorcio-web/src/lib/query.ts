@@ -5,7 +5,7 @@
 
 import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
-import { type Layer, type MonitoringDashboardData, layersApi, monitoringApi, reportsApi, statsApi } from './api';
+import { type DashboardStats, type Layer, type MonitoringDashboardData, layersApi, monitoringApi, reportsApi } from './api';
 import { shouldRetryQuery } from './queryRetry';
 
 // ===========================================
@@ -97,22 +97,23 @@ export { QueryError } from './queryError';
 
 /**
  * Hook para obtener estadisticas del dashboard.
- * Solo hace fetch si el usuario esta autenticado.
+ * Solo hace fetch si el usuario esta autenticado. Comparte cache key con
+ * `useMonitoringDashboard` porque ambos consultan `GET /monitoring/dashboard`.
  */
-export function useDashboardStats(period = '30d') {
+export function useDashboardStats(_period = '30d') {
   const { user, loading: authLoading, initialized } = useAuthStore();
   const isAuthenticated = !!user && !authLoading && initialized;
 
   const query = useQuery({
-    queryKey: queryKeys.dashboardStats(period),
-    queryFn: () => statsApi.getDashboard(period),
+    queryKey: queryKeys.monitoringDashboard(),
+    queryFn: () => monitoringApi.getDashboard(),
     enabled: isAuthenticated,
     staleTime: 1000 * 60 * 5, // 5 minutes
-    refetchInterval: 1000 * 60 * 5, // Refresh every 5 minutes
+    refetchInterval: 1000 * 60 * 10, // Refresh every 10 minutes
   });
 
   return {
-    stats: query.data,
+    stats: query.data as DashboardStats | undefined,
     isLoading: authLoading || query.isLoading,
     isValidating: query.isFetching && !query.isLoading,
     error: query.error as Error | null,
@@ -268,6 +269,7 @@ export function useUpdateReportStatus() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['reports'] });
       qc.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      qc.invalidateQueries({ queryKey: queryKeys.monitoringDashboard() });
     },
   });
 }
@@ -296,6 +298,7 @@ export function useUpdateReport() {
       qc.invalidateQueries({ queryKey: ['reports'] });
       qc.invalidateQueries({ queryKey: ['report', variables.id] });
       qc.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      qc.invalidateQueries({ queryKey: queryKeys.monitoringDashboard() });
     },
   });
 }
@@ -350,7 +353,10 @@ export function useDeleteLayer() {
  * Invalida el cache de estadisticas del dashboard.
  */
 export function invalidateDashboardStats() {
-  return queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.monitoringDashboard() }),
+  ]);
 }
 
 /**
@@ -381,10 +387,10 @@ export function invalidateAll() {
 /**
  * Pre-carga datos del dashboard.
  */
-export function prefetchDashboardStats(period = '30d') {
+export function prefetchDashboardStats(_period = '30d') {
   return queryClient.prefetchQuery({
-    queryKey: queryKeys.dashboardStats(period),
-    queryFn: () => statsApi.getDashboard(period),
+    queryKey: queryKeys.monitoringDashboard(),
+    queryFn: () => monitoringApi.getDashboard(),
   });
 }
 
