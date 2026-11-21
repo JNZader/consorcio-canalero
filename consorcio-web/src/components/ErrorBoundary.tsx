@@ -1,6 +1,7 @@
 import { Alert, Button, Code, Group, Paper, Stack, Text, Title } from '@mantine/core';
 import type { ErrorInfo, ReactNode } from 'react';
 import { Component } from 'react';
+import { reportException } from '../lib/errorReporting';
 import { logger } from '../lib/logger';
 import { erroresUi } from '../lib/userFacingError';
 
@@ -162,6 +163,11 @@ export class ErrorBoundary extends Component<Props, State> {
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     logger.error('ErrorBoundary caught an error:', error, errorInfo);
     this.setState({ errorInfo });
+
+    reportException(error, {
+      boundary: 'ErrorBoundary',
+      componentStack: errorInfo.componentStack ?? undefined,
+    });
 
     // Report to external error logging service
     reportErrorToService(error, errorInfo, 'ErrorBoundary');

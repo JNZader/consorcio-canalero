@@ -99,7 +99,12 @@ def _contar_vertices(coordinates: Any, geometry_type: str) -> int:
                 if not isinstance(posicion, (list, tuple)) or len(posicion) < 2:
                     raise ficha_errors.geometria_invalida("posicion mal formada")
                 lon, lat = posicion[0], posicion[1]
-                if not isinstance(lon, (int, float)) or not isinstance(lat, (int, float)):
+                if (
+                    isinstance(lon, bool)
+                    or isinstance(lat, bool)
+                    or not isinstance(lon, (int, float))
+                    or not isinstance(lat, (int, float))
+                ):
                     raise ficha_errors.geometria_invalida("coordenada no numerica")
                 if not (-180.0 <= lon <= 180.0) or not (-90.0 <= lat <= 90.0):
                     raise ficha_errors.geometria_invalida("coordenada fuera de rango WGS84")

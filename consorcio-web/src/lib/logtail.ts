@@ -25,16 +25,42 @@
 
 import { Logtail } from '@logtail/browser';
 
-const TOKEN = import.meta.env.VITE_LOGTAIL_TOKEN ?? '';
-const ENDPOINT = import.meta.env.VITE_LOGTAIL_ENDPOINT ?? '';
+import { registerLogErrorSink } from './errorReporting';
+import { logger } from './logger';
 
 let logtail: Logtail | null = null;
 
 export function initLogtail(): void {
-  if (!TOKEN) {
+  const token = import.meta.env.VITE_LOGTAIL_TOKEN ?? '';
+  const endpoint = import.meta.env.VITE_LOGTAIL_ENDPOINT ?? '';
+  if (!token) {
     return;
   }
-  logtail = new Logtail(TOKEN, ENDPOINT ? { endpoint: ENDPOINT } : undefined);
+  logtail = new Logtail(token, endpoint ? { endpoint } : undefined);
+  logger.configure({
+    onError: (message, data) => {
+      if (data === undefined) {
+        logError(message);
+      } else if (typeof data === 'object' && data !== null) {
+        logError(message, data);
+      } else {
+        logError(message, { detail: data });
+      }
+    },
+  });
+  registerLogErrorSink((error, context) => {
+    const errorMessage = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    const payload = {
+      ...context,
+      ...(error instanceof Error && error.stack ? { stack: error.stack } : {}),
+    };
+    logError(errorMessage, payload);
+  });
+}
+
+export function resetLogtailForTests(): void {
+  logtail = null;
+  logger.configure({ onError: undefined });
 }
 
 /**

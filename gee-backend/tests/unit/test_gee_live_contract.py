@@ -121,12 +121,30 @@ class TestSentinel2Thumbnail:
         assert img.get("system:index").getInfo() == "20250315T140049_20250315T140049_T21HUB"
 
     def test_miniatura_s2_falso_color(self):
-        """The S2 thumbnail pipeline (if an S2 scene is ever used for anchors)."""
+        """The S2 thumbnail pipeline returns a non-flat false-color PNG from GEE."""
+        import io
+
+        import numpy as np
+        from PIL import Image
+
         from app.domains.geo.informe_area.service import (
             _BANDAS_FALSO_COLOR,
+            _miniatura_por_defecto,
         )
 
         assert "sentinel2" in _BANDAS_FALSO_COLOR
         bandas, _minimo, maximo = _BANDAS_FALSO_COLOR["sentinel2"]
         assert len(bandas) == 3  # NIR, SWIR1, Red — true false-color
         assert maximo > 0
+
+        png = _miniatura_por_defecto(
+            "COPERNICUS/S2_SR_HARMONIZED/20250315T140049_20250315T140049_T21HUB",
+            "sentinel2",
+            _REGION,
+        )
+        assert png is not None
+        assert len(png) > 1024, f"S2 PNG too small: {len(png)} bytes"
+        assert png[:8] == b"\x89PNG\r\n\x1a\n", f"Not a PNG: starts with {png[:8]!r}"
+
+        arr = np.asarray(Image.open(io.BytesIO(png)))
+        assert float(arr.std()) > 1.0, "S2 thumbnail is flat/black"

@@ -4,15 +4,20 @@ import React, { type ReactNode } from 'react';
 import { MantineProvider } from '@mantine/core';
 import ErrorBoundary, { ErrorFallback } from '../../src/components/ErrorBoundary';
 
-const { loggerMock } = vi.hoisted(() => ({
+const { loggerMock, reportExceptionMock } = vi.hoisted(() => ({
   loggerMock: {
     error: vi.fn(),
     warn: vi.fn(),
   },
+  reportExceptionMock: vi.fn(),
 }));
 
 vi.mock('../../src/lib/logger', () => ({
   logger: loggerMock,
+}));
+
+vi.mock('../../src/lib/errorReporting', () => ({
+  reportException: reportExceptionMock,
 }));
 
 function renderWithMantine(ui: ReactNode) {
@@ -65,6 +70,13 @@ describe('ErrorBoundary', () => {
       'ErrorBoundary caught an error:',
       expect.objectContaining({ message: 'Test error message' }),
       expect.objectContaining({ componentStack: expect.any(String) })
+    );
+    expect(reportExceptionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Test error message' }),
+      expect.objectContaining({
+        boundary: 'ErrorBoundary',
+        componentStack: expect.any(String),
+      })
     );
   });
 

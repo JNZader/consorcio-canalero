@@ -182,9 +182,11 @@ jobs:
     timeout-minutes: 30
     services:
       # TEST-02: one Postgres for the job. Each pytest-xdist worker creates
-      # its own database on this server (see tests/new/xdist_db.py).
+      # its own database on this server (see tests/new/xdist_db.py). Use the
+      # pinned pgrouting image (matching deploy.yml) so the Alembic check
+      # below can replay the full migration chain including pgrouting.
       postgres:
-        image: postgis/postgis:16-3.4
+        image: pgrouting/pgrouting:16-3.5-3.8@sha256:4c480c7f9e25a3490573cd6ef86b286fd21162e288cc355e8da2b52518ef6ab8
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
@@ -206,6 +208,28 @@ jobs:
           cache: pip
           cache-dependency-path: gee-backend/requirements-dev.lock
       - run: pip install --no-deps --require-hashes -r requirements-dev.lock
+      - name: Verify Alembic migration chain (alembic upgrade head)
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/migrations_check
+        run: |
+          python3 -c "
+          import psycopg
+          conn = psycopg.connect('postgresql://test:test@localhost:5432/test_consorcio')
+          conn.autocommit = True
+          cur = conn.cursor()
+          cur.execute('DROP DATABASE IF EXISTS migrations_check')
+          cur.execute('CREATE DATABASE migrations_check')
+          conn.close()
+          "
+          alembic upgrade head
+          alembic current
+          python3 -c "
+          import psycopg
+          conn = psycopg.connect('postgresql://test:test@localhost:5432/test_consorcio')
+          conn.autocommit = True
+          conn.cursor().execute('DROP DATABASE IF EXISTS migrations_check')
+          conn.close()
+          "
       # CI-04: piso 80. La corrida de main del 2026-10-13 midió 80.82% en
       # tests/new con .coveragerc (esta suite, que también lo carga, quedó
       # en 83% el mismo día). El piso no pasa de la medición.
@@ -562,7 +586,7 @@ jobs:
     name: Backend CI
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [changes, lint, typecheck, test, mutation, security, image-backend, image-geo-worker, image-security-policy]
+    needs: [changes, lint, typecheck, test, scripts-tests, mutation, security, image-backend, image-geo-worker, image-security-policy]
     if: ${{ always() }}
     permissions:
       contents: read
@@ -571,6 +595,7 @@ jobs:
       LINT_RESULT: ${{ needs.lint.result }}
       TYPECHECK_RESULT: ${{ needs.typecheck.result }}
       TEST_RESULT: ${{ needs.test.result }}
+      SCRIPTS_TESTS_RESULT: ${{ needs.scripts-tests.result }}
       MUTATION_RESULT: ${{ needs.mutation.result }}
       SECURITY_RESULT: ${{ needs.security.result }}
       IMAGE_BACKEND_RESULT: ${{ needs.image-backend.result }}
@@ -592,6 +617,7 @@ jobs:
           require lint "$LINT_RESULT"
           require typecheck "$TYPECHECK_RESULT"
           require test "$TEST_RESULT"
+          require scripts-tests "$SCRIPTS_TESTS_RESULT"
           require mutation "$MUTATION_RESULT"
           require security "$SECURITY_RESULT"
           require image-backend "$IMAGE_BACKEND_RESULT"

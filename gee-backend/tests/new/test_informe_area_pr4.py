@@ -1144,11 +1144,28 @@ def test_idcor_live_wfs():
         timeout=60,
     )
     leyenda.raise_for_status()
-    from app.domains.geo.etl.idecor_coberturas import normalizar_leyenda
+    from app.domains.geo.etl.idecor_coberturas import CAPAS, normalizar_leyenda, url_get_coverage
 
     entradas = normalizar_leyenda(leyenda.json())
     agua = [e for e in entradas if "agua estacional" in e["etiqueta"].lower()]
     assert len(agua) == 1 and agua[0]["codigo"] == 9
+
+    # Bounded 200 m x 200 m WCS 1.0.0 GetCoverage around Bell Ville (-62.69, -32.63 -> EPSG:22174)
+    wcs_url = url_get_coverage(
+        CAPAS["uso_2024_2025"]["coverage_id"],
+        (4529000.0, 6390100.0, 4529200.0, 6390300.0),
+    )
+    wcs_resp = requests.get(wcs_url, timeout=60)
+    wcs_resp.raise_for_status()
+    tiff_bytes = wcs_resp.content
+    assert tiff_bytes[:4] in (b"II*\x00", b"MM\x00*"), "WCS debe devolver GeoTIFF válido"
+
+    import rasterio
+
+    with rasterio.io.MemoryFile(tiff_bytes) as mem, mem.open() as ds:
+        assert ds.width > 0 and ds.height > 0
+        arr = ds.read(1)
+        assert (arr != 255).any(), "Coverage 200x200 en Bell Ville no puede ser todo nodata"
 
 
 # ── S7/S8: integración final — el informe completo con todas las capas ──────

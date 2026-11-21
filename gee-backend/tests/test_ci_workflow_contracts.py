@@ -1055,14 +1055,58 @@ def test_e2e_canary_stays_read_only_against_production() -> None:
 
 
 def test_e2e_canary_only_runs_after_a_main_push() -> None:
-    """A canary is a POST-deploy probe: on `pull_request` it would burn minutes
-    testing a URL that does not contain the PR's code yet."""
+    """A canary is a POST-deploy probe: it runs only after Frontend CI passes on
+    main (workflow_run) or via manual workflow_dispatch, keeping CI-07 checkout safe."""
     canary = _without_comments(_read(".github/workflows/e2e-canary.yml"))
     assert "pull_request" not in canary
+    assert "workflow_run:" in canary
+    assert "workflows: [Frontend]" in canary
+    assert "types: [completed]" in canary
     assert "branches: [main]" in canary
+    assert "head_branch == 'main'" in canary
+    assert "conclusion == 'success'" in canary
+    assert "ref: ${{ github.sha }}" in canary
+    assert "persist-credentials: false" in canary
+    assert "TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}" in canary
     assert "cancel-in-progress: true" in canary
     # Job budget, not the `sleep 15` in the Pages poller.
     assert re.search(r"(?m)^    timeout-minutes: 30$", canary)
+
+
+def test_wave3_ci_gates_alembic_deploy_audit_and_stubbed_browser_flows() -> None:
+    """Wave 3: backend.yml validates alembic upgrade head against pgrouting,
+    deploy.yml runs tests/unit/, frontend.yml runs production npm audit + stubbed
+    network-isolated Playwright flows."""
+    backend_test = _job_block(_read(".github/workflows/backend.yml"), "test")
+    assert (
+        "pgrouting/pgrouting:16-3.5-3.8@"
+        "sha256:4c480c7f9e25a3490573cd6ef86b286fd21162e288cc355e8da2b52518ef6ab8"
+    ) in backend_test
+    assert "alembic upgrade head" in backend_test
+    assert "migrations_check" in backend_test
+
+    deploy_quality = _job_block(_read(".github/workflows/deploy.yml"), "quality-backend")
+    assert "python3 -m pytest tests/unit/ -q --no-header --tb=short" in deploy_quality
+    assert deploy_quality.index("pytest tests/new/") < deploy_quality.index("pytest tests/unit/")
+
+    frontend = _read(".github/workflows/frontend.yml")
+    lint_job = _job_block(frontend, "lint")
+    assert "npm audit --omit=dev --audit-level=high" in lint_job
+
+    lockfile = json.loads(_read("consorcio-web/package-lock.json"))
+    playwright = lockfile["packages"]["node_modules/@playwright/test"]
+    browser_flows = _job_block(frontend, "browser-flows")
+    assert f"mcr.microsoft.com/playwright:v{playwright['version']}-noble" in browser_flows
+    assert "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'" in browser_flows
+    assert "npm run test:browser:stubbed" in browser_flows
+
+    package = json.loads(_read("consorcio-web/package.json"))
+    assert package["scripts"]["test:browser:stubbed"] == (
+        "playwright test -c tests/e2e/playwright.stubbed.config.ts"
+    )
+    stubbed_cfg = _read("consorcio-web/tests/e2e/playwright.stubbed.config.ts")
+    assert "['informe-area.spec.ts', 'campo-offline.spec.ts']" in stubbed_cfg
+    assert "http://localhost:5173" in stubbed_cfg
 
 
 def test_codeql_keeps_javascript_and_python_security_scans() -> None:
@@ -1327,6 +1371,7 @@ def test_ci_gate_is_the_single_required_check_of_each_branch_workflow() -> None:
             "lint",
             "typecheck",
             "test",
+            "scripts-tests",
             "mutation",
             "security",
             "image-backend",
@@ -1349,6 +1394,7 @@ def test_ci_gate_is_the_single_required_check_of_each_branch_workflow() -> None:
             "mutation-gate",
             "accessibility",
             "visual",
+            "browser-flows",
             "build",
             "image",
         },

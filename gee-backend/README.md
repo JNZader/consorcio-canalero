@@ -44,7 +44,7 @@ Backend FastAPI con arquitectura por dominios (Screaming Architecture), PostgreS
 | **Jobs async** | Celery + Redis |
 | **PDFs** | ReportLab |
 | **Logging** | structlog (estructurado, JSON-friendly) |
-| **Tests** | Pytest + Pytest-cov + Hypothesis |
+| **Tests** | Pytest + Pytest-cov + Cosmic Ray |
 | **Lint / Format** | Ruff |
 | **HTTP server** | Uvicorn |
 | **Containers** | Docker + Docker Compose |

@@ -36,11 +36,10 @@ name: E2E canary (prod)
 #    instead of skipping. Data/credential gates keep skipping, loudly.
 
 on:
-  push:
+  workflow_run:
+    workflows: [Frontend]
+    types: [completed]
     branches: [main]
-    paths:
-      - 'consorcio-web/**'
-      - '.github/workflows/e2e-canary.yml'
   workflow_dispatch:
 
 concurrency:
@@ -58,6 +57,11 @@ env:
 jobs:
   canary:
     name: E2E canary (prod)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     # 15m was eaten by Pages wait (~6m) + npm ci + Playwright chromium +
     # /mapa canary. Two post-merge runs (#485, #486) cancelled on the test
@@ -65,6 +69,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -81,12 +88,14 @@ jobs:
       #
       # THE EMPTY-STRING TRAP (do not remove the length guard): `curl` failing,
       # a 404/5xx, a timeout or a JSON without `sha` all yield an EMPTY
-      # `deployed`. Feeding that straight into `case "$GITHUB_SHA" in "$deployed"*)`
+      # `deployed`. Feeding that straight into `case "$TARGET_SHA" in "$deployed"*)`
       # degenerates the pattern to `*`, which matches ANY sha — so the gate used
       # to pass instantly, against the OLD build, in exactly the scenario it
       # exists to catch (degraded CDN). Reject anything shorter than the 12-char
       # sha BEFORE the case, and keep polling.
       - name: Wait for Cloudflare deploy
+        env:
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           set -uo pipefail
           sha_len=12
@@ -95,14 +104,14 @@ jobs:
             deployed=$(curl -fsSL --max-time 20 "$APP_URL/version.json" 2>/dev/null \
               | python3 -c 'import json,sys; print(json.load(sys.stdin).get("sha",""))' 2>/dev/null || true)
             if [ -n "$deployed" ] && [ "${#deployed}" -ge "$sha_len" ]; then
-              case "$GITHUB_SHA" in
+              case "$TARGET_SHA" in
                 "$deployed"*) echo "Deployed sha matches $deployed"; exit 0 ;;
               esac
             fi
-            echo "waiting… deployed='${deployed:-<none>}' expected='${GITHUB_SHA}'"
+            echo "waiting… deployed='${deployed:-<none>}' expected='${TARGET_SHA}'"
             sleep 15
           done
-          echo "::error::Cloudflare never published ${GITHUB_SHA} within 6 minutes. This is a DEPLOY failure, not a test failure."
+          echo "::error::Cloudflare never published ${TARGET_SHA} within 6 minutes. This is a DEPLOY failure, not a test failure."
           exit 1
 
       - name: Install dependencies

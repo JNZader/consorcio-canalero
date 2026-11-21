@@ -19,22 +19,125 @@
 
 import * as Sentry from '@sentry/react';
 
-const DSN = import.meta.env.VITE_SENTRY_DSN ?? '';
-const ENVIRONMENT =
-  import.meta.env.VITE_SENTRY_ENVIRONMENT ?? import.meta.env.MODE ?? 'development';
-const TRACES_SAMPLE_RATE = Number(import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE ?? '0');
-const RELEASE = import.meta.env.VITE_APP_VERSION ?? undefined;
+import { registerExceptionReporter } from './errorReporting';
+
+const DEFAULT_TRACES_SAMPLE_RATE = 0.1;
+
+let initialized = false;
+let rumInitialized = false;
+
+export function resolveTracesSampleRate(raw?: string): number {
+  if (raw === undefined || raw.trim() === '') {
+    return DEFAULT_TRACES_SAMPLE_RATE;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+  return Math.min(1, Math.max(0, parsed));
+}
+
+export function captureException(error: unknown, context?: Record<string, unknown>): void {
+  if (!initialized) {
+    return;
+  }
+  Sentry.captureException(error, context ? { extra: context } : undefined);
+}
+
+function recordVitalBreadcrumb(metric: string, value: number): void {
+  if (!Number.isFinite(value)) {
+    return;
+  }
+  Sentry.addBreadcrumb?.({
+    category: 'web-vital',
+    level: 'info',
+    message: metric,
+    data: { metric, value: Math.round(value * 1000) / 1000 },
+  });
+}
+
+function observeEntryType(
+  entryType: string,
+  handler: (entries: PerformanceEntryList) => void
+): void {
+  try {
+    const observer = new PerformanceObserver((list) => {
+      handler(list.getEntries());
+    });
+    observer.observe({ type: entryType, buffered: true });
+  } catch {
+    // Unsupported PerformanceObserver entryType in older runtimes or jsdom.
+  }
+}
+
+function initWebVitalsRum(): void {
+  if (rumInitialized || typeof PerformanceObserver === 'undefined') {
+    return;
+  }
+  rumInitialized = true;
+
+  let clsScore = 0;
+
+  observeEntryType('largest-contentful-paint', (entries) => {
+    const last = entries[entries.length - 1];
+    if (last) {
+      recordVitalBreadcrumb('LCP', last.startTime);
+    }
+  });
+
+  observeEntryType('layout-shift', (entries) => {
+    let updated = false;
+    for (const entry of entries) {
+      const shift = entry as PerformanceEntry & {
+        hadRecentInput?: boolean;
+        value?: number;
+      };
+      if (!shift.hadRecentInput && typeof shift.value === 'number' && shift.value > 0) {
+        clsScore += shift.value;
+        updated = true;
+      }
+    }
+    if (updated) {
+      recordVitalBreadcrumb('CLS', clsScore);
+    }
+  });
+
+  observeEntryType('first-input', (entries) => {
+    const first = entries[0] as (PerformanceEntry & { processingStart?: number }) | undefined;
+    if (first && typeof first.processingStart === 'number') {
+      recordVitalBreadcrumb('FID', Math.max(0, first.processingStart - first.startTime));
+    }
+  });
+
+  observeEntryType('event', (entries) => {
+    let maxDuration = 0;
+    for (const entry of entries) {
+      if (entry.duration > maxDuration) {
+        maxDuration = entry.duration;
+      }
+    }
+    if (maxDuration > 0) {
+      recordVitalBreadcrumb('INP', maxDuration);
+    }
+  });
+}
 
 export function initSentry(): void {
-  if (!DSN) {
+  const dsn = import.meta.env.VITE_SENTRY_DSN ?? '';
+  if (!dsn) {
     // Silent no-op in dev / unconfigured deploys.
     return;
   }
+  const environment =
+    import.meta.env.VITE_SENTRY_ENVIRONMENT ?? import.meta.env.MODE ?? 'development';
+  const tracesSampleRate = resolveTracesSampleRate(import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE);
+  const release = import.meta.env.VITE_APP_VERSION ?? undefined;
+
   Sentry.init({
-    dsn: DSN,
-    environment: ENVIRONMENT,
-    release: RELEASE,
-    tracesSampleRate: Number.isFinite(TRACES_SAMPLE_RATE) ? TRACES_SAMPLE_RATE : 0,
+    dsn,
+    environment,
+    release,
+    tracesSampleRate,
     // Sentry 11 dropped sendDefaultPii. Unset dataCollection collects
     // everything (IP, cookies, bodies). Keep the v10-restrictive baseline.
     dataCollection: {
@@ -56,6 +159,15 @@ export function initSentry(): void {
       /ResizeObserver loop completed with undelivered notifications/,
     ],
   });
+
+  initialized = true;
+  registerExceptionReporter(captureException);
+  initWebVitalsRum();
+}
+
+export function resetSentryForTests(): void {
+  initialized = false;
+  rumInitialized = false;
 }
 
 export const SentryErrorBoundary = Sentry.ErrorBoundary;
