@@ -154,6 +154,7 @@ _SELECCION_SQL = text(
                'hex'
            ) AS hash_seleccion,
            ST_Area(g32720) / 10000.0 AS area_ha,
+           ST_Area(ST_Envelope(g32720)) / 10000.0 AS envelope_ha,
            ST_NPoints(ST_SimplifyPreserveTopology(g32720, :tolerancia)) AS vertices,
            ST_AsGeoJSON(g4326) AS geojson,
            COALESCE(
@@ -268,6 +269,11 @@ def resolver_seleccion(
     if area_ha <= 0.0:
         raise ficha_errors.geometria_invalida(
             "la union de la seleccion quedo vacia o sin area tras repararla"
+        )
+    envelope_ha = float(getattr(fila, "envelope_ha", 0.0) or 0.0)
+    if envelope_ha > settings.informe_area_max_envelope_ha:
+        raise ficha_errors.cap_excedido(
+            "envelope_ha", settings.informe_area_max_envelope_ha, envelope_ha
         )
     if aplicar_caps:
         if area_ha > settings.informe_area_max_ha:
@@ -875,14 +881,18 @@ def _perfil_por_clase(
         breaks=_breaks_de_leyenda(leyenda),
         geom_area_m2=area_m2,
     )
+    coverage_ratio = float(perfil["coverage_ratio"])
     clases: list[dict[str, Any]] = [
-        {"clase": str(b["label"]), "ha": float(b["ha"]), "pct": float(b["pct"])}
+        {
+            "clase": str(b["label"]),
+            "ha": float(b["ha"]),
+            "pct": round(float(b["pct"]) * coverage_ratio, 2),
+        }
         for b in perfil["bins"]
         if b["pixels"] > 0
     ]
     clases.sort(key=lambda c: -float(c["ha"]))
-    return clases, str(perfil["coverage"]), float(perfil["coverage_ratio"])
-    return clases, str(perfil["coverage"]), float(perfil["coverage_ratio"])
+    return clases, str(perfil["coverage"]), coverage_ratio
 
 
 def _recurrencia_estivales(
@@ -987,10 +997,9 @@ def cobertura_dataset(
         )
         pct_agua = por_clase[etiqueta_agua]["pct"] if etiqueta_agua in por_clase else None
 
-        area_ha = area_m2 / 10_000.0
         campanias = []
         for capa in estivales:
-            clases_c, _cob, _ratio = _perfil_por_clase(
+            clases_c, _cob, ratio_c = _perfil_por_clase(
                 capa["archivo_path"], capa["leyenda"], geom4326, area_m2
             )
             cultivado = sum(c["ha"] for c in clases_c)
@@ -1000,7 +1009,7 @@ def cobertura_dataset(
                     "campania": capa["campania"],
                     "clases": clases_c,
                     "ha_cultivo": round(cultivado, 2),
-                    "pct_cultivo": round(cultivado / area_ha * 100.0, 2) if area_ha > 0 else 0.0,
+                    "pct_cultivo": round(float(ratio_c) * 100.0, 2),
                 }
             )
 
@@ -1018,15 +1027,27 @@ def cobertura_dataset(
         return None
 
 
+def _geom_area_m2_4326(geom_dict: dict[str, Any]) -> float:
+    """Metric area (EPSG:32720) of one GeoJSON geometry as fallback when ha is omitted."""
+    try:
+        from pyproj import Transformer
+        from shapely.geometry import shape
+        from shapely.ops import transform as shapely_transform
+
+        reproj = Transformer.from_crs("EPSG:4326", "EPSG:32720", always_xy=True)
+        return float(shapely_transform(reproj.transform, shape(geom_dict)).area)
+    except Exception:  # noqa: BLE001 — fallback for stub geometries
+        return 0.0
+
+
 def cobertura_por_zona(
     db: Session,
-    zonas: list[tuple[uuid.UUID, str, str]],
+    zonas: Sequence[tuple[uuid.UUID, str, str] | tuple[uuid.UUID, str, str, float | None]],
 ) -> dict[str, dict[str, float | None]]:
     """Per-zone % cultivo (uso, clases de «Cultivo») y % soja (última campaña).
 
-    ``zonas`` carries ``(zona_id, nombre, geojson_4326)`` — the task
-    already resolved those geometries for the maps, so no re-query. Label
-    matching (not codes) keeps working when a campaign's coding differs.
+    ``zonas`` carries ``(zona_id, nombre, geojson_4326)`` or ``(zona_id, nombre,
+    geojson_4326, ha)`` so percentages use the zone's total area as denominator.
     Degrades to ``{}`` like every IDECOR read (S7).
     """
     capas = _leer_capas_cobertura(db)
@@ -1047,16 +1068,24 @@ def cobertura_por_zona(
     estival = estivales[-1] if estivales else None
     resultado: dict[str, dict[str, float | None]] = {}
     try:
-        for zona_id, _nombre, geojson in zonas:
+        for item in zonas:
+            zona_id, _nombre, geojson = item[0], item[1], item[2]
+            ha_zona = item[3] if len(item) >= 4 else None
+            geom_dict = json.loads(geojson)
+            area_m2 = (
+                float(ha_zona) * M2_POR_HA
+                if ha_zona is not None and float(ha_zona) > 0
+                else _geom_area_m2_4326(geom_dict)
+            )
             clases_uso, _cob, _ratio = _perfil_por_clase(
-                uso["archivo_path"], uso["leyenda"], json.loads(geojson), 0.0
+                uso["archivo_path"], uso["leyenda"], geom_dict, area_m2
             )
             fila: dict[str, float | None] = {
                 "pct_cultivo": _pct(clases_uso, ("cultivo",)),
             }
             if estival is not None:
                 clases_est, _cob_e, _ratio_e = _perfil_por_clase(
-                    estival["archivo_path"], estival["leyenda"], json.loads(geojson), 0.0
+                    estival["archivo_path"], estival["leyenda"], geom_dict, area_m2
                 )
                 fila["pct_soja"] = _pct(clases_est, ("soja",))
             resultado[str(zona_id)] = fila
@@ -1243,16 +1272,19 @@ _CANDIDATO_ANCLA_SQL = text(
 #: flooded vegetation/soil reads dark against red vegetation): the S2
 #: surface-reflectance scale the house VIS_PRESETS uses, and the Landsat
 #: TOA reflectance ceiling the explorer pins for those collections.
-_BANDAS_FALSO_COLOR: dict[str, tuple[list[str], float]] = {
+_BANDAS_FALSO_COLOR: dict[str, tuple[list[str], float, float]] = {
+    # SAR VV backscatter sits in dB (≈ -25..0 dB in COPERNICUS/S1_GRD); 0..0.5
+    # clipped nearly every pixel to black.
     "sentinel1": (
         ["VV"],
-        0.5,
+        -25.0,
+        0.0,
     ),  # SAR single-band: multi-band compositing triggers projection errors
-    "sentinel2": (["B8", "B11", "B4"], 3000.0),
-    "landsat9": (["B5", "B6", "B4"], 0.35),
-    "landsat8": (["B5", "B6", "B4"], 0.35),
-    "landsat7": (["B4", "B5", "B3"], 0.35),
-    "landsat5": (["B4", "B5", "B3"], 0.35),
+    "sentinel2": (["B8", "B11", "B4"], 0.0, 3000.0),
+    "landsat9": (["B5", "B6", "B4"], 0.0, 0.35),
+    "landsat8": (["B5", "B6", "B4"], 0.0, 0.35),
+    "landsat7": (["B4", "B5", "B3"], 0.0, 0.35),
+    "landsat5": (["B4", "B5", "B3"], 0.0, 0.35),
 }
 
 #: Thumbnail budget (S6 «miniatura»; GEE caps thumbnails at 1024 px —
@@ -1274,7 +1306,7 @@ def miniatura_falso_color_impl(
     Raises on anything (unknown sensor, GEE error, HTTP failure) — the
     caller degrades that event to «sin datos», never fails the report.
     """
-    bandas, maximo = _BANDAS_FALSO_COLOR[sensor]
+    bandas, minimo, maximo = _BANDAS_FALSO_COLOR[sensor]
     region = ee_module.Geometry(geo_json=region_geojson, geodesic=False)
     if sensor == "sentinel1":
         # S1: single-band (VV) — GEE's multi-band compositing on S1 GRD
@@ -1285,22 +1317,33 @@ def miniatura_falso_color_impl(
         url = imagen.select(bandas).getThumbURL(
             {
                 "bands": bandas,
-                "min": 0,
+                "min": minimo,
                 "max": maximo,
                 "dimensions": dimension_px,
                 "region": region_geojson,
                 "format": "png",
             }
         )
-        respuesta = requests_module.get(url, timeout=90)
-        respuesta.raise_for_status()
-        return respuesta.content
     else:
-        imagen = ee_module.Image(scene_id).select(bandas).clip(region)
+        if "/" in scene_id:
+            imagen = ee_module.Image(scene_id).select(bandas).clip(region)
+        else:
+            from app.domains.geo.rainfall.water_delta import optical_spec
+
+            spec = optical_spec(sensor)
+            if spec is None:
+                raise ValueError(f"Sensor óptico desconocido: {sensor!r}")
+            coleccion = ee_module.ImageCollection(spec["collection"])
+            imagen = (
+                coleccion.filter(ee_module.Filter.eq("system:index", scene_id))
+                .first()
+                .select(bandas)
+                .clip(region)
+            )
         url = imagen.getThumbURL(
             {
                 "bands": bandas,
-                "min": 0,
+                "min": minimo,
                 "max": maximo,
                 "dimensions": dimension_px,
                 "region": region,
@@ -1362,7 +1405,16 @@ def imagenes_eventos_ancla(
         logger.warning("informe_area.candidatos_ancla_no_disponibles", exc_info=True)
         candidatos = {}
 
-    region = json.loads(json.dumps(union_geojson))  # defensive copy: ee must not see a mutated dict
+    try:
+        from shapely.geometry import mapping, shape
+
+        region = json.loads(
+            json.dumps(mapping(shape(union_geojson).simplify(0.0005, preserve_topology=True)))
+        )
+    except Exception:  # noqa: BLE001 — fallback for stub fixtures
+        region = json.loads(
+            json.dumps(union_geojson)
+        )  # defensive copy: ee must not see a mutated dict
 
     filas: list[dict[str, Any]] = []
     for evento in eventos:

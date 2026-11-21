@@ -172,7 +172,8 @@ def _manejador(_: Any, exc: Exception) -> JSONResponse:
         logger.error("Informe de área falló", codigo=exc.codigo, exc_info=True)
     elif exc.status_code >= 500:
         logger.info("Informe de área en estado deliberado", codigo=exc.codigo)
-    return JSONResponse(status_code=exc.status_code, content=exc.payload())
+    headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after is not None else None
+    return JSONResponse(status_code=exc.status_code, content=exc.payload(), headers=headers)
 
 
 def install_informe_area_error_handler(app: FastAPI) -> None:

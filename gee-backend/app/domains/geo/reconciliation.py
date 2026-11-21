@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import and_, exists, or_, select, update
 from sqlalchemy.orm import Session
 
+from app.domains.geo.informe_area.models import InformeArea
 from app.domains.geo.models import AnalisisGeo, EstadoGeoJob, GeoJob, TipoGeoJob
 from app.shared.celery_outbox import CeleryTaskOutbox
 
@@ -70,6 +71,18 @@ def reconcile_stale_geo_jobs(
         )
     ).correlate(AnalisisGeo)
 
+    protected_informe_intent = exists(
+        select(1)
+        .select_from(CeleryTaskOutbox)
+        .where(
+            CeleryTaskOutbox.celery_task_id == InformeArea.celery_task_id,
+            or_(
+                CeleryTaskOutbox.published_at.is_(None),
+                CeleryTaskOutbox.published_at >= cutoff,
+            ),
+        )
+    ).correlate(InformeArea)
+
     geo_running = db.execute(
         update(GeoJob)
         .where(
@@ -117,9 +130,30 @@ def reconcile_stale_geo_jobs(
         .values(estado=EstadoGeoJob.FAILED, error=_STALE_ERROR, updated_at=now)
         .execution_options(synchronize_session=False)
     )
+    informe_running = db.execute(
+        update(InformeArea)
+        .where(
+            InformeArea.updated_at < heartbeat_cutoff,
+            InformeArea.estado == EstadoGeoJob.RUNNING,
+        )
+        .values(estado=EstadoGeoJob.FAILED, error=WORKER_LOST_ERROR, updated_at=now)
+        .execution_options(synchronize_session=False)
+    )
+    informe_pending = db.execute(
+        update(InformeArea)
+        .where(
+            InformeArea.updated_at < cutoff,
+            InformeArea.estado == EstadoGeoJob.PENDING,
+            ~protected_informe_intent,
+        )
+        .values(estado=EstadoGeoJob.FAILED, error=_STALE_ERROR, updated_at=now)
+        .execution_options(synchronize_session=False)
+    )
     return {
         "geo_jobs": int(getattr(geo_running, "rowcount", 0) or 0)
         + int(getattr(geo_pending, "rowcount", 0) or 0),
         "gee_analyses": int(getattr(analysis_running, "rowcount", 0) or 0)
         + int(getattr(analysis_pending, "rowcount", 0) or 0),
+        "informes_area": int(getattr(informe_running, "rowcount", 0) or 0)
+        + int(getattr(informe_pending, "rowcount", 0) or 0),
     }

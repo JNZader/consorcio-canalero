@@ -39,6 +39,7 @@ from app.core.middleware import (
 from app.core.rate_limit import get_auth_rate_limiter, get_rate_limiter
 from app.core.health import run_health_checks
 from app.domains.geo.ficha_errors import install_ficha_error_handler
+from app.domains.geo.informe_area.errors import install_informe_area_error_handler
 from app.domains.geo.router_ficha import install_ficha_openapi_schemas
 
 APP_VERSION = "2.0.0"
@@ -200,6 +201,7 @@ async def app_exception_handler(request: Request, exc: AppException):
 # Registered here (not in the router) because only an app owns handlers; test
 # apps call the same installer.
 install_ficha_error_handler(app)
+install_informe_area_error_handler(app)
 
 # The ficha request body is described by hand via ``openapi_extra`` (the §2.6
 # error codes require validating it inside a dependency, not through a declared

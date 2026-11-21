@@ -226,9 +226,10 @@ def generar_informe_area(informe_id: str) -> dict:
             logger.warning("informe_area.fila_ausente", informe_id=informe_id)
             return {"informe_id": informe_id, "estado": "skipped"}
 
+        informe_uuid = row.id
         if not repo.actualizar_estado_if_actual(
             db,
-            row.id,
+            informe_uuid,
             expected_estado=EstadoGeoJob.PENDING,
             estado=EstadoGeoJob.RUNNING,
             progreso=PROGRESO_INICIO,
@@ -348,7 +349,7 @@ def generar_informe_area(informe_id: str) -> dict:
             cobertura = service.cobertura_dataset(db, union_geom, area_m2)
             if cobertura is not None:
                 cobertura["por_zona"] = service.cobertura_por_zona(
-                    db, [(z.zona_id, z.nombre, z.g4326) for z in zonas]
+                    db, [(z.zona_id, z.nombre, z.g4326, float(z.ha or 0.0)) for z in zonas]
                 )
             # Canales (S5): km relevados/propuestos clip por el área +
             # cruces y conflictos. None → «sin datos»; ceros son reales.
@@ -707,9 +708,10 @@ def generar_informe_area(informe_id: str) -> dict:
         except Exception as exc:  # noqa: BLE001 — the failure path IS the contract (S8)
             razon = f"{type(exc).__name__}: {exc}".strip()
             logger.error("informe_area.fallo", informe_id=informe_id, exc_info=True)
+            db.rollback()
             repo.actualizar_estado_if_actual(
                 db,
-                row.id,
+                informe_uuid,
                 expected_estado=EstadoGeoJob.RUNNING,
                 estado=EstadoGeoJob.FAILED,
                 progreso=0,

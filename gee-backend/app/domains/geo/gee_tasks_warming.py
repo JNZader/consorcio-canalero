@@ -26,20 +26,20 @@ import httpx
 from celery.exceptions import SoftTimeLimitExceeded
 from celery.utils.log import get_task_logger
 
+from app.config import settings
 from app.core.celery_app import celery_app
+from app.healthcheck import resolve_healthcheck_host
 
 logger = get_task_logger(__name__)
 
 
-# Endpoints that the warming task will hit, in order of importance.
+# Public GEE endpoints that the warming task will hit (the private
+# `/api/v2/geo/gee/layers/*` paths require authentication and returned 401).
 WARM_ENDPOINTS: tuple[str, ...] = (
-    "/api/v2/geo/gee/layers/caminos/coloreados",
-    "/api/v2/geo/gee/layers/caminos/estadisticas",
-    "/api/v2/geo/gee/layers/zona",
-    "/api/v2/geo/gee/layers/norte",
-    "/api/v2/geo/gee/layers/noroeste",
-    "/api/v2/geo/gee/layers/ml",
-    "/api/v2/geo/gee/layers/candil",
+    "/api/v2/public/map/gee/zona",
+    "/api/v2/public/map/gee/caminos",
+    "/api/v2/public/map/gee/current-image",
+    "/api/v2/public/map/gee/current-comparison",
 )
 
 # Per-endpoint timeout. GEE compute can take ~3 minutes for the heaviest
@@ -62,29 +62,52 @@ def _backend_base_url() -> str:
     return os.getenv("BACKEND_INTERNAL_URL", "http://consorcio-backend:8000").rstrip("/")
 
 
+def _warm_headers() -> dict[str, str]:
+    """Send an explicit trusted Host header so TrustedHostMiddleware accepts internal calls."""
+    host = resolve_healthcheck_host(os.environ)
+    if host is None:
+        for candidate in settings.trusted_hosts:
+            cleaned = candidate.strip()
+            if cleaned and cleaned != "*":
+                host = cleaned
+                break
+    return {"Host": host} if host else {}
+
+
 def _warm_one(base: str, path: str) -> dict:
     """GET one layer. A private client: httpx.Client is not thread-safe."""
     url = f"{base}{path}"
+    headers = _warm_headers()
     try:
         with httpx.Client(timeout=WARM_REQUEST_TIMEOUT_SECONDS) as client:
-            resp = client.get(url)
+            resp = client.get(url, headers=headers)
+        ok = 200 <= resp.status_code < 300
         summary = {
             "path": path,
             "status": resp.status_code,
+            "ok": ok,
             "x_cache": resp.headers.get("x-cache"),
             "ms": int(resp.elapsed.total_seconds() * 1000),
         }
-        logger.info(
-            "warmed %s status=%s x-cache=%s elapsed=%sms",
-            path,
-            resp.status_code,
-            resp.headers.get("x-cache"),
-            summary["ms"],
-        )
+        if not ok:
+            logger.warning(
+                "warm non-2xx %s status=%s elapsed=%sms",
+                path,
+                resp.status_code,
+                summary["ms"],
+            )
+        else:
+            logger.info(
+                "warmed %s status=%s x-cache=%s elapsed=%sms",
+                path,
+                resp.status_code,
+                resp.headers.get("x-cache"),
+                summary["ms"],
+            )
         return summary
     except httpx.HTTPError as exc:
         logger.warning("warm failed for %s: %s", path, exc)
-        return {"path": path, "error": str(exc)}
+        return {"path": path, "ok": False, "error": str(exc)}
 
 
 @celery_app.task(
@@ -113,8 +136,21 @@ def task_warm_gee_layers(self) -> dict:
             results.append(future.result())
     except SoftTimeLimitExceeded:
         logger.warning("warm stopped at the soft time limit with %s results", len(results))
-        return {"warmed": results, "count": len(results), "stopped": "soft_time_limit"}
+        ok_count = sum(1 for item in results if item.get("ok"))
+        return {
+            "warmed": results,
+            "count": len(results),
+            "ok": ok_count,
+            "failed": len(results) - ok_count,
+            "stopped": "soft_time_limit",
+        }
     finally:
         pool.shutdown(wait=False, cancel_futures=True)
 
-    return {"warmed": results, "count": len(results)}
+    ok_count = sum(1 for item in results if item.get("ok"))
+    return {
+        "warmed": results,
+        "count": len(results),
+        "ok": ok_count,
+        "failed": len(results) - ok_count,
+    }

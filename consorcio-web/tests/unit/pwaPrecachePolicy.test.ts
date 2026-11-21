@@ -6,6 +6,7 @@ import { globSync } from 'glob';
 import { describe, expect, it } from 'vitest';
 
 import {
+  CAMPO_MAP_ENGINE_CACHE_FIRST,
   GEE_IMAGE_NETWORK_ONLY,
   GLYPH_SPRITE_NETWORK_ONLY,
   MAP_ENGINE_NETWORK_ONLY,
@@ -140,6 +141,14 @@ describe('map runtime stays on the network', () => {
     expect(
       TERRAIN_TILE_NETWORK_ONLY.test('/api/v2/geo/layers/dem-1/tiles/12/1/2.png?colormap=viridis')
     ).toBe(false);
+  });
+
+  it('caches both vendor-maplibre js and css (and maplibre-gl-worker js) on campo pages', () => {
+    expect(CAMPO_MAP_ENGINE_CACHE_FIRST.test('/assets/vendor-maplibre-OhB1yxs2.js')).toBe(true);
+    expect(CAMPO_MAP_ENGINE_CACHE_FIRST.test('/assets/vendor-maplibre-qvkd0SPb.css')).toBe(true);
+    expect(CAMPO_MAP_ENGINE_CACHE_FIRST.test('/assets/maplibre-gl-worker-Br3j0JGE.js')).toBe(true);
+    expect(CAMPO_MAP_ENGINE_CACHE_FIRST.test('/assets/vendor-mantine-B5HaKcPQ.js')).toBe(false);
+    expect(CAMPO_MAP_ENGINE_CACHE_FIRST.test('/assets/MapaPage-DvhaKh9P.js')).toBe(false);
   });
 });
 

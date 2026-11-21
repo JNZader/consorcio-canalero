@@ -529,3 +529,59 @@ def test_create_cap_zonas_equivalentes_422(informe_db):
 
     assert rs.status_code == 422, rs.text
     assert rs.json()["codigo"] == "cap_excedido"
+
+
+def test_create_cuerpo_sobre_limite_413_content_length_y_chunked(informe_db, monkeypatch):
+    """C3: bodies over informe_area_max_body_bytes fail with 413 on Content-Length and chunked."""
+    from fastapi.testclient import TestClient
+
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "informe_area_max_body_bytes", 1024)
+    usuario = _usuario(informe_db, "informe-c3-body@test.local")
+    oversized = b'{"nombre":"x","geometrias":[]}' + b" " * 2048
+
+    with TestClient(_app(informe_db, usuario)) as cliente:
+        rs_len = cliente.post(
+            INFORME_PATH,
+            content=oversized,
+            headers={"Content-Type": "application/json"},
+        )
+        assert rs_len.status_code == 413
+
+        def _chunks():
+            yield oversized[:512]
+            yield oversized[512:]
+
+        rs_chunked = cliente.post(
+            INFORME_PATH,
+            content=_chunks(),
+            headers={"Content-Type": "application/json"},
+        )
+        assert rs_chunked.status_code == 413
+
+
+def test_create_y_preview_poligonos_muy_lejanos_sobre_cap_envelope_ha_422(informe_db):
+    """C3: small disjoint polygons spanning >500,000 ha envelope fail 422 instead of OOMing."""
+    from fastapi.testclient import TestClient
+
+    cuadro_a = _cuadro(LON0, LAT0, lado=0.01)
+    cuadro_b = _cuadro(LON0 + 4.0, LAT0 + 4.0, lado=0.01)
+    usuario = _usuario(informe_db, "informe-c3-env@test.local")
+
+    with TestClient(_app(informe_db, usuario)) as cliente:
+        rs_prev = cliente.post(
+            f"{INFORME_PATH}/preview",
+            json={"geometrias": [cuadro_a, cuadro_b]},
+        )
+        assert rs_prev.status_code == 422, rs_prev.text
+        assert rs_prev.json()["codigo"] == "cap_excedido"
+        assert rs_prev.json()["cap"] == "envelope_ha"
+
+        rs_create = cliente.post(
+            INFORME_PATH,
+            json={"nombre": "Lejanos", "geometrias": [cuadro_a, cuadro_b]},
+        )
+        assert rs_create.status_code == 422, rs_create.text
+        assert rs_create.json()["codigo"] == "cap_excedido"
+        assert rs_create.json()["cap"] == "envelope_ha"

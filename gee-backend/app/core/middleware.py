@@ -166,18 +166,16 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
             "/api/v2/geo/canales/publico",
             "/api/v2/geo/layers/public",
             "/api/v2/geo/basins",
+            "/api/v2/geo/basins/approved-zones/current",
         }
     )
-    PUBLIC_MAP_GET_NESTED_PREFIXES: tuple[str, ...] = ("/api/v2/geo/basins/",)
     PUBLIC_MAP_GET_CACHE_CONTROL = "public, max-age=300, stale-while-revalidate=60"
 
     @classmethod
     def _is_public_map_get(cls, method: str, path: str) -> bool:
         if method != "GET":
             return False
-        if path in cls.PUBLIC_MAP_GET_EXACT:
-            return True
-        return path.startswith(cls.PUBLIC_MAP_GET_NESTED_PREFIXES)
+        return path in cls.PUBLIC_MAP_GET_EXACT
 
     def __init__(
         self,

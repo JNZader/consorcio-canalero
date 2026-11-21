@@ -106,4 +106,4 @@ export const CAMPO_PACKAGE_CACHE_NAME = 'campo-packages';
  * `MAP_ENGINE_NETWORK_ONLY` so the more specific intent wins.
  */
 export const CAMPO_MAP_ENGINE_CACHE_FIRST =
-  /\/assets\/(?:vendor-maplibre|maplibre-gl-worker)-[^/]+\.js$/i;
+  /\/assets\/(?:vendor-maplibre|maplibre-gl-worker)-[^/]+\.(?:js|css)$/i;

@@ -59,12 +59,22 @@ def _validar_geometria(value: dict[str, Any]) -> dict[str, Any]:
 
 
 def _validar_geometrias(value: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Validate the geometrias list (each entry, then the count)."""
+    """Validate the geometrias list (count, each entry, and total vertices)."""
     if len(value) > settings.informe_area_max_zonas:
         raise ficha_errors.cap_excedido(
             "subcuencas", float(settings.informe_area_max_zonas), float(len(value))
         )
-    return [_validar_geometria(geometria) for geometria in value]
+    validas = [_validar_geometria(geometria) for geometria in value]
+    total_vertices = sum(
+        _contar_vertices(g.get("coordinates"), str(g.get("type"))) for g in validas
+    )
+    if total_vertices > settings.informe_area_max_vertices:
+        raise ficha_errors.cap_excedido(
+            "vertices",
+            float(settings.informe_area_max_vertices),
+            float(total_vertices),
+        )
+    return validas
 
 
 class _SeleccionMixtaBase(BaseModel):

@@ -25,6 +25,7 @@ from __future__ import annotations
 import io
 import math
 import re
+import unicodedata
 import zipfile
 from dataclasses import dataclass, field
 from typing import Any
@@ -101,42 +102,49 @@ def _coord(lon: float, lat: float) -> str:
     return f"{lon:.7f},{lat:.7f}"
 
 
-def _anillos(geometry: dict[str, Any]) -> list[list[list[float]]]:
-    """Exterior + interior rings of a Polygon/MultiPolygon as coord lists."""
+def _poligonos(geometry: dict[str, Any]) -> list[list[list[list[float]]]]:
+    """Polygon parts of a Polygon/MultiPolygon, each as [exterior, *holes]."""
     tipo = geometry.get("type")
     polys: list[Any] = []
     if tipo == "Polygon":
         polys = [geometry.get("coordinates")]
     elif tipo == "MultiPolygon":
         polys = geometry.get("coordinates") or []
-    anillos: list[list[list[float]]] = []
-    for poly in polys:
-        if not poly:
-            continue
-        anillos.extend(list(anillo) for anillo in poly)
-    return anillos
+    return [
+        [list(anillo) for anillo in poly]
+        for poly in polys
+        if isinstance(poly, (list, tuple)) and poly
+    ]
+
+
+def _anillos(geometry: dict[str, Any]) -> list[list[list[float]]]:
+    """Exterior + interior rings of a Polygon/MultiPolygon as coord lists."""
+    return [anillo for poly in _poligonos(geometry) for anillo in poly]
 
 
 def _placemark_poligono(nombre: str, style_id: str, geometrias: list[dict[str, Any]]) -> str:
     """One Placemark per class: MultiGeometry of tessellated polygons."""
     poligonos: list[str] = []
     for geometria in geometrias:
-        piezas: list[str] = []
-        for anillo in _anillos(geometria):
-            coords = " ".join(_coord(c[0], c[1]) for c in anillo if len(c) >= 2)
-            if len(coords) < 2:
+        for poly in _poligonos(geometria):
+            # GeoJSON ring order: first ring = outerBoundaryIs, rest = innerBoundaryIs.
+            ext_pts = [_coord(c[0], c[1]) for c in poly[0] if len(c) >= 2]
+            if len(ext_pts) < 4:
                 continue
-            piezas.append(f"<LinearRing><coordinates>{coords}</coordinates></LinearRing>")
-        if not piezas:
-            continue
-        # First ring = outerBoundaryIs, the rest inner (GeoJSON ring order:
-        # exterior then holes — KML needs them split by container).
-        exterior, *interiores = piezas
-        inner = "".join(f"<innerBoundaryIs>{p}</innerBoundaryIs>" for p in interiores)
-        poligonos.append(
-            "<Polygon><tessellate>1</tessellate>"
-            f"<outerBoundaryIs>{exterior}</outerBoundaryIs>{inner}</Polygon>"
-        )
+            exterior = f"<LinearRing><coordinates>{' '.join(ext_pts)}</coordinates></LinearRing>"
+            interiores: list[str] = []
+            for anillo in poly[1:]:
+                pts = [_coord(c[0], c[1]) for c in anillo if len(c) >= 2]
+                if len(pts) < 4:
+                    continue
+                interiores.append(
+                    "<innerBoundaryIs><LinearRing><coordinates>"
+                    f"{' '.join(pts)}</coordinates></LinearRing></innerBoundaryIs>"
+                )
+            poligonos.append(
+                "<Polygon><tessellate>1</tessellate>"
+                f"<outerBoundaryIs>{exterior}</outerBoundaryIs>{''.join(interiores)}</Polygon>"
+            )
     if not poligonos:
         return ""
     cuerpo = "".join(poligonos) if len(poligonos) > 1 else poligonos[0]
@@ -153,9 +161,10 @@ def _placemark_linea(nombre: str, style_id: str, geometrias: list[dict[str, Any]
     lineas: list[str] = []
     for geometria in geometrias:
         for anillo in _anillos(geometria):
-            coords = " ".join(_coord(c[0], c[1]) for c in anillo if len(c) >= 2)
-            if len(coords) < 2:
+            pts = [_coord(c[0], c[1]) for c in anillo if len(c) >= 2]
+            if len(pts) < 2:
                 continue
+            coords = " ".join(pts)
             lineas.append(
                 f"<LineString><tessellate>1</tessellate>"
                 f"<coordinates>{coords}</coordinates></LineString>"
@@ -270,8 +279,11 @@ def construir_kmz_informe(
             if not clase.geometrias:
                 continue
             style_id = f"clase-{indice_tema}-{indice_clase}"
+            pm = _placemark_poligono(clase.clase, style_id, clase.geometrias)
+            if not pm:
+                continue
             estilos.append(_estilo_poligono(style_id, clase.color))
-            placemarks.append(_placemark_poligono(clase.clase, style_id, clase.geometrias))
+            placemarks.append(pm)
         if not placemarks:
             continue
         # First theme on, the rest off: Google Earth opens with exactly one
@@ -336,6 +348,7 @@ def _clave_imagen(titulo: str, indice: int) -> str:
     Deterministic on ``(titulo, indice)``: the XML href and the zip entry
     name both come from this function, so they cannot drift apart.
     """
-    plano = "".join(c if c.isalnum() else "-" for c in titulo.lower())
+    normalizado = unicodedata.normalize("NFKD", titulo).encode("ascii", "ignore").decode("ascii")
+    plano = "".join(c if c.isalnum() else "-" for c in normalizado.lower())
     clave = re.sub(r"-{2,}", "-", plano).strip("-")[:40]
     return f"{clave or 'imagen'}-{indice}"
