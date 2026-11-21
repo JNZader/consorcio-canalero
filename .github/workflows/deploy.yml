@@ -142,6 +142,8 @@ jobs:
       # on main (2026-10-13); the floor does not sit above that.
       - run: python3 -m pytest tests/new/ --cov=app --cov-config=.coveragerc --cov-report=term --cov-report=json:coverage.json --cov-fail-under=80 -q --no-header --tb=short
       - run: python3 scripts/critical_coverage_gate.py coverage.json
+      - name: Run pure unit suite (separate process after tests/new/)
+        run: python3 -m pytest tests/unit/ -q --no-header --tb=short
 
   mutation-backend:
     name: Backend mutation gate
