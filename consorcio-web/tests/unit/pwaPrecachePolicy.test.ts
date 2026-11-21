@@ -7,15 +7,16 @@ import { describe, expect, it } from 'vitest';
 
 import {
   CAMPO_MAP_ENGINE_CACHE_FIRST,
+  CAMPO_PACKAGE_NETWORK_ONLY,
+  excludeMapFromPrecacheManifest,
   GEE_IMAGE_NETWORK_ONLY,
   GLYPH_SPRITE_NETWORK_ONLY,
+  isExcludedFromInstallPrecache,
   MAP_ENGINE_NETWORK_ONLY,
   MARTIN_TILE_NETWORK_ONLY,
   PRECACHE_GLOB_IGNORES,
   PRECACHE_GLOB_PATTERNS,
   TERRAIN_TILE_NETWORK_ONLY,
-  excludeMapFromPrecacheManifest,
-  isExcludedFromInstallPrecache,
 } from '../../pwaPrecachePolicy';
 
 const PRECACHED = [
@@ -120,11 +121,13 @@ describe('map runtime stays on the network', () => {
       GLYPH_SPRITE_NETWORK_ONLY.test('https://tiles.openfreemap.org/sprites/liberty/sprite.json')
     ).toBe(true);
     expect(
-      MARTIN_TILE_NETWORK_ONLY.test('https://tiles.consorcio.example.com/vt_canal_network/12/100/200')
+      MARTIN_TILE_NETWORK_ONLY.test(
+        'https://tiles.consorcio.example.com/vt_canal_network/12/100/200'
+      )
     ).toBe(true);
-    expect(
-      MARTIN_TILE_NETWORK_ONLY.test('http://localhost:3000/parcelas_catastro/14/1/2')
-    ).toBe(true);
+    expect(MARTIN_TILE_NETWORK_ONLY.test('http://localhost:3000/parcelas_catastro/14/1/2')).toBe(
+      true
+    );
     expect(
       MARTIN_TILE_NETWORK_ONLY.test(
         'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/12/1/2'
@@ -149,6 +152,22 @@ describe('map runtime stays on the network', () => {
     expect(CAMPO_MAP_ENGINE_CACHE_FIRST.test('/assets/maplibre-gl-worker-Br3j0JGE.js')).toBe(true);
     expect(CAMPO_MAP_ENGINE_CACHE_FIRST.test('/assets/vendor-mantine-B5HaKcPQ.js')).toBe(false);
     expect(CAMPO_MAP_ENGINE_CACHE_FIRST.test('/assets/MapaPage-DvhaKh9P.js')).toBe(false);
+  });
+
+  it('keeps /api/v2/public/campo/* NetworkOnly in SW before generic public NetworkFirst', () => {
+    expect(CAMPO_PACKAGE_NETWORK_ONLY.test('/api/v2/public/campo/abc-123')).toBe(true);
+    expect(CAMPO_PACKAGE_NETWORK_ONLY.test('/api/v2/public/layers/catalog')).toBe(false);
+
+    const viteConfig = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '../../vite.config.ts'),
+      'utf8'
+    );
+    const campoIdx = viteConfig.indexOf('urlPattern: CAMPO_PACKAGE_NETWORK_ONLY');
+    const genericPublicIdx = viteConfig.indexOf('/\\/api\\/v2\\/public\\/.*/i');
+    expect(campoIdx).toBeGreaterThan(-1);
+    expect(genericPublicIdx).toBeGreaterThan(campoIdx);
+    const fragment = viteConfig.slice(campoIdx, campoIdx + 120);
+    expect(fragment).toContain("handler: 'NetworkOnly'");
   });
 });
 

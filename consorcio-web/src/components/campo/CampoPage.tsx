@@ -23,7 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { API_URL } from '../../lib/api/core';
 import { loadMapLibre } from '../../lib/maplibreLoader';
-import { cargarPaqueteCampo, urlPaqueteCampo } from './campoCache';
+import { CampoRevocadoError, cargarPaqueteCampo, urlPaqueteCampo } from './campoCache';
 import { analizarPosicion, circuloPrecision, type LngLat } from './geometriaCampo';
 import { PanelPosicion } from './PanelPosicion';
 import type { PaqueteCampo } from './tiposCampo';
@@ -158,7 +158,7 @@ function construirEstilo(paquete: PaqueteCampo): StyleSpecification {
   return { version: 8, sources: fuentes, layers: capas } as StyleSpecification;
 }
 
-function boundsDeSeleccion(paquete: PaqueteCampo): [[number, number], [number, number]] {
+function boundsDeSeleccion(paquete: PaqueteCampo): [[number, number], [number, number]] | null {
   let minx = 180;
   let miny = 90;
   let maxx = -180;
@@ -178,6 +178,7 @@ function boundsDeSeleccion(paquete: PaqueteCampo): [[number, number], [number, n
   } else {
     for (const poligono of coords as number[][][][]) for (const anillo of poligono) pisar(anillo);
   }
+  if (minx > maxx || miny > maxy) return null;
   return [
     [minx, miny],
     [maxx, maxy],
@@ -188,10 +189,12 @@ export default function CampoPage({ token }: { token: string }) {
   const [paquete, setPaquete] = useState<PaqueteCampo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sinSenal, setSinSenal] = useState(false);
+  const [avisoCache, setAvisoCache] = useState<string | null>(null);
   const [temaActivo, setTemaActivo] = useState<string | null>(null);
   const [fijacion, setFijacion] = useState<FijacionGps>(null);
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [claseTocada, setClaseTocada] = useState<string | null>(null);
+  const [mapaListo, setMapaListo] = useState(false);
 
   const contenedorRef = useRef<HTMLDivElement | null>(null);
   const mapaRef = useRef<MapLibreMap | null>(null);
@@ -205,20 +208,23 @@ export default function CampoPage({ token }: { token: string }) {
   useEffect(() => {
     let vivo = true;
     cargarPaqueteCampo(urlPaqueteCampo(token, API_URL))
-      .then(({ paquete: pkg, desdeCache }) => {
+      .then(({ paquete: pkg, desdeCache, avisoCache: aviso }) => {
         if (!vivo) return;
         // desdeCache → this open already survived a dead network (S9);
         // offline-at-load → the chip belongs on screen from the start.
         setSinSenal(desdeCache || !navigator.onLine);
+        setAvisoCache(aviso);
         const claves = Object.keys(pkg.temas);
         setPaquete(pkg);
         setTemaActivo(claves[0] ?? null);
       })
-      .catch(() => {
-        if (vivo)
-          setError(
-            'No pudimos cargar el mapa de campo. Probá con señal una vez y volvé a intentar.'
-          );
+      .catch((fallo: unknown) => {
+        if (!vivo) return;
+        setError(
+          fallo instanceof CampoRevocadoError
+            ? 'Este enlace de campo venció o fue eliminado.'
+            : 'No pudimos cargar el mapa de campo. Probá con señal una vez y volvé a intentar.'
+        );
       });
     return () => {
       vivo = false;
@@ -266,9 +272,11 @@ export default function CampoPage({ token }: { token: string }) {
 
       mapa.on('load', () => {
         if (cancelado || !mapa) return;
-        mapa.fitBounds(boundsDeSeleccion(paquete), { padding: 40, duration: 0 });
+        const bounds = boundsDeSeleccion(paquete);
+        if (bounds) mapa.fitBounds(bounds, { padding: 40, duration: 0 });
         aplicarVisibilidad(mapa, paquete, temaActivoRef.current);
         contenedorRef.current?.setAttribute('data-ready', '1');
+        setMapaListo(true);
       });
 
       mapa.on('click', (e) => {
@@ -293,6 +301,7 @@ export default function CampoPage({ token }: { token: string }) {
 
     return () => {
       cancelado = true;
+      setMapaListo(false);
       mapa?.remove();
       mapaRef.current = null;
     };
@@ -322,9 +331,13 @@ export default function CampoPage({ token }: { token: string }) {
     const id = navigator.geolocation.watchPosition(
       (pos) => {
         setGpsError(null);
+        const precisionM =
+          Number.isFinite(pos.coords.accuracy) && pos.coords.accuracy > 0
+            ? pos.coords.accuracy
+            : 30;
         setFijacion({
           punto: [pos.coords.longitude, pos.coords.latitude],
-          precisionM: pos.coords.accuracy ?? 30,
+          precisionM,
         });
       },
       (err) => {
@@ -339,8 +352,9 @@ export default function CampoPage({ token }: { token: string }) {
     return () => navigator.geolocation.clearWatch(id);
   }, []);
 
-  // ── paint the GPS fix ────────────────────────────────────────────────
+  // ── paint the GPS fix (runs when either fijacion OR mapaListo resolves) ──
   useEffect(() => {
+    if (!mapaListo) return;
     const mapa = mapaRef.current;
     if (!mapa?.getSource('gps')) return;
     const fuente = mapa.getSource('gps') as GeoJSONSource;
@@ -362,7 +376,7 @@ export default function CampoPage({ token }: { token: string }) {
         },
       ])
     );
-  }, [fijacion]);
+  }, [fijacion, mapaListo]);
 
   const analisis = useMemo(() => {
     if (!paquete || !temaActivo) return null;
@@ -396,6 +410,7 @@ export default function CampoPage({ token }: { token: string }) {
         temaActivo={temaActivo}
         paquete={paquete}
         sinSenal={sinSenal}
+        avisoCache={avisoCache}
         gpsError={gpsError}
         claseTocada={claseTocada}
         precisionM={fijacion?.precisionM ?? null}

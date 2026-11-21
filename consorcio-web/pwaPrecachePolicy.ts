@@ -84,15 +84,12 @@ export const TERRAIN_TILE_NETWORK_ONLY =
   /\/api\/v2\/geo\/layers\/[^/]+\/tiles\/.*encoding=terrain-rgb/i;
 
 /**
- * Campo (PR 6, S5): the offline field package. CacheFirst with a 90-day
- * window — the token's own lifetime — because the whole point is "scan the
- * QR once, then it works in airplane mode". Registered BEFORE the generic
- * `/api/v2/public/.*` NetworkFirst so this route wins (workbox matches in
- * order). The page ALSO writes the same URL into the same cache name via
- * Cache Storage, so first-use caching holds even where the SW has not
- * settled yet (dev, first install window).
+ * Campo (PR 6, S5): the public package stays `NetworkOnly` at the service-worker
+ * layer so Workbox never duplicates the ~15 MB response nor intercepts ETag/304 or
+ * 404/410 revocation checks; `campoCache.ts` owns the explicit `campo-packages`
+ * Cache Storage entry. Registered BEFORE the generic `/api/v2/public/.*` NetworkFirst.
  */
-export const CAMPO_PACKAGE_CACHE_FIRST = /\/api\/v2\/public\/campo\/[^/?#]+$/i;
+export const CAMPO_PACKAGE_NETWORK_ONLY = /\/api\/v2\/public\/campo\/[^/?#]+$/i;
 
 export const CAMPO_PACKAGE_CACHE_NAME = 'campo-packages';
 

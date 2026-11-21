@@ -112,6 +112,11 @@
   font-size: 0.85rem;
 }
 
+.campo-notas {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
 .campo-error {
   color: #b91c1c;
 }
@@ -130,4 +135,9 @@
   color: #ffffff;
   font-size: 0.9rem;
   cursor: pointer;
+}
+
+.campo-boton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

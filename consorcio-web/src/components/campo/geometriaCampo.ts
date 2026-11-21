@@ -192,15 +192,22 @@ function vecinoDelLado(tema: TemaCampo, pt: LngLat, distanciaM: number): ClaseCa
   return null;
 }
 
-/** 64-gon of radius `radioM` around the fix — the accuracy circle (S6). */
+/** Maximum rendered accuracy circle radius (m) so coarse cell-tower fixes stay legible. */
+export const RADIO_PRECISION_MAX_M = 500;
+
+/** 64-gon of radius `radioM` (clamped at 500 m) around the fix — the accuracy circle (S6). */
 export function circuloPrecision(pt: LngLat, radioM: number): GeometriaGeoJSON {
+  const radioAcotado = Math.min(
+    Math.max(Number.isFinite(radioM) ? radioM : 0, 0),
+    RADIO_PRECISION_MAX_M
+  );
   const puntos: number[][] = [];
   const escala = escalaLon(pt[1]);
   for (let i = 0; i <= 64; i++) {
     const angulo = (i / 64) * 2 * Math.PI;
     puntos.push([
-      pt[0] + (radioM * Math.sin(angulo)) / escala,
-      pt[1] + (radioM * Math.cos(angulo)) / METROS_POR_GRADO_LAT,
+      pt[0] + (radioAcotado * Math.sin(angulo)) / escala,
+      pt[1] + (radioAcotado * Math.cos(angulo)) / METROS_POR_GRADO_LAT,
     ]);
   }
   return { type: 'Polygon', coordinates: [puntos] };
