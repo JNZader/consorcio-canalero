@@ -22,6 +22,7 @@ export function parseMapaRouteSearch(search: Record<string, unknown>): Record<st
   const layers = keepScalar(search.l);
   const rasterTipo = keepScalar(search.r);
   const perfil = keepScalar(search.perfil);
+  const view = search.view === '3d' || search.view === '2d' ? search.view : undefined;
 
   return {
     ...(search.hazard === '1' || search.hazard === true ? { hazard: '1' } : {}),
@@ -35,6 +36,7 @@ export function parseMapaRouteSearch(search: Record<string, unknown>): Record<st
     ...(layers ? { l: layers } : {}),
     ...(rasterTipo ? { r: rasterTipo } : {}),
     ...(perfil && /^[a-z0-9-]{1,80}$/.test(perfil) ? { perfil } : {}),
+    ...(view ? { view } : {}),
     ...(search.report === '1' || search.report === true ? { report: '1' } : {}),
   };
 }

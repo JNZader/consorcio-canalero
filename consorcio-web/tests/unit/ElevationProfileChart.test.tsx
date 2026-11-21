@@ -1,5 +1,5 @@
 import { MantineProvider } from '@mantine/core';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { LineString } from 'geojson';
 import type { ReactNode } from 'react';
@@ -686,5 +686,54 @@ describe('<ElevationProfileChart />', () => {
       </MantineProvider>
     );
     expect(screen.getByTestId('elevation-profile-compare-dems')).toBeInTheDocument();
+  });
+
+  it('uses legible orange-4 stroke/legend token for MDE-Ar and includes compared DEMs in data table (W-FE-02, S-03)', async () => {
+    vi.mocked(fetchElevationProfile).mockResolvedValueOnce({
+      puntos: [
+        {
+          distance_m: 0,
+          elevation_m: 120,
+          elevation_mde_ar: 122.4,
+          elevation_aw3d30: 121.1,
+          elevation_nasadem: 118.2,
+          elevation_gem15: null,
+        },
+        {
+          distance_m: 15,
+          elevation_m: 118,
+          elevation_mde_ar: null,
+          elevation_aw3d30: 119.5,
+          elevation_nasadem: 116.8,
+          elevation_gem15: 117.3,
+        },
+      ],
+      length_m: 15,
+      min_elevation_m: 118,
+      max_elevation_m: 120,
+      source: 'dem_filled.tif',
+      cell_m: 15,
+      disclaimer: 'Perfil sobre Copernicus GLO-30 (~30 m).',
+    });
+
+    const user = userEvent.setup();
+    renderWithMantine(<ElevationProfileChart geometry={line} autoLoad />);
+    const legend = await screen.findByTestId('elevation-profile-legend');
+    const mdeArLegend = within(legend).getByText('MDE-Ar');
+    expect(mdeArLegend.style.color).toBe('var(--mantine-color-orange-4)');
+
+    await user.click(screen.getByTestId('elevation-profile-table-toggle'));
+    const table = screen.getByTestId('elevation-profile-table');
+    expect(table).toBeVisible();
+    expect(within(table).getByRole('columnheader', { name: 'Distancia (m)' })).toBeInTheDocument();
+    expect(within(table).getByRole('columnheader', { name: 'Cota (m)' })).toBeInTheDocument();
+    expect(within(table).getByRole('columnheader', { name: 'MDE-Ar (m)' })).toBeInTheDocument();
+    expect(within(table).getByRole('columnheader', { name: 'AW3D30 (m)' })).toBeInTheDocument();
+    expect(within(table).getByRole('columnheader', { name: 'NASADEM (m)' })).toBeInTheDocument();
+    expect(within(table).getByRole('columnheader', { name: 'GEM-15 (m)' })).toBeInTheDocument();
+    expect(within(table).getByText('122,4')).toBeInTheDocument();
+    expect(within(table).getByText('121,1')).toBeInTheDocument();
+    expect(within(table).getByText('116,8')).toBeInTheDocument();
+    expect(within(table).getByText('117,3')).toBeInTheDocument();
   });
 });

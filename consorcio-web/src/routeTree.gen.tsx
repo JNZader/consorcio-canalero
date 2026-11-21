@@ -259,21 +259,26 @@ const verifyEmailRoute = createRoute({
   },
 });
 
-const mapaRoute = createRoute({
-  getParentRoute: () => rootRouteWithComponent,
-  path: '/mapa',
-  validateSearch: (search: Record<string, unknown>) => parseMapaRouteSearch(search),
-  component: () => (
+function MapaRouteComponent() {
+  const search = mapaRoute.useSearch() as { view?: '2d' | '3d' };
+  return (
     <RootLayout
       title="Mapa Interactivo"
       hideFooter={true}
       description="Explora el mapa interactivo de las cuencas hídricas del Consorcio Canalero 10 de Mayo."
     >
       <Suspense fallback={<PageLoader />}>
-        <MapaPage />
+        <MapaPage initialView={search.view} />
       </Suspense>
     </RootLayout>
-  ),
+  );
+}
+
+const mapaRoute = createRoute({
+  getParentRoute: () => rootRouteWithComponent,
+  path: '/mapa',
+  validateSearch: (search: Record<string, unknown>) => parseMapaRouteSearch(search),
+  component: MapaRouteComponent,
 });
 
 // Vista publica unificada: reportar un problema y proponer una mejora
