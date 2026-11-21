@@ -104,16 +104,27 @@ function writeBrandVars(root: HTMLElement, id: BrandId): void {
   }
 
   // Filled action uses shade 6 (same as theme primaryShade).
+  // Scheme-aware ink & light tints preserve AA contrast on both white and darkShell.
   const action = preset.institucional[6]!;
   const brand = preset.institucional[5]!;
   const light = preset.institucional[0]!;
-  const lightColor = preset.institucional[7]!;
+  const lightInk = preset.institucional[7]!;
+  const darkInk = preset.institucional[3]!;
+  const schemeInk = `light-dark(${lightInk}, ${darkInk})`;
 
+  root.style.setProperty(`${INSTITUCIONAL_VAR_PREFIX}7`, schemeInk);
+  root.style.setProperty('--mantine-primary-color-7', schemeInk);
   root.style.setProperty('--mantine-primary-color-filled', action);
-  root.style.setProperty('--mantine-primary-color-filled-hover', preset.institucional[7]!);
-  root.style.setProperty('--mantine-primary-color-light', light);
-  root.style.setProperty('--mantine-primary-color-light-hover', preset.institucional[1]!);
-  root.style.setProperty('--mantine-primary-color-light-color', lightColor);
+  root.style.setProperty('--mantine-primary-color-filled-hover', lightInk);
+  root.style.setProperty(
+    '--mantine-primary-color-light',
+    `light-dark(${light}, color-mix(in srgb, ${preset.institucional[4]!} 18%, transparent))`
+  );
+  root.style.setProperty(
+    '--mantine-primary-color-light-hover',
+    `light-dark(${preset.institucional[1]!}, color-mix(in srgb, ${preset.institucional[4]!} 26%, transparent))`
+  );
+  root.style.setProperty('--mantine-primary-color-light-color', schemeInk);
 
   root.style.setProperty('--mantine-color-gray-0', preset.surface);
   // Scheme-aware: inline styles beat Mantine's dark resolver. A light muted

@@ -7,6 +7,16 @@ import { erroresUi, textoError } from '../userFacingError';
 import { API_PREFIX, API_URL, apiFetch, getAuthToken, LONG_TIMEOUT } from './core';
 import type { ResolveInput, ResolveStatus } from './reportsResolve';
 
+export interface DenunciaStatsResponse {
+  total: number;
+  por_estado: Record<string, number>;
+  por_tipo: Record<string, number>;
+  por_cuenca: Record<string, number>;
+  pendiente?: number;
+  en_revision?: number;
+  resuelto?: number;
+}
+
 export const reportsApi = {
   /**
    * Obtener denuncias con filtros.
@@ -106,7 +116,7 @@ export const reportsApi = {
   assign: (id: string, operadorId: string, notas?: string): Promise<Report> =>
     apiFetch(`/denuncias/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ asignado_a: operadorId, notas_internas: notas }),
+      body: JSON.stringify({ asignado_a: operadorId, comentario: notas }),
     }),
 
   /**
@@ -124,18 +134,13 @@ export const reportsApi = {
   }> =>
     apiFetch(`/denuncias/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ estado: 'resuelto', notas_admin: resolution.comment }),
+      body: JSON.stringify({ estado: 'resuelto', respuesta: resolution.comment }),
     }),
 
   /**
    * Obtener estadisticas.
    */
-  getStats: (): Promise<{
-    pendiente: number;
-    en_revision: number;
-    resuelto: number;
-    total: number;
-  }> => apiFetch('/denuncias/stats'),
+  getStats: (): Promise<DenunciaStatsResponse> => apiFetch('/denuncias/stats'),
 };
 
 /**

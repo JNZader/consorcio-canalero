@@ -1,7 +1,7 @@
 import { Badge, Button, Container, Group, Paper } from '@mantine/core';
 import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { apiFetch, type Report, reportsApi } from '../../../lib/api';
+import { apiFetch, type DenunciaStatsResponse, type Report, reportsApi } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
 import { showError, showSuccess } from '../../../lib/notifications';
 import { erroresUi, textoError } from '../../../lib/userFacingError';
@@ -42,7 +42,31 @@ function readBandejaQuery() {
   };
 }
 
-export default function ReportsPanel() {
+function parseGlobalStats(statsResponse: unknown): ReportStatusCounts | null {
+  if (!statsResponse || typeof statsResponse !== 'object') return null;
+  const raw = statsResponse as Partial<DenunciaStatsResponse> & {
+    por_estado?: Record<string, unknown>;
+  };
+  if (raw.por_estado && typeof raw.por_estado === 'object') {
+    const pendiente = raw.por_estado.pendiente;
+    const enRevision = raw.por_estado.en_revision;
+    if (typeof pendiente === 'number' || typeof enRevision === 'number') {
+      return {
+        pendiente: typeof pendiente === 'number' ? pendiente : 0,
+        en_revision: typeof enRevision === 'number' ? enRevision : 0,
+      };
+    }
+  }
+  if (typeof raw.pendiente === 'number' && typeof raw.en_revision === 'number') {
+    return {
+      pendiente: raw.pendiente,
+      en_revision: raw.en_revision,
+    };
+  }
+  return null;
+}
+
+export default function ReportsPanel({ active = true }: Readonly<{ active?: boolean }> = {}) {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -125,7 +149,9 @@ export default function ReportsPanel() {
     setLoading(true);
     announceRef.current('Cargando reportes...');
     try {
-      const getStatsFn = (reportsApi as { getStats?: () => Promise<ReportStatusCounts> }).getStats;
+      const getStatsFn = (
+        reportsApi as { getStats?: () => Promise<DenunciaStatsResponse | ReportStatusCounts> }
+      ).getStats;
       const [data, statsResponse] = await Promise.all([
         reportsApi.getAll(
           page,
@@ -136,19 +162,17 @@ export default function ReportsPanel() {
           sort,
           order
         ),
-        typeof getStatsFn === 'function' ? getStatsFn().catch(() => null) : Promise.resolve(null),
+        typeof getStatsFn === 'function'
+          ? Promise.resolve()
+              .then(() => getStatsFn())
+              .catch(() => null)
+          : Promise.resolve(null),
       ]);
       setReports(data.items);
       setTotalPages(Math.max(1, Math.ceil(data.total / ITEMS_PER_PAGE)));
-      if (
-        statsResponse &&
-        typeof statsResponse.pendiente === 'number' &&
-        typeof statsResponse.en_revision === 'number'
-      ) {
-        setGlobalStats({
-          pendiente: statsResponse.pendiente,
-          en_revision: statsResponse.en_revision,
-        });
+      const parsedGlobal = parseGlobalStats(statsResponse);
+      if (parsedGlobal) {
+        setGlobalStats(parsedGlobal);
       } else if (!filterStatus && !filterCategory && !searchQuery) {
         setGlobalStats(countReportStatuses(data.items));
       }
@@ -166,6 +190,7 @@ export default function ReportsPanel() {
   }, [page, filterStatus, filterCategory, searchQuery, sort, order]);
 
   useEffect(() => {
+    if (!active) return;
     const params = new URLSearchParams(window.location.search);
     const put = (key: string, value: string | null) => {
       if (value) params.set(key, value);
@@ -181,7 +206,7 @@ export default function ReportsPanel() {
     const query = params.toString();
     const next = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
     window.history.replaceState(window.history.state, '', next);
-  }, [searchQuery, filterStatus, filterCategory, page, sort, order]);
+  }, [active, searchQuery, filterStatus, filterCategory, page, sort, order]);
 
   const runBulk = async () => {
     setBulkRunning(true);

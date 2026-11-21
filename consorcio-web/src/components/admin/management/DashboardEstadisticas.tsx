@@ -214,6 +214,13 @@ export const DashboardEstadisticas = memo(function DashboardEstadisticas() {
       return monitoringData.summary.porcentaje_problematico;
     }
 
+    const latestWithArea = monitoringData?.latest_analyses?.find(
+      (analysis) => typeof analysis.porcentaje_area === 'number'
+    );
+    if (typeof latestWithArea?.porcentaje_area === 'number') {
+      return latestWithArea.porcentaje_area;
+    }
+
     return null;
   }, [floodHistoryData, monitoringData]);
 

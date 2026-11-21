@@ -404,4 +404,56 @@ describe('<MapWorkspace />', () => {
     expect(push).not.toHaveBeenCalled();
     expect(back).not.toHaveBeenCalled();
   });
+
+  it('mobile (C13): closing the drawer keeps it closed while selection stays mounted, and opens on a new selectionKey', async () => {
+    mockViewport(false);
+    const onCloseSelection = vi.fn();
+    const { rerender } = renderWithMantine(
+      <MapWorkspace
+        canvas={canvas}
+        controls={controls}
+        selection={<div data-testid="selection-body">Parcela 1</div>}
+        selectionKey="parcela-1"
+        onCloseSelection={onCloseSelection}
+      />
+    );
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByTestId('map-workspace-root')).toHaveAttribute('data-drawer-open', 'true');
+
+    fireEvent.click(screen.getByTestId('map-workspace-drawer-close'));
+    await waitFor(() =>
+      expect(screen.getByTestId('map-workspace-root')).toHaveAttribute('data-drawer-open', 'false')
+    );
+
+    // Re-rendering with the SAME selectionKey must NOT force the drawer open again.
+    rerender(
+      <MantineProvider env="test">
+        <MapWorkspace
+          canvas={canvas}
+          controls={controls}
+          selection={<div data-testid="selection-body">Parcela 1 actualizada</div>}
+          selectionKey="parcela-1"
+          onCloseSelection={onCloseSelection}
+        />
+      </MantineProvider>
+    );
+    expect(screen.getByTestId('map-workspace-root')).toHaveAttribute('data-drawer-open', 'false');
+
+    // Picking a DIFFERENT feature opens the drawer for the new selection.
+    rerender(
+      <MantineProvider env="test">
+        <MapWorkspace
+          canvas={canvas}
+          controls={controls}
+          selection={<div data-testid="selection-body">Parcela 2</div>}
+          selectionKey="parcela-2"
+          onCloseSelection={onCloseSelection}
+        />
+      </MantineProvider>
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('map-workspace-root')).toHaveAttribute('data-drawer-open', 'true')
+    );
+  });
 });

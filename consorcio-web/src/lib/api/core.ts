@@ -433,6 +433,35 @@ function resolveProtectedPhotoUrl(resource: string): string {
   return resolved.toString();
 }
 
+function extractContentDispositionFilename(header: string | null): string | null {
+  if (!header) return null;
+  const utf8Match = /filename\*\s*=\s*UTF-8''([^;\n]+)/i.exec(header);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1].trim().replace(/^["']|["']$/g, ''));
+    } catch {
+      return utf8Match[1].trim().replace(/^["']|["']$/g, '');
+    }
+  }
+  const plainMatch = /filename\s*=\s*"([^"]+)"|filename\s*=\s*([^;\n]+)/i.exec(header);
+  const raw = plainMatch?.[1] ?? plainMatch?.[2];
+  return raw ? raw.trim() : null;
+}
+
+/**
+ * Download an authenticated binary/file endpoint using Bearer auth + silent refresh.
+ */
+export async function fetchAuthenticatedFile(
+  endpoint: string,
+  options: ApiFetchOptions = {}
+): Promise<{ blob: Blob; filename: string | null }> {
+  return authenticatedFetchResponse(`${API_URL}${API_PREFIX}${endpoint}`, options, async (response) => {
+    const blob = await response.blob();
+    const filename = extractContentDispositionFilename(response.headers.get('content-disposition'));
+    return { blob, filename };
+  });
+}
+
 /**
  * Load a protected denuncia photo without putting bearer credentials in its URL.
  * Uses the same one-shot refresh/retry and auth-expiry behavior as apiFetch.
