@@ -187,7 +187,7 @@ services:
       FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1,caddy}
     volumes:
       - geo-data:/data/geo
-      - ./gee-backend/data/waterways:/app/data/waterways:ro
+      - ./gee-backend/data/waterways:/app/data/waterways
       - ./credentials:/app/credentials:ro
       # Persist denuncia photos so they survive container rebuilds.
       - denuncia-uploads:/app/uploads
@@ -318,6 +318,7 @@ services:
       DATABASE_URL: ${APP_DATABASE_URL:-${DATABASE_URL}}
     volumes:
       - geo-data:/data/geo
+      - denuncia-uploads:/app/uploads
       - ./credentials:/app/credentials:ro
     networks:
       - consorcio-internal
@@ -329,6 +330,8 @@ services:
       start_period: 30s
     depends_on:
       migrate:
+        condition: service_completed_successfully
+      uploads-init:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
@@ -384,7 +387,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1536M
     logging:
       driver: "json-file"
       options:
