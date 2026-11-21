@@ -193,4 +193,21 @@ describe('applyBrand', () => {
       document.documentElement.style.getPropertyValue('--mantine-color-placeholder')
     ).toBe(dimmed);
   });
+
+  it('writes scheme-aware light-dark vars with AA dark ink contrast across all 6 non-default presets (C17)', () => {
+    for (const preset of Object.values(BRAND_PRESETS)) {
+      if (preset.id === DEFAULT_BRAND_ID) continue;
+      applyBrand(preset.id, { notify: false });
+      const style = document.documentElement.style;
+      const darkInk = preset.institucional[3]!;
+      expect(contrastRatio(darkInk, preset.darkShell), `${preset.id} dark ink AA`).toBeGreaterThanOrEqual(4.5);
+
+      const expectedInk = `light-dark(${preset.institucional[7]!}, ${darkInk})`;
+      expect(style.getPropertyValue('--mantine-color-institucional-7')).toBe(expectedInk);
+      expect(style.getPropertyValue('--mantine-primary-color-7')).toBe(expectedInk);
+      expect(style.getPropertyValue('--mantine-primary-color-light-color')).toBe(expectedInk);
+      expect(style.getPropertyValue('--mantine-primary-color-light')).toContain('light-dark(');
+      expect(style.getPropertyValue('--mantine-primary-color-light-hover')).toContain('light-dark(');
+    }
+  });
 });

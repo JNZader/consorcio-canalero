@@ -865,4 +865,27 @@ describe('useImageExplorerController — imagery shortlist', () => {
     expect(lastUrl('dayImage')).toContain('days_buffer=20');
     expect(result.current.compositionMode).toBe('composite');
   });
+
+  it('parses first-of-month historic flood dates without UTC timezone month shift and surfaces dates errors', async () => {
+    stubApi({
+      flood: () => floodResult('2016-04-01'),
+    });
+    const { result } = await mountController();
+
+    await act(async () => {
+      await result.current.loadHistoricFlood('f1');
+    });
+    expect(result.current.calendarYear).toBe(2016);
+    expect(result.current.calendarMonth).toBe(3);
+
+    stubApi({
+      dates: () => Promise.reject(new Error('Fallo al listar fechas disponibles')),
+    });
+    await act(async () => {
+      result.current.handleMonthYearChange(2025, 4);
+    });
+    await waitFor(() =>
+      expect(result.current.error).toBe('Fallo al listar fechas disponibles')
+    );
+  });
 });

@@ -30,6 +30,7 @@ export {
   HEALTH_TIMEOUT,
   apiFetch,
   fetchAuthenticatedBlob,
+  fetchAuthenticatedFile,
   getAuthToken,
   clearAuthTokenCache,
   healthCheck,
@@ -42,6 +43,7 @@ export type { ApiFetchOptions } from './core';
 // REPORTS EXPORTS
 // ===========================================
 export { reportsApi, publicApi, statsApi } from './reports';
+export type { DenunciaStatsResponse } from './reports';
 
 // ===========================================
 // LAYERS EXPORTS

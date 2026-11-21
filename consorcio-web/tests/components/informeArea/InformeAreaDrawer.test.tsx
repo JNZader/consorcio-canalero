@@ -146,6 +146,7 @@ vi.mock('../../../src/components/map2d/MapWorkspace', () => ({
   useMapWorkspaceDesktop: elevado.useMapWorkspaceDesktop,
 }));
 
+import { useDrawerHistoryClose } from '../../../src/hooks/useDrawerHistoryClose';
 import { informeAreaPicked } from '../../../src/components/map2d/informeArea/informeAreaLayers';
 import { InformeAreaDrawer } from '../../../src/components/map2d/informeArea/InformeAreaDrawer';
 import { LIMITE_ZONAS } from '../../../src/components/map2d/informeArea/useSeleccionArea';
@@ -731,5 +732,38 @@ describe('InformeAreaDrawer — cierre', () => {
     // Reabrir: el estado del flujo quedó en cero (§6.5).
     await waitFor(() => expect(contador()).toBe(`0/${LIMITE_ZONAS} subcuencas`));
     expect(screen.getByRole('button', { name: 'Revisar selección' })).toBeDisabled();
+  });
+
+  it('habilita useDrawerHistoryClose en móvil (#740)', () => {
+    elevado.useMapWorkspaceDesktop.mockReturnValue(false);
+    renderDrawer();
+
+    expect(useDrawerHistoryClose).toHaveBeenCalledWith(
+      expect.objectContaining({ opened: true, enabled: true })
+    );
+  });
+
+  it('preview con InformesAreaApiError 422 no reintenta automáticamente (#740)', async () => {
+    const user = userEvent.setup();
+    elevado.medirInformeArea.mockRejectedValue(
+      new elevado.InformesAreaApiError(422, 'cap_excedido', 'Supera el máximo permitido')
+    );
+    const cliente = new QueryClient({
+      defaultOptions: { queries: { retryDelay: 0 } },
+    });
+    render(
+      <MantineProvider env="test">
+        <QueryClientProvider client={cliente}>
+          <InformeAreaDrawer opened onClose={vi.fn()} />
+        </QueryClientProvider>
+      </MantineProvider>
+    );
+
+    pickEnMapa('z-a1', 'Alta 1');
+    await user.click(screen.getByRole('button', { name: 'Revisar selección' }));
+
+    await waitFor(() => expect(elevado.medirInformeArea).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(elevado.medirInformeArea).toHaveBeenCalledTimes(1);
   });
 });

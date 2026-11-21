@@ -34,19 +34,25 @@ import { useImageExplorerController } from './useImageExplorerController';
 export default function ImageExplorerPanel() {
   const controller = useImageExplorerController();
   const [tab, setTab] = useState<ImageExplorerTab>('escena');
+  const [detectVisited, setDetectVisited] = useState(false);
   const [detectFloodDate, setDetectFloodDate] = useState<string | null>(null);
   const [detectNormalDate, setDetectNormalDate] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+
+  function handleTabChange(nextTab: ImageExplorerTab) {
+    if (nextTab === 'detectar') setDetectVisited(true);
+    setTab(nextTab);
+  }
 
   function handleDetectFromEvent(prefill: DetectDatePrefill) {
     setSelectedEventId(prefill.eventId);
     setDetectFloodDate(prefill.floodDate);
     setDetectNormalDate(prefill.normalDate ?? null);
-    setTab('detectar');
+    handleTabChange('detectar');
   }
 
   function handleUseComparePair(pair: ImageryPair) {
-    setTab('comparar');
+    handleTabChange('comparar');
     void controller.publishPairFromShortlist(pair);
   }
 
@@ -63,7 +69,7 @@ export default function ImageExplorerPanel() {
             </div>
             <SegmentedControl
               value={tab}
-              onChange={(v) => setTab(v as ImageExplorerTab)}
+              onChange={(v) => handleTabChange(v as ImageExplorerTab)}
               data={IMAGE_EXPLORER_TABS.map((t) => ({
                 value: t,
                 label: IMAGE_EXPLORER_TAB_LABELS[t],
@@ -233,8 +239,8 @@ export default function ImageExplorerPanel() {
             </Paper>
           )}
 
-          {tab === 'detectar' && (
-            <div style={{ marginBottom: 16 }}>
+          {(tab === 'detectar' || detectVisited) && (
+            <div style={{ display: tab === 'detectar' ? 'block' : 'none', marginBottom: 16 }}>
               {/* Setters crudos a propósito: los handle* derivan del preview `result` del explorador, mientras que esta card empuja tiles propios del job GEE (la persistencia/evento viven en el setter del hook). */}
               <ImageExplorerFloodAnalysis
                 onSetLeftImage={controller.setLeftImage}

@@ -57,7 +57,7 @@ export function ImageExplorerMap({
             style={{
               position: 'absolute',
               inset: 0,
-              background: 'rgba(255,255,255,0.8)',
+              background: 'color-mix(in srgb, var(--mantine-color-body) 85%, transparent)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',

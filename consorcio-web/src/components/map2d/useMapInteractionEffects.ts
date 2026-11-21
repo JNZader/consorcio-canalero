@@ -339,13 +339,9 @@ export function useMapInteractionEffects({
     const desregistrarPuente = registrarPuenteInformeArea({
       getMap: () => mapRef.current,
       enter: () => {
-        // Entering the informe de área discards the previous selection, same
-        // as every other ficha mode transition (design §6.5) — including with
-        // the sticky touch mode on.
+        // Clear secondary InfoPanel feature cards without resetting the active
+        // ficha request that hosts `InformeAreaDrawer`.
         setSelectedFeatures([]);
-        onParcelaResolvedRef.current?.(null);
-        onClearParcelasRef.current?.();
-        onCanalResolvedRef.current?.(null);
       },
     });
 

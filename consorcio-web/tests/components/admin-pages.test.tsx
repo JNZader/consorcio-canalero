@@ -109,6 +109,7 @@ const renderPanel = () => {
 describe('ParticipacionPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.history.replaceState({}, '', '/');
 
     vi.mocked(reportsApi.getAll).mockResolvedValue({
       items: [report],

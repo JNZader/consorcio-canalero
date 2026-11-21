@@ -1,6 +1,6 @@
 """SQLAlchemy models for the reuniones domain."""
 
-import enum
+from enum import StrEnum
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -21,13 +21,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin, UUIDMixin
 
 
-class TipoReunion(str, enum.Enum):
+class TipoReunion(StrEnum):
     ORDINARIA = "ordinaria"
     EXTRAORDINARIA = "extraordinaria"
     URGENTE = "urgente"
 
 
-class EstadoReunion(str, enum.Enum):
+class EstadoReunion(StrEnum):
     PLANIFICADA = "planificada"
     EN_CURSO = "en_curso"
     FINALIZADA = "finalizada"

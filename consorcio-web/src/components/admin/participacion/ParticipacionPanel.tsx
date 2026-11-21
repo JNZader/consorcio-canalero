@@ -1,5 +1,5 @@
 import { Container, Tabs } from '@mantine/core';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { IconClipboardList, IconLightbulb } from '../../ui/icons';
 import { PageHeader } from '../../ui/PageHeader';
 import ReportsPanel from '../reports/ReportsPanel';
@@ -38,6 +38,19 @@ export default function ParticipacionPanel() {
   const [activeTab, setActiveTab] = useState<string>(leerTabInicial);
   const [visitedTabs, setVisitedTabs] = useState<Set<string>>(() => new Set([leerTabInicial()]));
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (activeTab === DEFAULT_TAB) {
+      params.delete('tab');
+    } else {
+      params.set('tab', activeTab);
+    }
+    const query = params.toString();
+    const nextUrl = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
+    window.history.replaceState(window.history.state, '', nextUrl);
+  }, [activeTab]);
+
   const handleTabChange = (value: string | null) => {
     if (!value) return;
     setActiveTab(value);
@@ -62,9 +75,13 @@ export default function ParticipacionPanel() {
           </Tabs.Tab>
         </Tabs.List>
 
-        <Tabs.Panel value="reportes">{visitedTabs.has('reportes') && <ReportsPanel />}</Tabs.Panel>
+        <Tabs.Panel value="reportes">
+          {visitedTabs.has('reportes') && <ReportsPanel active={activeTab === 'reportes'} />}
+        </Tabs.Panel>
         <Tabs.Panel value="sugerencias">
-          {visitedTabs.has('sugerencias') && <SugerenciasPanel />}
+          {visitedTabs.has('sugerencias') && (
+            <SugerenciasPanel active={activeTab === 'sugerencias'} />
+          )}
         </Tabs.Panel>
       </Tabs>
     </Container>

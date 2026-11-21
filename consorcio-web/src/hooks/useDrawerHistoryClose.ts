@@ -5,6 +5,16 @@ import { useEffect, useRef } from 'react';
  * the contract instead of a magic string.
  */
 export const DRAWER_HISTORY_MARKER = '__consorcioDrawer';
+const DRAWER_HISTORY_ID = '__consorcioDrawerId';
+let nextDrawerHistoryId = 0;
+
+interface PendingRewind {
+  cancelled: boolean;
+}
+
+// Rewinds deferred by one microtask so a synchronous StrictMode remount can
+// cancel the unwind and adopt the marker entry without calling `history.back()`.
+const pendingRewinds = new Map<number, PendingRewind>();
 
 export interface UseDrawerHistoryCloseOptions {
   /** Whether the overlay (Drawer / Modal) is currently open. */
@@ -18,9 +28,11 @@ export interface UseDrawerHistoryCloseOptions {
   enabled?: boolean;
 }
 
-function markerIsOnTop(): boolean {
+function getTopMarkerId(): number | null {
   const state = window.history.state as Record<string, unknown> | null;
-  return Boolean(state && state[DRAWER_HISTORY_MARKER] === true);
+  if (state?.[DRAWER_HISTORY_MARKER] !== true) return null;
+  const id = state[DRAWER_HISTORY_ID];
+  return typeof id === 'number' ? id : null;
 }
 
 /**
@@ -64,14 +76,35 @@ export function useDrawerHistoryClose({
     if (!enabled || !opened) return;
     if (typeof window === 'undefined') return;
 
+    const instanceId = ++nextDrawerHistoryId;
     // Spread the current state so the router's own bookkeeping survives the
     // synthetic entry.
     const currentState = (window.history.state ?? {}) as Record<string, unknown>;
-    window.history.pushState({ ...currentState, [DRAWER_HISTORY_MARKER]: true }, '');
+    const topId = getTopMarkerId();
+    const pending = topId !== null ? pendingRewinds.get(topId) : undefined;
+    if (pending && topId !== null) {
+      // StrictMode remount in the same JS turn: cancel cleanup's queued back()
+      // and adopt the marker entry in place so Chromium never enters history.back().
+      pending.cancelled = true;
+      pendingRewinds.delete(topId);
+      window.history.replaceState(
+        { ...currentState, [DRAWER_HISTORY_MARKER]: true, [DRAWER_HISTORY_ID]: instanceId },
+        ''
+      );
+    } else {
+      window.history.pushState(
+        { ...currentState, [DRAWER_HISTORY_MARKER]: true, [DRAWER_HISTORY_ID]: instanceId },
+        ''
+      );
+    }
     pushedRef.current = true;
 
     const handlePopState = () => {
       if (!pushedRef.current) return;
+      const currentTopId = getTopMarkerId();
+      // Ignore synthetic popstate dispatches (or a nested upper drawer popping)
+      // while THIS drawer's marker or a descendant marker sits on top.
+      if (currentTopId !== null && currentTopId >= instanceId) return;
       // The browser ALREADY removed our entry — closing here must not call
       // `history.back()` again (that would eat a real entry).
       pushedRef.current = false;
@@ -84,8 +117,18 @@ export function useDrawerHistoryClose({
       window.removeEventListener('popstate', handlePopState);
       if (!pushedRef.current) return;
       pushedRef.current = false;
-      if (markerIsOnTop()) {
-        window.history.back();
+      if (getTopMarkerId() === instanceId) {
+        const rewind: PendingRewind = { cancelled: false };
+        pendingRewinds.set(instanceId, rewind);
+        queueMicrotask(() => {
+          if (pendingRewinds.get(instanceId) === rewind) {
+            pendingRewinds.delete(instanceId);
+          }
+          if (rewind.cancelled) return;
+          if (getTopMarkerId() === instanceId) {
+            window.history.back();
+          }
+        });
       }
     };
   }, [enabled, opened]);

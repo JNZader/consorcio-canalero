@@ -1,6 +1,6 @@
 """SQLAlchemy models for the padron domain."""
 
-import enum
+from enum import StrEnum
 from datetime import date
 from typing import Optional
 
@@ -16,7 +16,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base, TimestampMixin, UUIDMixin
 
 
-class EstadoConsorcista(str, enum.Enum):
+class EstadoConsorcista(StrEnum):
     ACTIVO = "activo"
     INACTIVO = "inactivo"
     SUSPENDIDO = "suspendido"

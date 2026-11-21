@@ -303,3 +303,69 @@ def test_martin_reader_script_repairs_drift_and_keeps_exact_view_access(
             assert memberships == 0
         finally:
             transaction.rollback()
+
+
+@pytest.mark.integration
+def test_martin_reader_script_keeps_least_privilege_non_owner_app_role(
+    test_engine,
+) -> None:
+    with test_engine.connect() as connection:
+        transaction = connection.begin()
+        try:
+            database_name, is_superuser = connection.execute(
+                text("SELECT current_database(), current_setting('is_superuser')")
+            ).one()
+            if not database_name.lower().startswith("test") or is_superuser != "on":
+                pytest.skip("requires an isolated test database and a superuser")
+
+            existing_views = [
+                view
+                for view in MARTIN_VIEWS
+                if connection.execute(
+                    text("SELECT to_regclass(:relation)"),
+                    {"relation": f"public.{view}"},
+                ).scalar_one()
+                is not None
+            ]
+            if existing_views:
+                pytest.skip("canonical Martin views already exist in this test database")
+
+            suffix = uuid4().hex[:12]
+            non_owner_app = f"app_lp_{suffix}"
+            reader_role = f"martin_lp_{suffix}"
+            base_table = f"martin_lp_base_{suffix}"
+
+            connection.execute(text(f"CREATE ROLE {_quote_identifier(non_owner_app)} NOLOGIN"))
+            connection.execute(text(f"CREATE TABLE public.{base_table} (id integer PRIMARY KEY)"))
+            for view in MARTIN_VIEWS:
+                connection.execute(
+                    text(f"CREATE VIEW public.{view} AS SELECT id FROM public.{base_table}")
+                )
+
+            script = _render_psql_script(database_name, non_owner_app, reader_role)
+            _execute_script(connection, script)
+
+            assert not _has_privilege(
+                connection,
+                "SELECT has_schema_privilege(:app, 'public', 'CREATE')",
+                app=non_owner_app,
+            )
+            assert _has_privilege(
+                connection,
+                "SELECT has_schema_privilege(:app, 'public', 'USAGE')",
+                app=non_owner_app,
+            )
+            assert not _has_privilege(
+                connection,
+                "SELECT has_table_privilege(:app, :relation, 'TRUNCATE')",
+                app=non_owner_app,
+                relation=f"public.{base_table}",
+            )
+            assert _has_privilege(
+                connection,
+                "SELECT has_table_privilege(:app, :relation, 'SELECT')",
+                app=non_owner_app,
+                relation=f"public.{base_table}",
+            )
+        finally:
+            transaction.rollback()

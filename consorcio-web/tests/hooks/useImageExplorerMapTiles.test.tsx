@@ -216,5 +216,45 @@ describe('updateTileLayer', () => {
 
       expect(mapaSimulado.once.mock.calls.filter(([n]) => n === 'idle')).toHaveLength(1);
     });
+
+    it('difers updateWaterMask until idle when style is not loaded yet', async () => {
+      const api = montar();
+      await waitFor(() => expect(mapaSimulado.addControl).toHaveBeenCalled());
+      mapaSimulado.once.mockClear();
+
+      api.updateWaterMask('https://earthengine.googleapis.com/water-mask/{z}/{x}/{y}');
+      expect(mapaSimulado.addLayer).not.toHaveBeenCalled();
+
+      callbackDe('idle')?.();
+      expect(mapaSimulado.addSource).toHaveBeenCalledWith(
+        'gee-water',
+        expect.objectContaining({
+          tiles: ['https://earthengine.googleapis.com/water-mask/{z}/{x}/{y}'],
+        })
+      );
+      expect(mapaSimulado.addLayer).toHaveBeenCalled();
+    });
+  });
+
+  it('resetea idleWaitRef al desmontar para permitir nuevos updates tras remonte', async () => {
+    mapaSimulado.isStyleLoaded.mockReturnValue(false);
+    let api!: Api;
+    function Sonda() {
+      api = useImageExplorerMap();
+      return <div ref={api.mapRef} />;
+    }
+    const { unmount } = render(<Sonda />);
+    await waitFor(() => expect(mapaSimulado.addControl).toHaveBeenCalled());
+    mapaSimulado.once.mockClear();
+
+    api.updateTileLayer(A);
+    expect(mapaSimulado.once.mock.calls.filter(([n]) => n === 'idle')).toHaveLength(1);
+
+    unmount();
+    const api2 = montar();
+    await waitFor(() => expect(mapaSimulado.addControl).toHaveBeenCalledTimes(2));
+    mapaSimulado.once.mockClear();
+    api2.updateTileLayer(B);
+    expect(mapaSimulado.once.mock.calls.filter(([n]) => n === 'idle')).toHaveLength(1);
   });
 });

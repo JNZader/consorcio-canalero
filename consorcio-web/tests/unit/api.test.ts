@@ -303,7 +303,7 @@ describe('API Client', () => {
             method: 'PATCH',
             body: JSON.stringify({
               estado: 'resuelto',
-              notas_admin: 'Incidente mitigado',
+              respuesta: 'Incidente mitigado',
             }),
           })
         );

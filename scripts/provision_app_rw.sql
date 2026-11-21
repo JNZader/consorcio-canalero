@@ -76,6 +76,18 @@ BEGIN
         migrator_name,
         app_name
     );
+    IF migrator_name <> 'postgres' AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'postgres') THEN
+        EXECUTE format(
+            'ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public '
+            'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %I',
+            app_name
+        );
+        EXECUTE format(
+            'ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public '
+            'GRANT USAGE, SELECT ON SEQUENCES TO %I',
+            app_name
+        );
+    END IF;
 
     -- PostgreSQL has no GRANT REFRESH. The API refreshes these views, so the
     -- app role must own them (and their indexes). Everything else stays on
@@ -93,6 +105,7 @@ BEGIN
               'mv_suelos_por_zona',
               'mv_canales_por_zona',
               'mv_caminos_por_zona',
+              'mv_caminos_unificados',
               'vt_parcelas_catastro'
           ])
     LOOP

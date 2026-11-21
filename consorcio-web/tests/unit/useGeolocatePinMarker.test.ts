@@ -170,4 +170,31 @@ describe('useGeolocatePinMarker', () => {
     expect(marker.removed).toBe(true);
     expect(useReportAnchorStore.getState().geolocatePin).toBeNull();
   });
+
+  it('clears the geolocate pin when the user drags the map', () => {
+    const dragHandlers: Array<() => void> = [];
+    const mapMock = {
+      on: vi.fn((event: string, handler: () => void) => {
+        if (event === 'dragstart') dragHandlers.push(handler);
+      }),
+      off: vi.fn(),
+    };
+    const mapRef = { current: mapMock as never };
+    const { unmount } = renderHook(({ mapReady }) => useGeolocatePinMarker({ mapRef, mapReady }), {
+      initialProps: { mapReady: true },
+    });
+
+    act(() => {
+      useReportAnchorStore.getState().setGeolocatePin({ lat: -32.63, lng: -62.688 });
+    });
+    expect(dragHandlers).toHaveLength(1);
+
+    act(() => {
+      dragHandlers[0]();
+    });
+    expect(useReportAnchorStore.getState().geolocatePin).toBeNull();
+
+    unmount();
+    expect(mapMock.off).toHaveBeenCalledWith('dragstart', expect.any(Function));
+  });
 });

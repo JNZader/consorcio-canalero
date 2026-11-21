@@ -1,7 +1,7 @@
 """Repository layer — all database access for the monitoring domain."""
 
 import uuid
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
 from sqlalchemy import false, func, or_, select
@@ -286,6 +286,16 @@ class MonitoringRepository:
         denuncias_por_estado = {row[0]: row[1] for row in denuncia_rows}
         total_denuncias = sum(denuncias_por_estado.values())
 
+        semana_atras = datetime.now(timezone.utc) - timedelta(days=7)
+        denuncias_nuevas_semana: int = db.execute(
+            select(func.count())
+            .select_from(Denuncia)
+            .where(
+                Denuncia.deleted_at.is_(None),
+                Denuncia.created_at >= semana_atras,
+            )
+        ).scalar_one()
+
         # Tramites total
         total_tramites: int = db.execute(select(func.count()).select_from(Tramite)).scalar_one()
 
@@ -303,9 +313,13 @@ class MonitoringRepository:
 
         return {
             "denuncias": {
-                "por_estado": denuncias_por_estado,
+                "pendiente": denuncias_por_estado.get("pendiente", 0),
+                "en_revision": denuncias_por_estado.get("en_revision", 0),
+                "resuelto": denuncias_por_estado.get("resuelto", 0),
+                "descartado": denuncias_por_estado.get("descartado", 0),
                 "total": total_denuncias,
             },
+            "denuncias_nuevas_semana": denuncias_nuevas_semana,
             "total_tramites": total_tramites,
             "total_sugerencias": total_sugerencias,
             "resumen_financiero": {

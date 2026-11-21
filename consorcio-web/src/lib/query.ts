@@ -5,7 +5,7 @@
 
 import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
-import { type Layer, layersApi, monitoringApi, reportsApi, statsApi } from './api';
+import { type Layer, type MonitoringDashboardData, layersApi, monitoringApi, reportsApi, statsApi } from './api';
 import { shouldRetryQuery } from './queryRetry';
 
 // ===========================================
@@ -124,6 +124,32 @@ export function useDashboardStats(period = '30d') {
 // MONITORING DASHBOARD HOOK
 // ===========================================
 
+function deriveRankingCuencas(
+  data: MonitoringDashboardData | undefined
+): NonNullable<MonitoringDashboardData['ranking_cuencas']> {
+  if (data?.ranking_cuencas && data.ranking_cuencas.length > 0) {
+    return data.ranking_cuencas;
+  }
+  if (!data?.latest_analyses || data.latest_analyses.length === 0) {
+    return [];
+  }
+  return data.latest_analyses
+    .filter(
+      (item) =>
+        typeof item.porcentaje_area === 'number' || typeof item.hectareas_afectadas === 'number'
+    )
+    .map((item) => {
+      const cuencaParam = item.parametros?.cuenca;
+      const cuenca =
+        typeof cuencaParam === 'string' && cuencaParam.trim() ? cuencaParam : item.tipo;
+      return {
+        cuenca,
+        porcentaje_problematico: item.porcentaje_area ?? 0,
+        area_anegada_ha: item.hectareas_afectadas ?? 0,
+      };
+    });
+}
+
 /**
  * Hook para obtener datos de monitoring (inundacion por cuenca).
  * Solo hace fetch si el usuario esta autenticado.
@@ -142,7 +168,7 @@ export function useMonitoringDashboard() {
 
   return {
     data: query.data,
-    rankingCuencas: query.data?.ranking_cuencas ?? [],
+    rankingCuencas: deriveRankingCuencas(query.data),
     isLoading: authLoading || query.isLoading,
     isValidating: query.isFetching && !query.isLoading,
     error: query.error as Error | null,

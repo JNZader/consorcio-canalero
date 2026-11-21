@@ -14,7 +14,7 @@ import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from enum import Enum
+from enum import StrEnum
 from functools import lru_cache
 from types import MappingProxyType
 from typing import Any, Literal, Protocol
@@ -58,7 +58,7 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-class CeleryTaskKey(str, Enum):
+class CeleryTaskKey(StrEnum):
     """Only task objects explicitly named here may be published."""
 
     PROCESS_DEM_PIPELINE = "geo.process_dem_pipeline"

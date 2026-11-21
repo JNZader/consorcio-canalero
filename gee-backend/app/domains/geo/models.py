@@ -1,6 +1,6 @@
 """SQLAlchemy models for the geo domain."""
 
-import enum
+from enum import StrEnum
 import uuid
 from datetime import date, datetime
 from typing import Optional
@@ -31,7 +31,7 @@ from app.db.base import Base, TimestampMixin, UUIDMixin
 # ── Enums ────────────────────────────────────────
 
 
-class TipoGeoLayer(str, enum.Enum):
+class TipoGeoLayer(StrEnum):
     """Types of geospatial layers produced by terrain analysis."""
 
     SLOPE = "slope"
@@ -51,7 +51,7 @@ class TipoGeoLayer(str, enum.Enum):
     PRECIP_NORMAL = "precip_normal"
 
 
-class FuenteGeoLayer(str, enum.Enum):
+class FuenteGeoLayer(StrEnum):
     """Source of a geospatial layer."""
 
     DEM_PIPELINE = "dem_pipeline"
@@ -59,14 +59,14 @@ class FuenteGeoLayer(str, enum.Enum):
     MANUAL = "manual"
 
 
-class FormatoGeoLayer(str, enum.Enum):
+class FormatoGeoLayer(StrEnum):
     """Output format of a geospatial layer."""
 
     GEOTIFF = "geotiff"
     GEOJSON = "geojson"
 
 
-class EstadoGeoJob(str, enum.Enum):
+class EstadoGeoJob(StrEnum):
     """Status of a geo processing job."""
 
     PENDING = "pending"
@@ -75,7 +75,7 @@ class EstadoGeoJob(str, enum.Enum):
     FAILED = "failed"
 
 
-class TipoGeoJob(str, enum.Enum):
+class TipoGeoJob(StrEnum):
     """Types of geo processing jobs."""
 
     DEM_PIPELINE = "dem_pipeline"
@@ -110,7 +110,7 @@ class TipoGeoJob(str, enum.Enum):
     INFORME_AREA = "informe_area"
 
 
-class TipoAnalisisGee(str, enum.Enum):
+class TipoAnalisisGee(StrEnum):
     """Types of GEE analyses."""
 
     FLOOD = "flood"
