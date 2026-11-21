@@ -340,9 +340,14 @@ def submit_gee_analysis(
     payload: AnalisisGeoCreate,
     db: Session = Depends(get_db),
     repo: GeoRepository = Depends(_get_repo),
-    _user=Depends(_require_operator()),
+    user=Depends(_require_operator()),
 ):
-    return submit_gee_analysis_impl(payload, db, repo)
+    return submit_gee_analysis_impl(
+        payload,
+        db,
+        repo,
+        usuario_id=getattr(user, "id", None),
+    )
 
 
 @gee_router.get(

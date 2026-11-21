@@ -149,7 +149,14 @@ class DistributedRateLimitMiddleware(BaseHTTPMiddleware):
     # Exact-match request paths that get the strict auth throttle.
     AUTH_THROTTLE_PATHS: set[str] = {
         "/api/v2/auth/jwt/login",
+        "/api/v2/auth/jwt/login-with-refresh",
+        "/api/v2/auth/jwt/refresh",
+        "/api/v2/auth/jwt/exchange-cookie",
         "/api/v2/auth/forgot-password",
+        "/api/v2/auth/reset-password",
+        "/api/v2/auth/register",
+        "/api/v2/auth/request-verify-token",
+        "/api/v2/auth/verify",
         "/api/v2/auth/exchange-code",
     }
 

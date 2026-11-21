@@ -167,3 +167,37 @@ def test_permanent_smtp_failure_logs_terminal_without_crashing(
     assert terminal[0]["estado"] == ESTADO
     assert terminal[0]["attempts"] == task.max_retries + 1
     assert "smtp unreachable" in terminal[0]["error"]
+
+
+def test_unconfigured_smtp_does_not_retry_and_returns_unconfigured(
+    monkeypatch, denuncia_id, db_session_factory, caplog
+) -> None:
+    """Falla permanente de config (EmailDeliveryError): NO agenda retry."""
+    from app.shared.email import EmailDeliveryError
+
+    task = denuncias_tasks.notify_denuncia_status
+    retry_calls = 0
+
+    def _fail_unconfigured(**_kwargs):
+        raise EmailDeliveryError("email send skipped: SMTP not configured")
+
+    def _must_not_retry(**_kwargs):
+        nonlocal retry_calls
+        retry_calls += 1
+        raise Retry("should not retry EmailDeliveryError")
+
+    monkeypatch.setattr(settings, "denuncia_status_email_enabled", True)
+    monkeypatch.setattr(denuncias_tasks, "SessionLocal", db_session_factory)
+    monkeypatch.setattr(denuncias_tasks, "send_email_blocking", _fail_unconfigured)
+    monkeypatch.setattr(task, "retry", _must_not_retry)
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        result = _run_attempt(task, denuncia_id, retries=0)
+
+    assert result == "unconfigured"
+    assert retry_calls == 0
+    assert any(
+        isinstance(record.msg, dict)
+        and record.msg.get("event") == "denuncia.notify_status.unconfigured"
+        for record in caplog.records
+    )

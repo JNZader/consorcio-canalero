@@ -18,7 +18,7 @@ from app.config import settings
 from app.core.celery_app import celery_app
 from app.db.session import SessionLocal
 from app.domains.denuncias.models import Denuncia
-from app.shared.email import send_email_blocking
+from app.shared.email import EmailDeliveryError, send_email_blocking
 
 logger = structlog.get_logger(__name__)
 
@@ -71,6 +71,14 @@ def notify_denuncia_status(
     logger.info("denuncia.notify_status", denuncia_id=denuncia_id, estado=estado)
     try:
         return deliver_status_email(denuncia_id, estado, respuesta)
+    except EmailDeliveryError as exc:
+        logger.warning(
+            "denuncia.notify_status.unconfigured",
+            denuncia_id=denuncia_id,
+            estado=estado,
+            error=str(exc),
+        )
+        return "unconfigured"
     except Exception as exc:
         # Broad a propósito: la jerarquía de errores de aiosmtplib no se puede
         # importar acá (app.shared.email protege el import para entornos sin

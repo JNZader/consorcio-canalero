@@ -58,3 +58,25 @@ def test_development_environment_never_enforces_the_gate(monkeypatch):
     monkeypatch.delenv("API_BASE_URL", raising=False)
 
     _enforce_production_secrets(Settings(**{**VALID_PRODUCTION, "environment": "development"}))
+
+
+def test_trusted_hosts_includes_explicit_non_loopback_healthcheck_host(monkeypatch):
+    monkeypatch.setenv("HEALTHCHECK_HOST", "https://api-health.example.com:8443")
+    monkeypatch.delenv("API_BASE_URL", raising=False)
+
+    s = Settings(**VALID_PRODUCTION)
+    _enforce_production_secrets(s)
+    assert "api-health.example.com" in s.trusted_hosts
+
+
+@pytest.mark.parametrize("bad_hc_host", ["localhost", "127.0.0.1", "http://app.localhost"])
+def test_production_rejects_loopback_healthcheck_host(monkeypatch, bad_hc_host):
+    monkeypatch.setenv("HEALTHCHECK_HOST", bad_hc_host)
+    monkeypatch.setenv("API_BASE_URL", "https://api.example.com")
+
+    s = Settings(**VALID_PRODUCTION)
+    assert bad_hc_host not in s.trusted_hosts
+    assert "localhost" not in s.trusted_hosts
+    assert "127.0.0.1" not in s.trusted_hosts
+    with pytest.raises(RuntimeError, match="HEALTHCHECK_HOST"):
+        _enforce_production_secrets(s)

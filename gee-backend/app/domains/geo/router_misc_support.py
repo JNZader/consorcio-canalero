@@ -109,7 +109,13 @@ def _rollback_gee_submission_quietly(db: Session) -> None:
         )
 
 
-def submit_gee_analysis_impl(payload, db: Session, repo: GeoRepository):
+def submit_gee_analysis_impl(
+    payload,
+    db: Session,
+    repo: GeoRepository,
+    *,
+    usuario_id: uuid.UUID | None = None,
+):
     """Atomically persist an AnalisisGeo and its Celery publication intent."""
     today = date.today()
     stored_parameters = dict(payload.parametros)
@@ -126,7 +132,7 @@ def submit_gee_analysis_impl(payload, db: Session, repo: GeoRepository):
             tipo=normalized_tipo,
             fecha_analisis=today,
             parametros=stored_parameters,
-            usuario_id=None,
+            usuario_id=usuario_id,
             celery_task_id=str(celery_task_id),
         )
         outbox = enqueue_celery_task(

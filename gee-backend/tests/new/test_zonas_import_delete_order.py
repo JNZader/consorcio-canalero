@@ -127,3 +127,82 @@ class TestImportZonasDeleteOrder:
         nuevas = db.query(ZonaOperativa).order_by(ZonaOperativa.nombre).all()
         assert [z.nombre for z in nuevas] == ["Z1", "Z2", "Z3"]
         assert [z.cuenca for z in nuevas] == ["norte", "norte", "sur"]
+
+    @pytest.mark.parametrize(
+        "bad_feature",
+        [
+            {
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 0.0]]],
+                },
+                "properties": {"cuenca": "c", "nombre": "z", "superficie_ha": "no-es-numero"},
+            },
+            {
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 0.0]]],
+                },
+                "properties": {"cuenca": "c", "nombre": "z", "superficie_ha": -10.5},
+            },
+            {
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 0.0]]],
+                },
+                "properties": {"cuenca": "c", "nombre": "z", "superficie_ha": float("nan")},
+            },
+            {
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 0.0]]],
+                },
+                "properties": {"cuenca": "c", "nombre": "z", "superficie_ha": True},
+            },
+            {
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 0.0]]],
+                },
+                "properties": {"cuenca": "c", "nombre": "z", "id": "not-a-uuid"},
+            },
+            {
+                "geometry": {"type": "Polygon", "coordinates": "broken-coords"},
+                "properties": {"cuenca": "c", "nombre": "z"},
+            },
+        ],
+        ids=[
+            "non-numeric-area",
+            "negative-area",
+            "nan-area",
+            "bool-area",
+            "invalid-uuid",
+            "malformed-coords",
+        ],
+    )
+    def test_malformed_properties_or_geometry_returns_400_without_deleting(self, db, bad_feature):
+        """Parse errors in properties/UUID/polygon coords return 400 before delete."""
+        _seed_zona(db, "Preexistente Unica")
+        payload = {"features": [_valid_feature("nueva", "Valida", 0.0), bad_feature]}
+
+        with pytest.raises(HTTPException) as exc_info:
+            _import_zonas_operativas_payload(db, payload)
+
+        assert exc_info.value.status_code == 400
+        surviving = db.query(ZonaOperativa).all()
+        assert [z.nombre for z in surviving] == ["Preexistente Unica"]
+
+    def test_duplicate_zone_uuid_returns_400_without_deleting(self, db):
+        _seed_zona(db, "Preexistente Duplicado")
+        dup_id = "11111111-1111-1111-1111-111111111111"
+        f1 = _valid_feature("norte", "Z1", 0.0)
+        f2 = _valid_feature("sur", "Z2", 3.0)
+        f1["properties"]["id"] = dup_id
+        f2["properties"]["id"] = dup_id
+
+        with pytest.raises(HTTPException) as exc_info:
+            _import_zonas_operativas_payload(db, {"features": [f1, f2]})
+
+        assert exc_info.value.status_code == 400
+        surviving = db.query(ZonaOperativa).all()
+        assert [z.nombre for z in surviving] == ["Preexistente Duplicado"]
