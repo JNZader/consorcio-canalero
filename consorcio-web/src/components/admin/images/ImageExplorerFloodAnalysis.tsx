@@ -90,10 +90,9 @@ export function ImageExplorerFloodAnalysis({
   /**
    * Último job posteado por esta card. Permite re-atacharse al job vivo
    * (GET + poll del mismo id) en vez de POSTear un análisis nuevo — el
-   * reintento ciega duplica trabajo GEE. Se escribe antes de cada setState
-   * del run, así el render que habilita el botón ya lo ve poblado.
+   * reintento ciega duplica trabajo GEE.
    */
-  const lastRunRef = useRef<{ id: string; normalDate: string } | null>(null);
+  const [lastRun, setLastRun] = useState<{ id: string; normalDate: string } | null>(null);
 
   useEffect(() => {
     if (initialFloodDate) setFloodDate(initialFloodDate);
@@ -118,7 +117,7 @@ export function ImageExplorerFloodAnalysis({
     (state === 'idle' || state === 'failed' || state === 'completed');
   // Re-attach disponible sólo fuera de un run en vuelo (sin polls paralelos).
   const canRecheckLast =
-    lastRunRef.current !== null &&
+    lastRun !== null &&
     (state === 'idle' || state === 'failed' || state === 'completed');
 
   const activeStep = !floodDate ? 0 : !normalDate || validationError ? 1 : 2;
@@ -268,7 +267,7 @@ export function ImageExplorerFloodAnalysis({
       if (abortRef.current !== controller) return;
       // Queda registrado para que un reintento posterior re-atachee el poll
       // en vez de POSTear otro job GEE.
-      lastRunRef.current = { id: created.id, normalDate };
+      setLastRun({ id: created.id, normalDate });
       await pollAndApply(created.id, controller, normalDate);
     } catch (err) {
       handleRunFailure(err, controller);
@@ -281,7 +280,6 @@ export function ImageExplorerFloodAnalysis({
    * original (el fallback de Sentinel-1 no debe usar fechas editadas después).
    */
   async function handleRecheckLast() {
-    const lastRun = lastRunRef.current;
     if (!lastRun) return;
 
     abortRef.current?.abort();

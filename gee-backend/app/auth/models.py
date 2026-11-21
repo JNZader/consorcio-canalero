@@ -1,6 +1,6 @@
 """User model for fastapi-users with role support."""
 
-import enum
+from enum import StrEnum
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -13,7 +13,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base, TimestampMixin, UUIDMixin
 
 
-class UserRole(str, enum.Enum):
+class UserRole(StrEnum):
     CIUDADANO = "ciudadano"
     OPERADOR = "operador"
     ADMIN = "admin"

@@ -60,7 +60,6 @@ postgres:
       table: vt_zonas_operativas
       srid: 4326
       geometry_column: geometria
-      id_column: id
       properties:
         id: Public identifier
         nombre: Zone name
@@ -71,7 +70,6 @@ postgres:
       table: vt_puntos_conflicto
       srid: 4326
       geometry_column: geometria
-      id_column: id
       properties:
         id: Public identifier
         tipo: Conflict type

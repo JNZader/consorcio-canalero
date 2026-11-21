@@ -3,9 +3,11 @@
 import json
 from pathlib import Path
 
+from app.domains.denuncias.schemas import DenunciaStatsResponse
 from app.domains.finanzas.models import CATEGORIAS_GASTO, CATEGORIAS_INGRESO
 from app.domains.finanzas.router import router as finanzas_router
 from app.domains.finanzas.schemas import GastoCreate, IngresoCreate
+from app.domains.monitoring.schemas import DashboardStatsResponse
 from app.domains.padron.router import router as padron_router
 from app.domains.padron.schemas import CsvImportResponse
 from app.domains.tramites.router import router as tramites_router
@@ -73,3 +75,34 @@ def test_admin_frontend_only_uses_routes_implemented_by_backend() -> None:
     assert ("/tramites/{tramite_id}/seguimiento", "POST") in _route_surface(tramites_router)
     assert ("/tramites/{tramite_id}/export-pdf", "GET") in _route_surface(tramites_router)
     assert not any("pagos" in path for path, _method in _route_surface(padron_router))
+
+
+def test_denuncia_and_monitoring_dashboard_contracts() -> None:
+    denuncia_stats = DenunciaStatsResponse.model_validate(
+        {
+            "total": 10,
+            "por_estado": {"pendiente": 4, "en_revision": 3, "resuelto": 2, "descartado": 1},
+            "por_tipo": {"desborde": 6, "otro": 4},
+            "por_cuenca": {"norte": 10},
+        }
+    )
+    assert denuncia_stats.por_estado["pendiente"] == 4
+
+    dashboard = DashboardStatsResponse.model_validate(
+        {
+            "denuncias": {
+                "pendiente": 4,
+                "en_revision": 3,
+                "resuelto": 2,
+                "descartado": 1,
+                "total": 10,
+            },
+            "denuncias_nuevas_semana": 2,
+            "total_tramites": 5,
+            "total_sugerencias": 7,
+            "resumen_financiero": {"total_ingresos": 100.0, "total_gastos": 20.0, "balance": 80.0},
+            "latest_analyses": [],
+        }
+    )
+    assert dashboard.denuncias.pendiente == 4
+    assert dashboard.denuncias_nuevas_semana == 2

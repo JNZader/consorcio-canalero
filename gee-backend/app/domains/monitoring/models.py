@@ -1,6 +1,6 @@
 """SQLAlchemy models for the monitoring domain."""
 
-import enum
+from enum import StrEnum
 import uuid
 from datetime import date
 from typing import Any, Optional
@@ -22,7 +22,7 @@ from app.db.base import Base, TimestampMixin, UUIDMixin
 # ── Enums ─────────────────────────────────────
 
 
-class EstadoSugerencia(str, enum.Enum):
+class EstadoSugerencia(StrEnum):
     PENDIENTE = "pendiente"
     REVISADA = "revisada"
     IMPLEMENTADA = "implementada"
@@ -52,7 +52,7 @@ VALID_TRANSITIONS: dict[str, set[str]] = {
 }
 
 
-class TipoAnalisis(str, enum.Enum):
+class TipoAnalisis(StrEnum):
     INUNDACION = "inundacion"
     VEGETACION = "vegetacion"
     SAR = "sar"

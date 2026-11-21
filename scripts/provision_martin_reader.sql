@@ -28,6 +28,7 @@ DECLARE
     reader_name text := current_setting('martin.reader_role');
     app_oid oid;
     reader_oid oid;
+    app_is_owner boolean;
     missing_views text;
     membership record;
     app_function record;
@@ -115,16 +116,37 @@ BEGIN
     EXECUTE format('REVOKE ALL PRIVILEGES ON DATABASE %I FROM %I', target_db, reader_name);
     EXECUTE format('GRANT CONNECT ON DATABASE %I TO %I', target_db, reader_name);
 
+    SELECT r.rolsuper OR EXISTS (
+        SELECT 1
+          FROM pg_namespace AS ns
+         WHERE ns.nspname = 'public'
+           AND ns.nspowner = r.oid
+    )
+      INTO app_is_owner
+      FROM pg_roles AS r
+     WHERE r.oid = app_oid;
+
+    -- Schema and relation privileges for app_role respect least-privilege
+    -- non-owner roles (e.g. consorcio_app) while keeping migrator/owner setup intact.
     REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-    EXECUTE format('GRANT USAGE, CREATE ON SCHEMA public TO %I', app_name);
+    IF app_is_owner THEN
+        EXECUTE format('GRANT USAGE, CREATE ON SCHEMA public TO %I', app_name);
+    ELSE
+        EXECUTE format('GRANT USAGE ON SCHEMA public TO %I', app_name);
+    END IF;
     EXECUTE format('REVOKE ALL PRIVILEGES ON SCHEMA public FROM %I', reader_name);
     EXECUTE format('GRANT USAGE ON SCHEMA public TO %I', reader_name);
 
     -- Existing relations: preserve the app owner and remove every reader path.
     REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM PUBLIC;
     REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC;
-    EXECUTE format('GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO %I', app_name);
-    EXECUTE format('GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO %I', app_name);
+    IF app_is_owner THEN
+        EXECUTE format('GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO %I', app_name);
+        EXECUTE format('GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO %I', app_name);
+    ELSE
+        EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO %I', app_name);
+        EXECUTE format('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO %I', app_name);
+    END IF;
     EXECUTE format(
         'REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM %I',
         reader_name

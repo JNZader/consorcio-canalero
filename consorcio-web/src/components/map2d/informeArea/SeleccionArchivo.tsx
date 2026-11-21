@@ -237,13 +237,14 @@ function DropzoneKml({
       }}
       onReject={onRechazo}
       maxSize={LIMITE_BYTES_KML}
-      accept={[
-        'application/vnd.google-earth.kml+xml',
-        'application/vnd.google-earth.kmz',
-        'text/xml',
-        'application/xml',
-        'application/zip',
-      ]}
+      accept={{
+        'application/vnd.google-earth.kml+xml': ['.kml'],
+        'application/vnd.google-earth.kmz': ['.kmz'],
+        'application/octet-stream': ['.kml', '.kmz'],
+        'application/xml': ['.kml'],
+        'text/xml': ['.kml'],
+        'application/zip': ['.kmz'],
+      }}
       multiple={false}
       activateOnClick
       activateOnDrag

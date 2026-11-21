@@ -350,7 +350,7 @@ export function ResponsiveRecordList({
   const scrollRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLTableSectionElement>(null);
   const activeIndexRef = useRef(-1);
-  const pendingFocus = useRef<number | null>(null);
+  const [focusRequest, setFocusRequest] = useState<{ index: number; seq: number } | null>(null);
   // The row the keyboard asked for. It stays mounted until the virtual
   // window catches up, so End/Tab reach a row that was off-screen.
   const [pinnedIndex, setPinnedIndex] = useState<number | null>(null);
@@ -384,26 +384,26 @@ export function ResponsiveRecordList({
     .join(',');
 
   useEffect(() => {
-    if (!shouldVirtualize) return;
-    const index = pendingFocus.current;
-    if (index == null) return;
-    const visible = virtualizer.getVirtualItems().some((item) => item.index === index);
-    if (!visible) return;
+    if (!shouldVirtualize || !focusRequest) return;
+    const { index } = focusRequest;
     const root = scrollRef.current;
     if (!root) return;
     const row = root.querySelector<HTMLElement>(`[data-index="${index}"]`);
     if (!row) return;
-    pendingFocus.current = null;
     focusVirtualRecord(root, index);
-    const inWindow = visibleKey.split(',').includes(String(index));
-    if (inWindow) setPinnedIndex(null);
-  }, [shouldVirtualize, visibleKey, virtualizer]);
+    setFocusRequest((current) => (current?.seq === focusRequest.seq ? null : current));
+    if (visibleKey.split(',').includes(String(index))) {
+      setPinnedIndex(null);
+    }
+  }, [shouldVirtualize, visibleKey, focusRequest]);
 
   function revealRecord(index: number) {
     const next = Math.max(0, Math.min(records.length - 1, index));
     activeIndexRef.current = next;
-    pendingFocus.current = next;
-    setPinnedIndex(next);
+    setFocusRequest((current) => ({ index: next, seq: (current?.seq ?? 0) + 1 }));
+    if (!virtualizer.getVirtualItems().some((item) => item.index === next)) {
+      setPinnedIndex(next);
+    }
     virtualizer.scrollToIndex(next, { align: 'auto' });
   }
 
@@ -457,6 +457,7 @@ export function ResponsiveRecordList({
   }
 
   const virtualItems = virtualizer.getVirtualItems();
+  const estimatedRowHeight = compact ? CARD_ROW_ESTIMATE : TABLE_ROW_ESTIMATE;
   const items =
     pinnedIndex != null && !virtualItems.some((item) => item.index === pinnedIndex)
       ? [
@@ -464,9 +465,9 @@ export function ResponsiveRecordList({
           {
             key: `pin-${pinnedIndex}`,
             index: pinnedIndex,
-            start: pinnedIndex * (compact ? 88 : 41),
-            end: (pinnedIndex + 1) * (compact ? 88 : 41),
-            size: compact ? 88 : 41,
+            start: pinnedIndex * estimatedRowHeight,
+            end: (pinnedIndex + 1) * estimatedRowHeight,
+            size: estimatedRowHeight,
             lane: 0,
           },
         ]

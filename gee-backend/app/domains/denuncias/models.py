@@ -1,6 +1,6 @@
 """SQLAlchemy models for the denuncias domain."""
 
-import enum
+from enum import StrEnum
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -24,7 +24,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin, UUIDMixin
 
 
-class EstadoDenuncia(str, enum.Enum):
+class EstadoDenuncia(StrEnum):
     PENDIENTE = "pendiente"
     EN_REVISION = "en_revision"
     RESUELTO = "resuelto"

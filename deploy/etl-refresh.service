@@ -18,6 +18,7 @@ Type=oneshot
 # (systemd loads the user's supplementary groups).
 User=javier
 Group=javier
+SupplementaryGroups=docker
 Environment=HOME=/home/javier
 Environment=STACK_DIR=/home/javier/stacks/consorcio
 WorkingDirectory=/home/javier/stacks/consorcio

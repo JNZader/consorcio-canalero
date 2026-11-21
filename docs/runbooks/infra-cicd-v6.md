@@ -330,12 +330,13 @@ sudo cp "$REPO/deploy/backup.service" "$REPO/deploy/backup.timer" \
         "$REPO/deploy/backup-age-check.service" "$REPO/deploy/backup-age-check.timer" \
         "$REPO/deploy/notify@.service" /etc/systemd/system/
 sudo install -d -m 0750 /etc/consorcio
-# KEY=VALUE solamente. chmod 0600.
+# notify@.service corre como javier:javier; mantener 0640 con grupo javier para no exponer secrets a otros usuarios.
 sudo tee /etc/consorcio/notify.env >/dev/null <<'EOF'
 ALERT_WEBHOOK_URL=https://hooks.example/consorcio
 # MAILTO=operador@example.com
 EOF
-sudo chmod 0600 /etc/consorcio/notify.env
+sudo chown root:javier /etc/consorcio/notify.env
+sudo chmod 0640 /etc/consorcio/notify.env
 sudo systemctl daemon-reload
 sudo systemctl enable --now backup.timer backup-age-check.timer
 sudo crontab -u javier -l   # borrar las dos líneas de backup-postgres / backup-volumes
@@ -490,3 +491,29 @@ Medidos en `main` el 2026-10-13. El piso sube hacia 80 % y se queda en el entero
 `consorcio-web/patches/@mantine+core+9.7.2.patch` sigue al lock, que instala
 9.7.2. El arreglo de `getEnv` y el de las transiciones en `env === "test"`
 siguen haciendo falta en esa versión.
+
+## Deuda congelada Trivy y sunset 2026-12-12 (C20)
+
+`gee-backend/security/frozen-image-debt.json` congela **55 CVEs** de Debian
+Trixie (1 CRITICAL `CVE-2026-6653` en `libxml2` + 54 HIGH) con `renewal_allowed:
+false` y vencimiento absoluto el **`2026-12-12T00:00:00Z`** en
+`gee-backend/scripts/validate_image_security_policy.py`.
+
+Desglose medido en el baseline vigente:
+
+- `util-linux`: 36 filas (`CVE-2026-76642/-78408/-78409/-78410` × 9 paquetes)
+- `libxml2`: 8 filas (incluye **CRITICAL** `CVE-2026-6653`, arrastrada vía `libosmesa6` → `libllvm19` para el render headless VTK/PyVista)
+- `ncurses`: 4 filas (`CVE-2025-69720`)
+- `libsqlite3-0`: 3 filas (`CVE-2026-119373/-119374/-119379`)
+- `libexpat1`: 2 filas (`CVE-2026-117610/-118370`)
+- `libsystemd0` / `libudev1`: 2 filas (`CVE-2026-16742`)
+
+Palancas operativas obligatorias antes del `2026-12-12`:
+
+1. **Point release / DSA Debian Trixie (13.8):** reconstruir imagen con autorización explícita + Trivy rescan + `validate_image_security_policy.py snapshot` cuando Debian publique `FixedVersion`.
+2. **Desacoplar render VTK/PyVista hacia `geo-worker`:** mover el render 3D headless fuera de `gee-backend/Dockerfile` hacia `Dockerfile.geo` (Ubuntu Noble/OSGeo) elimina `libosmesa6`/`libllvm19`/`libxml2` de la imagen API y remueve `CVE-2026-6653` sin esperar a Debian Trixie.
+3. **Simulacro de restore pendiente en VPS:** ejecutar la primera restauración real y registrar el RTO en esta guía:
+   `CONFIRM_RESTORE_DRILL=restore-drill RESTORE_DRILL_DATABASE=consorcio_restore_drill /usr/local/bin/consorcio-restore-drill.sh --execute`
+4. **Upstream `CVE-2026-124709` y limpieza diferida de `gee-backend/Dockerfile` + `Dockerfile.geo`:** el `2026-11-21` se observó en Trivy el nuevo CVE upstream sin fix disponible `CVE-2026-124709` (`libssl3t64`, `openssl`, `openssl-provider-legacy` `@3.5.7-1~deb13u3`, `Status: affected`, `FixedVersion: null`), que rompe el baseline multiset exacto de `frozen-image-debt.json` ante cualquier rebuild de imagen backend (`backend_image=true` en `backend.yml` dispara ambos gates de imagen). Quedan diferidas hasta el bump de imagen base previo al sunset `2026-12-12`:
+   - `gee-backend/Dockerfile`: limpieza de `/usr/local/bin/pip3.15` y comentario `# python:3.15`.
+   - `gee-backend/Dockerfile.geo`: purga de `python3-pip` y `HEALTHCHECK` a nivel Dockerfile (en runtime Compose ya define el `healthcheck` de `geo-worker`).

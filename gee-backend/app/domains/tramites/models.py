@@ -1,6 +1,6 @@
 """SQLAlchemy models for the tramites domain."""
 
-import enum
+from enum import StrEnum
 import uuid
 from datetime import date, datetime
 from typing import Optional
@@ -19,7 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin, UUIDMixin
 
 
-class TipoTramite(str, enum.Enum):
+class TipoTramite(StrEnum):
     OBRA = "obra"
     PERMISO = "permiso"
     HABILITACION = "habilitacion"
@@ -27,7 +27,7 @@ class TipoTramite(str, enum.Enum):
     OTRO = "otro"
 
 
-class EstadoTramite(str, enum.Enum):
+class EstadoTramite(StrEnum):
     INGRESADO = "ingresado"
     EN_TRAMITE = "en_tramite"
     APROBADO = "aprobado"
@@ -35,7 +35,7 @@ class EstadoTramite(str, enum.Enum):
     ARCHIVADO = "archivado"
 
 
-class PrioridadTramite(str, enum.Enum):
+class PrioridadTramite(StrEnum):
     BAJA = "baja"
     MEDIA = "media"
     ALTA = "alta"

@@ -36,10 +36,10 @@ class Refusal(RuntimeError):
 
 @dataclass(frozen=True)
 class Config:
-    host: str = "157.180.29.238"
-    user: str = "javier"
-    port: int = 2222
-    key: Path = Path("~/.ssh/hetzner_ghagga")
+    host: str = os.environ.get("CONSORCIO_VPS_HOST", "consorcio-prod")
+    user: str = os.environ.get("CONSORCIO_VPS_USER", "javier")
+    port: int = int(os.environ.get("CONSORCIO_VPS_PORT", "22"))
+    key: Path = Path(os.environ.get("CONSORCIO_VPS_SSH_KEY", "~/.ssh/consorcio_prod"))
     repo: str = "JNZader/consorcio-canalero"
     stack: str = "/home/javier/stacks/consorcio"
     target_sha: str | None = None
@@ -248,7 +248,10 @@ def smoke_tunnel_command(env: dict[str, str]) -> tuple[list[str], dict[str, str]
 def deployment_plan(config: Config) -> list[dict[str, object]]:
     """Printed argv templates only; this function never executes them."""
     require_target_sha(config.target_sha)
-    remote = lambda command: remote_argv(config, command)
+
+    def remote(command: str) -> list[str]:
+        return remote_argv(config, command)
+
     return [
         {"state": "backup-compose", "argv": remote("cp docker-compose.yml docker-compose.yml.b3p-backup")},
         {"state": "capture-old-id", "argv": remote("docker inspect consorcio-backend --format {{.Image}}")},

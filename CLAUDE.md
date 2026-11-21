@@ -13,7 +13,7 @@ run on the box. It does not run Alembic.
 ### Stack
 
 - **Frontend**: React 19, TypeScript, Vite, Mantine UI, MapLibre GL (`consorcio-web/`)
-- **Backend**: FastAPI, Python 3.11+, SQLAlchemy 2.0, Alembic, fastapi-users (`gee-backend/`)
+- **Backend**: FastAPI, Python 3.14+ (3.15 prod image), SQLAlchemy 2.1, Alembic, fastapi-users (`gee-backend/`)
 - **Database**: PostgreSQL + PostGIS
 - **Auth**: JWT (fastapi-users) + optional Google OAuth
 - **Geo**: Google Earth Engine integration, GDAL-based geo worker
@@ -104,7 +104,7 @@ pytest tests/new/ -v --cov=app          # With coverage
 
 # Database (local only — never part of the box deploy; see AGENTS.md)
 alembic heads                           # Confirm a single head before upgrading
-alembic upgrade head                    # Local database. On 2026-10-24 the box stamp was 0033_one_way_profile
+alembic upgrade head                    # Local database only (scripts/deploy-box.sh never runs Alembic)
 alembic revision --autogenerate -m "description"  # New migration
 
 # Lint

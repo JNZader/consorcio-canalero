@@ -66,9 +66,18 @@ if [[ "${CONFIRM_RESTORE_DRILL:-}" != "restore-drill" ]]; then
 fi
 
 cd "${STACK_DIR}"
-if docker compose config --services 2>/dev/null | grep -qx "${POSTGRES_SERVICE}"; then
+COMPOSE_ENV_ARGS=()
+if [[ -f "${STACK_DIR}/.env" ]]; then
+  COMPOSE_ENV_ARGS+=(--env-file "${STACK_DIR}/.env")
+fi
+DIGEST_ENV_FILE="${DEPLOY_DIGEST_ENV:-${STACK_DIR}/deploy-digests.env}"
+if [[ -f "${DIGEST_ENV_FILE}" ]]; then
+  COMPOSE_ENV_ARGS+=(--env-file "${DIGEST_ENV_FILE}")
+fi
+
+if docker compose "${COMPOSE_ENV_ARGS[@]}" config --services 2>/dev/null | grep -qx "${POSTGRES_SERVICE}"; then
   # shellcheck disable=SC2016
-  docker compose exec -T "${POSTGRES_SERVICE}" \
+  docker compose "${COMPOSE_ENV_ARGS[@]}" exec -T "${POSTGRES_SERVICE}" \
     psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-consorcio}" -d postgres \
     -c "DROP DATABASE IF EXISTS \"${TARGET}\";" \
     -c "CREATE DATABASE \"${TARGET}\";"

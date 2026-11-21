@@ -20,9 +20,11 @@ fi
 
 now="$(date -u +%s)"
 then="$(date -u -d "${stamp_text}" +%s)"
-age_hours="$(( (now - then) / 3600 ))"
-if (( age_hours > MAX_HOURS )); then
-  echo "backup stamp is ${age_hours}h old (max ${MAX_HOURS}h): ${stamp_text}" >&2
+age_seconds="$(( now - then ))"
+max_seconds="$(( MAX_HOURS * 3600 ))"
+age_hours="$(( age_seconds / 3600 ))"
+if (( age_seconds > max_seconds )); then
+  echo "backup stamp is ${age_hours}h old (${age_seconds}s > ${max_seconds}s, max ${MAX_HOURS}h): ${stamp_text}" >&2
   exit 1
 fi
 echo "backup stamp age ${age_hours}h (${stamp_text})"

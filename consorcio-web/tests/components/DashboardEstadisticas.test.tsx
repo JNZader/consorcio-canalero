@@ -192,5 +192,44 @@ describe('DashboardEstadisticas', () => {
         expect(screen.getByText(/8\.5%/)).toBeInTheDocument();
       });
     });
+
+    it('falls back to latest_analyses porcentaje_area from real backend /monitoring/dashboard contract (C16)', async () => {
+      vi.mocked(useDashboardStats).mockReturnValue({
+        stats: {
+          denuncias: { pendiente: 3, en_revision: 2, resuelto: 1 },
+          denuncias_nuevas_semana: 5,
+        },
+      } as never);
+      vi.mocked(useMonitoringDashboard).mockReturnValue({
+        data: {
+          latest_analyses: [
+            {
+              id: 'an-1',
+              tipo: 'inundacion',
+              fecha_inicio: '2026-03-01',
+              fecha_fin: '2026-03-10',
+              resultados: {},
+              hectareas_afectadas: 420,
+              porcentaje_area: 14.2,
+              parametros: { cuenca: 'candil' },
+              created_at: '2026-03-10T10:00:00Z',
+              updated_at: '2026-03-10T10:00:00Z',
+            },
+          ],
+        },
+      } as never);
+
+      vi.mocked(apiFetch)
+        .mockResolvedValueOnce({ total_ingresos: 1000, total_gastos: 250 } as never)
+        .mockResolvedValueOnce([{ rubro: 'Test', proyectado: 100, real: 80 }] as never);
+      vi.mocked(statsApi.getHistorical).mockResolvedValue({ items: [] } as never);
+
+      renderPanel();
+
+      expect(await screen.findByText(/Resumen de Gesti.n/)).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText(/14\.2%/)).toBeInTheDocument();
+      });
+    });
   });
 });

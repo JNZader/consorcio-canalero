@@ -154,6 +154,20 @@ describe('SeleccionArchivo — escritorio', () => {
       expect(screen.queryByTestId('informe-area-archivo-cargando')).not.toBeInTheDocument()
     );
   });
+
+  it('acepta KML/KMZ enviados como application/octet-stream o sin MIME en Dropzone', async () => {
+    const user = userEvent.setup();
+    const onAgregar = vi.fn();
+    lector.leerArchivoKml.mockResolvedValue([poligono(55, 'lote-octet')]);
+    render(<SeleccionArchivo esEscritorio onAgregar={onAgregar} />, { wrapper });
+
+    await elegirArchivo(
+      user,
+      new File(['PK'], 'campo.kmz', { type: 'application/octet-stream' })
+    );
+
+    await waitFor(() => expect(onAgregar).toHaveBeenCalledTimes(1));
+  });
 });
 
 describe('SeleccionArchivo — móvil (S5)', () => {
