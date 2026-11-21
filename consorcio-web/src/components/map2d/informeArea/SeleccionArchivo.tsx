@@ -243,6 +243,7 @@ function DropzoneKml({
         'application/octet-stream': ['.kml', '.kmz'],
         'application/xml': ['.kml'],
         'text/xml': ['.kml'],
+        'text/plain': ['.kml'],
         'application/zip': ['.kmz'],
       }}
       multiple={false}

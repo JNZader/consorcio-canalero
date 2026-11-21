@@ -4,7 +4,8 @@ import { defineConfig, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import {
   CAMPO_MAP_ENGINE_CACHE_FIRST,
-  CAMPO_PACKAGE_CACHE_FIRST,
+  CAMPO_PACKAGE_NETWORK_ONLY,
+  excludeMapFromPrecacheManifest,
   GEE_IMAGE_NETWORK_ONLY,
   GLYPH_SPRITE_NETWORK_ONLY,
   MAP_ENGINE_NETWORK_ONLY,
@@ -12,7 +13,6 @@ import {
   PRECACHE_GLOB_IGNORES,
   PRECACHE_GLOB_PATTERNS,
   TERRAIN_TILE_NETWORK_ONLY,
-  excludeMapFromPrecacheManifest,
 } from './pwaPrecachePolicy';
 import { filterHtmlModulePreloadDeps } from './vite.modulePreload';
 
@@ -237,24 +237,13 @@ export default defineConfig({
             urlPattern: /\/version\.json(\?.*)?$/i,
             handler: 'NetworkOnly',
           },
-          // Campo (PR 6) — the two rules that make /campo/:token work in
-          // airplane mode after a first visit. They precede BOTH the map-
-          // engine NetworkOnly and the generic /api/v2/public NetworkFirst
-          // below: workbox matches in registration order.
+          // Campo (PR 6) — package JSON stays NetworkOnly in SW so campoCache.ts
+          // owns Cache Storage (`campo-packages`), ETag/304 revalidation, and
+          // 404/410 revocation purges without a duplicate 15 MB SW write.
+          // Precedes `/api/v2/public/.*` NetworkFirst below.
           {
-            urlPattern: CAMPO_PACKAGE_CACHE_FIRST,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'campo-packages',
-              expiration: {
-                maxEntries: 20,
-                // 90 days — the token's own lifetime (PR 2 retention).
-                maxAgeSeconds: 60 * 60 * 24 * 90,
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
+            urlPattern: CAMPO_PACKAGE_NETWORK_ONLY,
+            handler: 'NetworkOnly',
           },
           {
             urlPattern: CAMPO_MAP_ENGINE_CACHE_FIRST,

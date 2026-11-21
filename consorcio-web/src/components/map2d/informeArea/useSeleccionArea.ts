@@ -17,10 +17,10 @@
  * relative to the first selection.
  *
  * CAP (S3): at most {@link LIMITE_ZONAS} subcuencas per selection (mirror of
- * the backend `schemas_ficha.FICHA_ZONAS_MAX` — the server re-checks the
+ * the backend `config.informe_area_max_zonas` — the server re-checks the
  * RESOLVED union and answers 422 `cap_excedido` beyond it). Growing actions
  * (`sumar`, `alternar` adding, `reemplazar`, `cuenca` including) add ids in
- * incoming order and stop at the cap, so the wire request can never exceed 60
+ * incoming order and stop at the cap, so the wire request can never exceed 120
  * entries; the UI surfaces the cap with `cupoLleno` instead of failing at the
  * server.
  */
@@ -43,8 +43,8 @@ export type EstadoCuenca = 'ninguna' | 'parcial' | 'toda';
 /** The selection IS the id set; `Readonly` keeps reducers immutable by contract. */
 export type SeleccionAreaState = ReadonlySet<string>;
 
-/** Máximo 60 subcuencas por selección (S3; mirrors `schemas_ficha.FICHA_ZONAS_MAX`). */
-export const LIMITE_ZONAS = 60;
+/** Máximo 120 subcuencas por selección (S3; mirrors `config.informe_area_max_zonas`). */
+export const LIMITE_ZONAS = 120;
 
 export type SeleccionAreaAction =
   /** Sumar zonas (set union), clamped to {@link LIMITE_ZONAS}. */
@@ -113,7 +113,7 @@ export function seleccionVacia(state: SeleccionAreaState): boolean {
   return state.size === 0;
 }
 
-/** True when the selection hit the 60-subcuenca cap (S3) — the UI stops adding. */
+/** True when the selection hit the 120-subcuenca cap (S3) — the UI stops adding. */
 export function cupoLleno(state: SeleccionAreaState): boolean {
   return state.size >= LIMITE_ZONAS;
 }

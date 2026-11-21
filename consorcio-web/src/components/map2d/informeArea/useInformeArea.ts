@@ -21,6 +21,7 @@ import { useEffect, useRef } from 'react';
 
 import {
   crearInformeArea,
+  descargarInformeAreaKmz,
   descargarInformeAreaPdf,
   INFORME_AREA_ESTADOS,
   type InformeAreaCreateParams,
@@ -108,6 +109,17 @@ export async function descargarInformeConAviso(informe: InformeAreaItem): Promis
     await descargarInformeAreaPdf(informe.id, informe.nombre);
   } catch (error) {
     showError('No se pudo descargar el informe', copiaDeErrorDescarga(error));
+  }
+}
+
+/**
+ * Download one informe's KMZ, surfacing failures as a toast.
+ */
+export async function descargarKmzConAviso(informe: InformeAreaItem): Promise<void> {
+  try {
+    await descargarInformeAreaKmz(informe.id, informe.nombre);
+  } catch (error) {
+    showError('No se pudo descargar el KMZ', copiaDeErrorDescarga(error));
   }
 }
 
@@ -210,6 +222,16 @@ export function useCrearInformeArea() {
 export function useDescargarInformeArea() {
   return useMutation({
     mutationFn: (informe: InformeAreaItem) => descargarInformeConAviso(informe),
+    retry: false,
+  });
+}
+
+/**
+ * Per-row/per-inline KMZ download mutation with isolated loading state.
+ */
+export function useDescargarInformeAreaKmz() {
+  return useMutation({
+    mutationFn: (informe: InformeAreaItem) => descargarKmzConAviso(informe),
     retry: false,
   });
 }

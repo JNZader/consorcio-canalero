@@ -41,6 +41,7 @@ const elevado = vi.hoisted(() => {
     InformesAreaApiError,
     listarInformesArea: vi.fn(),
     descargarInformeAreaPdf: vi.fn(),
+    descargarInformeAreaKmz: vi.fn(),
   };
 });
 
@@ -51,6 +52,7 @@ vi.mock('../../../src/lib/api/informesArea', async (importOriginal) => {
     InformesAreaApiError: elevado.InformesAreaApiError,
     listarInformesArea: elevado.listarInformesArea,
     descargarInformeAreaPdf: elevado.descargarInformeAreaPdf,
+    descargarInformeAreaKmz: elevado.descargarInformeAreaKmz,
   };
 });
 
@@ -116,6 +118,7 @@ const FILAS: InformeAreaItem[] = [
 beforeEach(() => {
   elevado.listarInformesArea.mockReset().mockResolvedValue({ items: FILAS, total: FILAS.length });
   elevado.descargarInformeAreaPdf.mockReset().mockResolvedValue(undefined);
+  elevado.descargarInformeAreaKmz.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -181,6 +184,38 @@ describe('MisInformes — filas', () => {
     await waitFor(() =>
       expect(elevado.descargarInformeAreaPdf).toHaveBeenCalledWith('listo', 'Cuenca norte')
     );
+  });
+
+  it('filas completadas permiten descargar KMZ y enlazar al mapa de campo cuando hay token_publico', async () => {
+    const user = userEvent.setup();
+    elevado.listarInformesArea.mockResolvedValue({
+      items: [
+        filaFija('con-campo', {
+          nombre: 'Con campo',
+          estado: 'completed',
+          token_publico: 'tok-campo-1',
+        }),
+        filaFija('sin-campo', {
+          nombre: 'Sin campo',
+          estado: 'completed',
+          token_publico: '',
+        }),
+      ],
+      total: 2,
+    });
+    render(<MisInformes />, { wrapper });
+    await screen.findByTestId('informe-area-mis-informes');
+
+    const filaCon = filaPorNombre('Con campo');
+    await user.click(within(filaCon).getByTestId('informe-area-mis-informes-kmz'));
+    await waitFor(() =>
+      expect(elevado.descargarInformeAreaKmz).toHaveBeenCalledWith('con-campo', 'Con campo')
+    );
+    const link = within(filaCon).getByTestId('informe-area-mis-informes-campo');
+    expect(link).toHaveAttribute('href', expect.stringContaining('/campo/tok-campo-1'));
+    expect(
+      within(filaPorNombre('Sin campo')).queryByTestId('informe-area-mis-informes-campo')
+    ).toBeNull();
   });
 });
 

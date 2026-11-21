@@ -11,6 +11,7 @@ import {
   circuloPrecision,
   claseEnPunto,
   puntoEnGeometria,
+  RADIO_PRECISION_MAX_M,
 } from '@/components/campo/geometriaCampo';
 import type { TemaCampo } from '@/components/campo/tiposCampo';
 
@@ -156,5 +157,13 @@ describe('circuloPrecision', () => {
     // 0 → +lat; con 64 segmentos la cuerda queda a <1 m del arco).
     const dLat = (coords[0][1] + 33.005) * 110_540;
     expect(Math.abs(dLat - 100)).toBeLessThan(1);
+  });
+
+  it('acota el radio de precisión a RADIO_PRECISION_MAX_M (500 m)', () => {
+    const anillo = circuloPrecision([-61.9, -33.005], 5000);
+    const coords = (anillo.coordinates as number[][][])[0];
+    const dLat = (coords[0][1] + 33.005) * 110_540;
+    expect(RADIO_PRECISION_MAX_M).toBe(500);
+    expect(Math.abs(dLat - 500)).toBeLessThan(1);
   });
 });

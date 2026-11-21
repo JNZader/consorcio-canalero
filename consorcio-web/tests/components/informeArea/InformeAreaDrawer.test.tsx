@@ -56,13 +56,13 @@ const elevado = vi.hoisted(() => {
     }
   }
 
-  /** Cuenca "Río Tercero": 61 zonas (para llenar el cupo de 60 y que sobre una). */
+  /** Cuenca "Río Tercero": 121 zonas (para llenar el cupo de 120 y que sobre una). */
   const features = [
     { id: 'z-a1', nombre: 'Alta 1', cuenca: 'Río Tercero' },
     { id: 'z-a2', nombre: 'Alta 2', cuenca: 'Río Tercero' },
-    ...Array.from({ length: 59 }, (_, i) => ({
-      id: `z-g${String(i + 1).padStart(2, '0')}`,
-      nombre: `Generada ${String(i + 1).padStart(2, '0')}`,
+    ...Array.from({ length: 119 }, (_, i) => ({
+      id: `z-g${String(i + 1).padStart(3, '0')}`,
+      nombre: `Generada ${String(i + 1).padStart(3, '0')}`,
       cuenca: 'Río Tercero',
     })),
     { id: 'z-b1', nombre: 'Baja 1', cuenca: 'Arroyo Algodón' },
@@ -93,6 +93,7 @@ const elevado = vi.hoisted(() => {
     crearInformeArea: vi.fn(),
     listarInformesArea: vi.fn(),
     descargarInformeAreaPdf: vi.fn(),
+    descargarInformeAreaKmz: vi.fn(),
     useMapWorkspaceDesktop: vi.fn(() => true),
     basins,
   };
@@ -112,6 +113,7 @@ vi.mock('../../../src/lib/api/informesArea', async (importOriginal) => {
     crearInformeArea: elevado.crearInformeArea,
     listarInformesArea: elevado.listarInformesArea,
     descargarInformeAreaPdf: elevado.descargarInformeAreaPdf,
+    descargarInformeAreaKmz: elevado.descargarInformeAreaKmz,
   };
 });
 
@@ -211,6 +213,7 @@ beforeEach(() => {
   elevado.useMapWorkspaceDesktop.mockReset().mockReturnValue(true);
   elevado.crearInformeArea.mockReset();
   elevado.descargarInformeAreaPdf.mockReset().mockResolvedValue(undefined);
+  elevado.descargarInformeAreaKmz.mockReset().mockResolvedValue(undefined);
   elevado.listarInformesArea.mockReset().mockResolvedValue({ items: [], total: 0 });
   notificaciones.showInfo.mockReset();
   notificaciones.showSuccess.mockReset();
@@ -251,18 +254,18 @@ describe('InformeAreaDrawer — paso Elegir', () => {
     renderDrawer();
 
     pickEnMapa('z-a1', 'Alta 1');
-    expect(contador()).toBe('1/60 subcuencas');
+    expect(contador()).toBe(`1/${LIMITE_ZONAS} subcuencas`);
 
     pickEnMapa('z-a2', 'Alta 2'); // reemplazar: sigue habiendo una
-    expect(contador()).toBe('1/60 subcuencas');
+    expect(contador()).toBe(`1/${LIMITE_ZONAS} subcuencas`);
     expect(screen.getAllByTestId('informe-area-chip')).toHaveLength(1);
     expect(screen.getAllByTestId('informe-area-chip')[0]).toHaveTextContent('Alta 2');
 
     pickEnMapa('z-a1', 'Alta 1', true); // ctrl/⌘: alterna sobre la selección
-    expect(contador()).toBe('2/60 subcuencas');
+    expect(contador()).toBe(`2/${LIMITE_ZONAS} subcuencas`);
 
     pickEnMapa('z-a1', 'Alta 1', true); // alternar de nuevo la saca
-    expect(contador()).toBe('1/60 subcuencas');
+    expect(contador()).toBe(`1/${LIMITE_ZONAS} subcuencas`);
   });
 
   it('en móvil el switch "Sumar a la selección" vuelve aditivo al pick simple', async () => {
@@ -274,10 +277,10 @@ describe('InformeAreaDrawer — paso Elegir', () => {
 
     pickEnMapa('z-a1', 'Alta 1');
     pickEnMapa('z-a2', 'Alta 2'); // con switch: alterna y suma
-    expect(contador()).toBe('2/60 subcuencas');
+    expect(contador()).toBe(`2/${LIMITE_ZONAS} subcuencas`);
 
     pickEnMapa('z-a2', 'Alta 2', false); // el switch manda sobre el gesto
-    expect(contador()).toBe('1/60 subcuencas');
+    expect(contador()).toBe(`1/${LIMITE_ZONAS} subcuencas`);
   });
 
   it('la lista permite elegir zonas con checkbox y quitar por chip', async () => {
@@ -287,12 +290,12 @@ describe('InformeAreaDrawer — paso Elegir', () => {
     await user.click(screen.getByRole('tab', { name: 'Lista' }));
     const region = await abrirCuenca(user, /Río Tercero/);
     await user.click(within(region).getByRole('checkbox', { name: 'Alta 1' }));
-    expect(contador()).toBe('1/60 subcuencas');
+    expect(contador()).toBe(`1/${LIMITE_ZONAS} subcuencas`);
     expect(screen.getByRole('button', { name: 'Revisar selección' })).toBeEnabled();
 
     const chip = screen.getAllByTestId('informe-area-chip')[0];
     await user.click(within(chip).getByRole('button', { hidden: true }));
-    expect(contador()).toBe('0/60 subcuencas');
+    expect(contador()).toBe(`0/${LIMITE_ZONAS} subcuencas`);
     expect(screen.getByRole('button', { name: 'Revisar selección' })).toBeDisabled();
   });
 
@@ -304,19 +307,19 @@ describe('InformeAreaDrawer — paso Elegir', () => {
     const region = await abrirCuenca(user, /Río Tercero/);
     await user.click(within(region).getByRole('checkbox', { name: 'Toda la cuenca' }));
 
-    // 61 zonas en la cuenca: el reducer para en el límite de 60.
-    expect(contador()).toBe('60/60 subcuencas');
+    // 121 zonas en la cuenca: el reducer para en el límite de 120.
+    expect(contador()).toBe(`${LIMITE_ZONAS}/${LIMITE_ZONAS} subcuencas`);
     expect(screen.getByTestId('informe-area-cupo')).toHaveTextContent(
       `Llegaste al máximo de ${LIMITE_ZONAS} subcuencas`
     );
     // La zona que quedó afuera (y las de otras cuencas) se traban.
-    expect(within(region).getByRole('checkbox', { name: 'Generada 59' })).toBeDisabled();
+    expect(within(region).getByRole('checkbox', { name: 'Generada 119' })).toBeDisabled();
 
     const algodon = await abrirCuenca(user, /Arroyo Algodón/);
     expect(within(algodon).getByRole('checkbox', { name: 'Baja 1' })).toBeDisabled();
 
     await user.click(screen.getByRole('button', { name: 'Quitar todas' }));
-    expect(contador()).toBe('0/60 subcuencas');
+    expect(contador()).toBe(`0/${LIMITE_ZONAS} subcuencas`);
     expect(screen.queryByTestId('informe-area-cupo')).not.toBeInTheDocument();
   });
 });
@@ -487,6 +490,50 @@ describe('InformeAreaDrawer — paso Generar (PR 2: lanzar el informe en segundo
     await waitFor(() => expect(elevado.descargarInformeAreaPdf).toHaveBeenCalled());
   });
 
+  it('el panel listo ofrece descargar KMZ y abrir /campo/:token cuando hay token_publico', async () => {
+    const user = userEvent.setup();
+    elevado.crearInformeArea.mockResolvedValue(
+      filaInforme({
+        estado: 'completed',
+        progreso: 100,
+        desde_cache: true,
+        token_publico: 'tok-abc',
+      })
+    );
+    await llegarAGenerar(user);
+    await user.type(screen.getByTestId('informe-area-nombre'), 'Cuenca norte');
+    await user.click(screen.getByTestId('informe-area-crear'));
+    const listo = await screen.findByTestId('informe-area-listo-inline');
+
+    await user.click(within(listo).getByTestId('informe-area-descargar-kmz-inline'));
+    await waitFor(() =>
+      expect(elevado.descargarInformeAreaKmz).toHaveBeenCalledWith('inf-1', 'Cuenca norte')
+    );
+    const campoLink = within(listo).getByTestId('informe-area-campo-inline');
+    expect(campoLink).toHaveAttribute('href', expect.stringContaining('/campo/tok-abc'));
+  });
+
+  it('cambiar la selección limpia alertas e informes previos del paso Generar', async () => {
+    const user = userEvent.setup();
+    elevado.crearInformeArea.mockRejectedValueOnce(
+      new elevado.InformesAreaApiError(422, 'cap_excedido', 'Supera el tope')
+    );
+    await llegarAGenerar(user);
+    await user.type(screen.getByTestId('informe-area-nombre'), 'Grande');
+    await user.click(screen.getByTestId('informe-area-crear'));
+    expect(await screen.findByTestId('informe-area-crear-error')).toBeInTheDocument();
+
+    // Volver a Elegir y sumar otra subcuenca -> la alerta anterior se limpia.
+    await user.click(screen.getByRole('button', { name: 'Volver a revisar' }));
+    await user.click(screen.getByRole('button', { name: 'Volver' }));
+    pickEnMapa('z-a2', 'Alta 2', true);
+
+    await user.click(screen.getByRole('button', { name: 'Revisar selección' }));
+    await screen.findByTestId('informe-area-preview');
+    await user.click(screen.getByRole('button', { name: 'Generar informe' }));
+    expect(screen.queryByTestId('informe-area-crear-error')).not.toBeInTheDocument();
+  });
+
   it('un 422 cap_excedido muestra la copia del tope y no ofrece reintentar', async () => {
     const user = userEvent.setup();
     elevado.crearInformeArea.mockRejectedValue(
@@ -619,7 +666,7 @@ describe('InformeAreaDrawer — Mis informes', () => {
     expect(screen.getByTestId('informe-area-stepper')).toBeInTheDocument();
     // El flujo sobrevivió: sigue en Revisar con la selección intacta.
     expect(screen.getByTestId('informe-area-preview')).toBeInTheDocument();
-    expect(contador()).toBe('1/60 subcuencas');
+    expect(contador()).toBe(`1/${LIMITE_ZONAS} subcuencas`);
   });
 });
 

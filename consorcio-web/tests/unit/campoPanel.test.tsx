@@ -109,4 +109,27 @@ describe('PanelPosicion', () => {
     panel({ precisionM: 12.4 });
     expect(screen.getByText('Precisión GPS ±12 m')).toBeTruthy();
   });
+
+  it('sin fix GPS inicial muestra buscando ubicación y deshabilita Centrar en mí', () => {
+    panel({
+      precisionM: null,
+      analisis: { clase: null, enLimite: false, vecino: null, distanciaBordeM: Number.POSITIVE_INFINITY },
+    });
+    expect(screen.getByTestId('campo-clase').textContent).toBe('Buscando ubicación GPS…');
+    expect((screen.getByTestId('campo-centrar') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('renderiza paquete.notas y avisoCache cuando están presentes', () => {
+    panel({
+      avisoCache: 'No hay espacio suficiente para guardar el mapa sin señal.',
+      paquete: {
+        ...paquete,
+        notas: ['Curado campaña 2025', 'Incluye caminos secundarios'],
+      },
+    });
+    expect(screen.getByTestId('campo-aviso-cache').textContent).toContain('espacio suficiente');
+    const notas = screen.getByTestId('campo-notas');
+    expect(notas.textContent).toContain('Curado campaña 2025');
+    expect(notas.textContent).toContain('Incluye caminos secundarios');
+  });
 });

@@ -55,23 +55,31 @@ export class ErrorKml extends Error {
   }
 }
 
-/** S4 caps: 10 MB per file, 20 000 vértices across every kept polygon. */
+/** S4 caps: 10 MB per file, 20 MB decompressed KML in KMZ, 20 000 vértices across kept polygons. */
 export const LIMITE_BYTES_KML = 10 * 1024 * 1024;
+export const LIMITE_BYTES_KML_DESCOMPRIMIDO = 20 * 1024 * 1024;
 export const LIMITE_VERTICES_KML = 20_000;
 
 // ── geometry normalization (strip Z, close rings) ────────────────────────────
 
 type Posicion2D = [number, number];
 
-/** One position → [lon, lat]; Z (and anything past 2D) is dropped. */
+/** One position → [lon, lat]; Z (and non-finite values) are dropped. */
 function aPosicion2D(posicion: readonly number[]): Posicion2D | null {
-  if (typeof posicion[0] !== 'number' || typeof posicion[1] !== 'number') return null;
+  if (
+    typeof posicion[0] !== 'number' ||
+    typeof posicion[1] !== 'number' ||
+    !Number.isFinite(posicion[0]) ||
+    !Number.isFinite(posicion[1])
+  ) {
+    return null;
+  }
   return [posicion[0], posicion[1]];
 }
 
 /**
  * One ring → closed 2D ring. Returns null when the ring has no usable
- * interior (fewer than 3 DISTINCT positions after stripping — a degenerate
+ * interior (fewer than 3 DISTINCT positions after closure — a degenerate
  * sliver the backend would only reject).
  */
 function normalizarAnillo(anillo: readonly (readonly number[])[]): Posicion2D[] | null {
@@ -83,19 +91,25 @@ function normalizarAnillo(anillo: readonly (readonly number[])[]): Posicion2D[] 
   if (posiciones.length < 3) return null;
   const primera = posiciones[0];
   const ultima = posiciones[posiciones.length - 1];
-  if (primera[0] !== ultima[0] || primera[1] !== ultima[1])
+  if (primera[0] !== ultima[0] || primera[1] !== ultima[1]) {
     posiciones.push([primera[0], primera[1]]);
+  }
+  if (posiciones.length < 4) return null;
+  const distintos = new Set(posiciones.slice(0, -1).map(([x, y]) => `${x},${y}`));
+  if (distintos.size < 3) return null;
   return posiciones;
 }
 
-/** Normalize one Polygon's rings; null when nothing polygonal survives. */
+/** Normalize one Polygon's rings; null when the outer ring is unusable (never promote holes). */
 function normalizarPoligono(anillos: readonly (readonly (readonly number[])[])[]): Polygon | null {
-  const coordenadas: Posicion2D[][] = [];
-  for (const anillo of anillos) {
+  if (anillos.length === 0) return null;
+  const exterior = normalizarAnillo(anillos[0]);
+  if (!exterior) return null;
+  const coordenadas: Posicion2D[][] = [exterior];
+  for (const anillo of anillos.slice(1)) {
     const normalizado = normalizarAnillo(anillo);
     if (normalizado) coordenadas.push(normalizado);
   }
-  if (coordenadas.length === 0) return null;
   return { type: 'Polygon', coordinates: coordenadas };
 }
 
@@ -144,6 +158,15 @@ function contarVertices(geometria: Polygon | MultiPolygon): number {
 const M2_POR_HA = 10_000;
 
 /**
+ * Strip DOCTYPE / ENTITY blocks before feeding XML to DOMParser (anti XXE/billion-laughs).
+ */
+export function sanitizarTextoKml(textoEntrante: string): string {
+  return textoEntrante
+    .replace(/<!DOCTYPE[^>[]*(?:\[[\s\S]*?\])?\s*>/gi, '')
+    .replace(/<!ENTITY[\s\S]*?>/gi, '');
+}
+
+/**
  * KML text → the polygonal selection candidates (S4).
  *
  * Pure on purpose: the worker, the vitest suite and the inline fallback all
@@ -151,15 +174,7 @@ const M2_POR_HA = 10_000;
  * three.
  */
 export function kmlAPoligonos(textoEntrante: string): PoligonoKml[] {
-  // Sanitizer anti billion-laughs/XXE: STRIP, not reject. Legitimate KMLs
-  // (ArcGIS and some Earth exporters) DO carry a <!DOCTYPE kml ...> header
-  // that a reject-guard would bounce; entities are never needed to read
-  // geometries, so the whole DOCTYPE block (internal subset included) and
-  // any stray ENTITY declarations are removed before parsing. The browser
-  // DOMParser additionally caps entity expansion on its own.
-  const texto = textoEntrante
-    .replace(/<!DOCTYPE[^>[]*(?:\[[\s\S]*?\])?\s*>/gi, '')
-    .replace(/<!ENTITY[\s\S]*?>/gi, '');
+  const texto = sanitizarTextoKml(textoEntrante);
   // Reviewed false positives (CodeQL HIGH), reasons kept next to each rule:
   //   xml-bomb — entities are stripped above AND the browser DOMParser
   //     hard-caps entity expansion (a server-parser threat).
@@ -185,9 +200,7 @@ export function kmlAPoligonos(textoEntrante: string): PoligonoKml[] {
         ? feature.properties.name.trim()
         : null;
     const nombre =
-      nombreBruto !== null
-        ? nombreBruto.replace(/[<>&"']/g, '').slice(0, 120) || null
-        : null;
+      nombreBruto !== null ? nombreBruto.replace(/[<>&"']/g, '').slice(0, 120) || null : null;
     for (const geometry of geometriasPoligonales(feature.geometry)) {
       vertices += contarVertices(geometry);
       if (vertices > LIMITE_VERTICES_KML) {
@@ -210,12 +223,35 @@ export function kmlAPoligonos(textoEntrante: string): PoligonoKml[] {
   return poligonos;
 }
 
+interface JSZipStreamHelper {
+  on(event: 'data', cb: (chunk: Uint8Array) => void): JSZipStreamHelper;
+  on(event: 'error', cb: (error: unknown) => void): JSZipStreamHelper;
+  on(event: 'end', cb: () => void): JSZipStreamHelper;
+  pause(): void;
+  resume(): JSZipStreamHelper;
+}
+
+interface JSZipEntryConInternals extends JSZip.JSZipObject {
+  _data?: { uncompressedSize?: number };
+  internalStream?(type: 'uint8array'): JSZipStreamHelper;
+}
+
+function errorTamanoKmz(limiteBytes: number): ErrorKml {
+  const mb = Math.max(1, Math.round(limiteBytes / 1024 / 1024));
+  return new ErrorKml(
+    'archivo_grande',
+    `El KML dentro del KMZ supera el límite de ${mb} MB descomprimido.`
+  );
+}
+
 /**
- * KMZ bytes → the text of its FIRST `.kml` entry (S4). jszip lazily reads
- * only that entry's stream, so a bloated archive costs memory once, not
- * twice.
+ * KMZ bytes → the text of its FIRST `.kml` entry (S4), streaming with an
+ * explicit decompressed byte limit so zip-bombs cannot exhaust memory.
  */
-export async function kmzATexto(buffer: ArrayBuffer): Promise<string> {
+export async function kmzATexto(
+  buffer: ArrayBuffer,
+  limiteBytes: number = LIMITE_BYTES_KML_DESCOMPRIMIDO
+): Promise<string> {
   const archivo = await JSZip.loadAsync(buffer);
   const entrada =
     Object.keys(archivo.files)
@@ -224,17 +260,72 @@ export async function kmzATexto(buffer: ArrayBuffer): Promise<string> {
   if (!entrada) {
     throw new ErrorKml('archivo_invalido', 'El KMZ no contiene ningún KML.');
   }
-  return archivo.files[entrada].async('string');
+
+  const objeto = archivo.files[entrada] as JSZipEntryConInternals;
+  const tamanoDeclarado = objeto._data?.uncompressedSize;
+  if (typeof tamanoDeclarado === 'number' && tamanoDeclarado > limiteBytes) {
+    throw errorTamanoKmz(limiteBytes);
+  }
+
+  if (typeof objeto.internalStream === 'function') {
+    const stream = objeto.internalStream('uint8array');
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+
+    await new Promise<void>((resolve, reject) => {
+      let terminado = false;
+      const finalizarError = (err: unknown) => {
+        if (terminado) return;
+        terminado = true;
+        reject(err);
+      };
+      stream
+        .on('data', (chunk) => {
+          if (terminado) return;
+          totalBytes += chunk.byteLength;
+          if (totalBytes > limiteBytes) {
+            stream.pause();
+            finalizarError(errorTamanoKmz(limiteBytes));
+            return;
+          }
+          chunks.push(chunk);
+        })
+        .on('error', (err) => {
+          finalizarError(
+            err instanceof ErrorKml
+              ? err
+              : new ErrorKml('lectura_fallida', 'No se pudo leer el KMZ.')
+          );
+        })
+        .on('end', () => {
+          if (terminado) return;
+          terminado = true;
+          resolve();
+        })
+        .resume();
+    });
+
+    const completo = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      completo.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return new TextDecoder('utf-8').decode(completo);
+  }
+
+  const bytes = await objeto.async('uint8array');
+  if (bytes.byteLength > limiteBytes) {
+    throw errorTamanoKmz(limiteBytes);
+  }
+  return new TextDecoder('utf-8').decode(bytes);
 }
 
 /**
- * One picked file → the polygonal candidates, enforcing the S4 caps.
- *
- * The size cap fires BEFORE any parse (the cheapest possible rejection);
- * the vertex cap fires DURING the geometry walk. Everything else about the
- * file (points, lines, weird styles) is handled by the parse itself.
+ * Validate raw file size, decompress `.kmz` if needed (bounded against zip-bombs),
+ * and return sanitized XML text ready for `kmlAPoligonos`.
  */
-export async function procesarArchivoKml(archivo: File): Promise<PoligonoKml[]> {
+export async function extraerTextoArchivoKml(archivo: File): Promise<string> {
   if (archivo.size > LIMITE_BYTES_KML) {
     throw new ErrorKml(
       'archivo_grande',
@@ -242,38 +333,51 @@ export async function procesarArchivoKml(archivo: File): Promise<PoligonoKml[]> 
     );
   }
   const esKmz = archivo.name.toLowerCase().endsWith('.kmz');
-  let texto: string;
   try {
-    texto = esKmz ? await kmzATexto(await archivo.arrayBuffer()) : await archivo.text();
+    const bruto = esKmz ? await kmzATexto(await archivo.arrayBuffer()) : await archivo.text();
+    return sanitizarTextoKml(bruto);
   } catch (error) {
     if (error instanceof ErrorKml) throw error;
     throw new ErrorKml('lectura_fallida', 'No se pudo leer el archivo.');
   }
-  return kmlAPoligonos(texto);
+}
+
+/**
+ * One picked file → the polygonal candidates, enforcing the S4 caps.
+ */
+export async function procesarArchivoKml(archivo: File): Promise<PoligonoKml[]> {
+  return kmlAPoligonos(await extraerTextoArchivoKml(archivo));
 }
 
 // ── the worker bridge ────────────────────────────────────────────────────────
 
-/** What the worker posts back: either the polygons or a coded failure. */
+/** What the worker posts back: either the polygons, extracted KMZ text, or a coded failure. */
 export type MensajeKmlWorker =
   | { ok: true; poligonos: PoligonoKml[] }
+  | { ok: false; codigo: 'worker_solo_texto'; texto: string; mensaje: string }
   | { ok: false; codigo: CodigoErrorKml | 'worker_incapaz'; mensaje: string };
+
+let workerTieneDomParser: boolean | null = null;
+
+/** Test helper: clears the cached worker `DOMParser` capability probe. */
+export function resetearCacheWorkerKml(): void {
+  workerTieneDomParser = null;
+}
 
 /**
  * Read one file OFF the main thread (S7: "sin congelar la página").
  *
- * The worker path is the production route; two failure modes degrade to the
- * SAME pure function inline, so behavior never depends on where the parse
- * ran:
- *
- *  - the Worker constructor throws (unhappy embedders, odd test DOMs);
- *  - the worker reports `worker_incapaz` (no DOMParser in that worker
- *    context) or fails to load at all.
- *
- * The inline fallback blocks the page, yes — but only where the environment
- * already denied the worker, which in practice is the test DOM.
+ * When a browser worker lacks `DOMParser`, `.kmz` decompression + zip-bomb
+ * checks still execute inside the worker (`worker_solo_texto`), and only XML
+ * DOM parsing runs inline; once probed, plain `.kml` files skip spawning a
+ * no-op worker.
  */
 export function leerArchivoKml(archivo: File): Promise<PoligonoKml[]> {
+  const esKmz = archivo.name.toLowerCase().endsWith('.kmz');
+  if (!esKmz && workerTieneDomParser === false) {
+    return procesarArchivoKml(archivo);
+  }
+
   return new Promise<PoligonoKml[]>((resolve, reject) => {
     let worker: Worker | null = null;
     try {
@@ -293,9 +397,20 @@ export function leerArchivoKml(archivo: File): Promise<PoligonoKml[]> {
     activo.onmessage = (evento: MessageEvent<MensajeKmlWorker>) => {
       const mensaje = evento.data;
       activo.terminate();
-      if (mensaje.ok) resolve(mensaje.poligonos);
-      else if (mensaje.codigo === 'worker_incapaz') fallarAlInline();
-      else reject(new ErrorKml(mensaje.codigo as CodigoErrorKml, mensaje.mensaje));
+      if (mensaje.ok) {
+        workerTieneDomParser = true;
+        resolve(mensaje.poligonos);
+      } else if (mensaje.codigo === 'worker_solo_texto') {
+        workerTieneDomParser = false;
+        Promise.resolve()
+          .then(() => kmlAPoligonos(mensaje.texto))
+          .then(resolve, reject);
+      } else if (mensaje.codigo === 'worker_incapaz') {
+        workerTieneDomParser = false;
+        fallarAlInline();
+      } else {
+        reject(new ErrorKml(mensaje.codigo, mensaje.mensaje));
+      }
     };
     activo.onerror = fallarAlInline;
     activo.postMessage(archivo);

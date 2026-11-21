@@ -7,7 +7,7 @@
  *   - toda la cuenca: union/difference over a cuenca's explicit ids;
  *   - estado indeterminado: `parcial` when some (not all) of a cuenca's zonas
  *     are selected — the Checkbox `indeterminate` state;
- *   - plus the S3 cap: the selection never exceeds 60 ids.
+ *   - plus the S3 cap: the selection never exceeds 120 ids.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -120,8 +120,8 @@ describe('estadoCuenca — estado indeterminado (S5)', () => {
   });
 });
 
-describe('cap de 60 subcuencas (S3)', () => {
-  const muchos = Array.from({ length: 100 }, (_, i) => `zona-${i}`);
+describe('cap de 120 subcuencas (S3)', () => {
+  const muchos = Array.from({ length: 140 }, (_, i) => `zona-${i}`);
 
   it('sumar stops adding at LIMITE_ZONAS, preserving incoming order', () => {
     const estado = seleccionAreaReducer(seleccion(), { type: 'sumar', ids: muchos });

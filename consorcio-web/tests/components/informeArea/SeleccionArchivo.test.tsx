@@ -9,7 +9,7 @@
  */
 
 import { MantineProvider } from '@mantine/core';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -155,18 +155,31 @@ describe('SeleccionArchivo — escritorio', () => {
     );
   });
 
-  it('acepta KML/KMZ enviados como application/octet-stream o sin MIME en Dropzone', async () => {
+  it('acepta KML/KMZ enviados como application/octet-stream, text/plain o sin MIME directo en el input del Dropzone', async () => {
     const user = userEvent.setup();
     const onAgregar = vi.fn();
     lector.leerArchivoKml.mockResolvedValue([poligono(55, 'lote-octet')]);
     render(<SeleccionArchivo esEscritorio onAgregar={onAgregar} />, { wrapper });
 
-    await elegirArchivo(
-      user,
+    const dropzone = screen.getByTestId('informe-area-archivo-dropzone');
+    const dropzoneInput = dropzone.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(dropzoneInput).not.toBeNull();
+    expect(within(dropzone).getByText('Arrastrá un KML o KMZ, o tocá para elegirlo')).toBeInTheDocument();
+
+    await user.upload(
+      dropzoneInput,
       new File(['PK'], 'campo.kmz', { type: 'application/octet-stream' })
     );
-
     await waitFor(() => expect(onAgregar).toHaveBeenCalledTimes(1));
+
+    await user.upload(dropzoneInput, new File(['<kml/>'], 'vacio-mime.kml', { type: '' }));
+    await waitFor(() => expect(onAgregar).toHaveBeenCalledTimes(2));
+
+    await user.upload(
+      dropzoneInput,
+      new File(['<kml/>'], 'texto.kml', { type: 'text/plain' })
+    );
+    await waitFor(() => expect(onAgregar).toHaveBeenCalledTimes(3));
   });
 });
 

@@ -34,9 +34,15 @@ import {
   INFORME_AREA_ESTADOS,
   type InformeAreaEstado,
   type InformeAreaItem,
+  urlMapaCampo,
 } from '../../../lib/api/informesArea';
 import { fmtHa } from '../fichaShared';
-import { esRechazoTerminal, useDescargarInformeArea, useMisInformes } from './useInformeArea';
+import {
+  esRechazoTerminal,
+  useDescargarInformeArea,
+  useDescargarInformeAreaKmz,
+  useMisInformes,
+} from './useInformeArea';
 
 /** Badge label + theme color per estado. Colors are the semantic palette. */
 const ETIQUETAS_ESTADO: Record<InformeAreaEstado, { etiqueta: string; color: string }> = {
@@ -64,6 +70,7 @@ export interface MisInformesProps {
 export function MisInformes({ informes }: MisInformesProps) {
   const listado = useMisInformes();
   const descarga = useDescargarInformeArea();
+  const descargaKmz = useDescargarInformeAreaKmz();
 
   const filas = informes ?? listado.informes;
 
@@ -127,7 +134,7 @@ export function MisInformes({ informes }: MisInformesProps) {
             <Table.Th>Estado</Table.Th>
             <Table.Th w={90}>Progreso</Table.Th>
             <Table.Th>Creada</Table.Th>
-            <Table.Th ta="right">PDF</Table.Th>
+            <Table.Th ta="right">Descargas</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
@@ -175,17 +182,54 @@ export function MisInformes({ informes }: MisInformesProps) {
                 </Table.Td>
                 <Table.Td>{fechaEsAr(informe.created_at)}</Table.Td>
                 <Table.Td ta="right">
-                  <Button
-                    size="compact-xs"
-                    variant="light"
-                    disabled={!descargable}
-                    loading={descarga.isPending && descarga.variables?.id === informe.id}
-                    onClick={() => descarga.mutate(informe)}
-                    aria-label={`Descargar el PDF de ${informe.nombre}`}
-                    data-testid="informe-area-mis-informes-descarga"
-                  >
-                    Descargar
-                  </Button>
+                  {descargable ? (
+                    <Group gap={4} justify="flex-end" wrap="nowrap">
+                      <Button
+                        size="compact-xs"
+                        variant="light"
+                        loading={descarga.isPending && descarga.variables?.id === informe.id}
+                        onClick={() => descarga.mutate(informe)}
+                        aria-label={`Descargar el PDF de ${informe.nombre}`}
+                        data-testid="informe-area-mis-informes-descarga"
+                      >
+                        PDF
+                      </Button>
+                      <Button
+                        size="compact-xs"
+                        variant="light"
+                        loading={descargaKmz.isPending && descargaKmz.variables?.id === informe.id}
+                        onClick={() => descargaKmz.mutate(informe)}
+                        aria-label={`Descargar el KMZ de ${informe.nombre}`}
+                        data-testid="informe-area-mis-informes-kmz"
+                      >
+                        KMZ
+                      </Button>
+                      {informe.token_publico && (
+                        <Button
+                          component="a"
+                          href={urlMapaCampo(informe.token_publico)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          size="compact-xs"
+                          variant="subtle"
+                          aria-label={`Abrir mapa de campo de ${informe.nombre}`}
+                          data-testid="informe-area-mis-informes-campo"
+                        >
+                          Campo
+                        </Button>
+                      )}
+                    </Group>
+                  ) : (
+                    <Button
+                      size="compact-xs"
+                      variant="light"
+                      disabled
+                      aria-label={`Descargar el PDF de ${informe.nombre}`}
+                      data-testid="informe-area-mis-informes-descarga"
+                    >
+                      Descargar
+                    </Button>
+                  )}
                 </Table.Td>
               </Table.Tr>
             );

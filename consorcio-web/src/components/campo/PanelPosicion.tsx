@@ -16,6 +16,7 @@ export interface PanelPosicionProps {
   temaActivo: string | null;
   paquete: PaqueteCampo | null;
   sinSenal: boolean;
+  avisoCache?: string | null;
   gpsError: string | null;
   claseTocada: string | null;
   precisionM: number | null;
@@ -28,6 +29,7 @@ export function PanelPosicion({
   temaActivo,
   paquete,
   sinSenal,
+  avisoCache = null,
   gpsError,
   claseTocada,
   precisionM,
@@ -68,9 +70,19 @@ export function PanelPosicion({
         <p className="campo-linea campo-error" data-testid="campo-gps-error" role="alert">
           {gpsError}
         </p>
+      ) : precisionM == null ? (
+        <p className="campo-linea campo-nota" data-testid="campo-clase">
+          Buscando ubicación GPS…
+        </p>
       ) : (
         <p className="campo-linea" data-testid="campo-clase">
           {frasePosicion(analisis?.clase?.clase ?? null)}
+        </p>
+      )}
+
+      {avisoCache && (
+        <p className="campo-linea campo-limite" data-testid="campo-aviso-cache" role="status">
+          {avisoCache}
         </p>
       )}
 
@@ -92,11 +104,22 @@ export function PanelPosicion({
         </p>
       )}
 
+      {paquete && paquete.notas.length > 0 && (
+        <ul className="campo-notas" data-testid="campo-notas">
+          {paquete.notas.map((nota, idx) => (
+            <li key={`${idx}-${nota}`} className="campo-nota">
+              {nota}
+            </li>
+          ))}
+        </ul>
+      )}
+
       <div className="campo-acciones">
         <button
           type="button"
           className="campo-boton"
           data-testid="campo-centrar"
+          disabled={precisionM == null}
           onClick={onCentrar}
         >
           Centrar en mí

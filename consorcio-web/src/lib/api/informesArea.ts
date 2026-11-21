@@ -25,6 +25,7 @@
  * workspace, so the blast radius is one visible error state.
  */
 
+import { withBasePath } from '../basePath';
 import { API_PREFIX, API_URL, getAuthToken } from './core';
 
 /**
@@ -71,6 +72,8 @@ export interface InformeAreaItem {
   readonly vence_at: string;
   readonly created_at: string;
   readonly updated_at: string;
+  /** Public token for `/campo/:token` when available on completed reports. */
+  readonly token_publico?: string;
 }
 
 /** `GET /` — `items` is most-recent-first, capped at the server's page size. */
@@ -269,21 +272,21 @@ export function nombreArchivoDesdeDisposition(disposition: string | null): strin
   return ascii?.[1] ?? null;
 }
 
-/**
- * Download one informe's PDF: fetch as a blob with the bearer token in the
- * header, then hand it to the browser with the SERVER's filename (fallback:
- * the row's nombre). Raw fetch on purpose — `apiFetch` parses JSON.
- *
- * @throws {InformesAreaApiError} 409 `informe_en_progreso` /
- * `informe_fallido`, 503 `pdf_aun_no_disponible`, 404 private-or-missing.
- */
-export async function descargarInformeAreaPdf(informeId: string, nombre: string): Promise<void> {
+async function descargarArchivoInforme(
+  informeId: string,
+  nombre: string,
+  opts: {
+    readonly sufijo: 'pdf' | 'kmz';
+    readonly accept: string;
+    readonly extensionPorDefecto: string;
+  }
+): Promise<void> {
   const token = await getAuthToken();
   const response = await fetch(
-    `${API_URL}${API_PREFIX}/geo/informes-area/${encodeURIComponent(informeId)}/pdf`,
+    `${API_URL}${API_PREFIX}/geo/informes-area/${encodeURIComponent(informeId)}/${opts.sufijo}`,
     {
       headers: {
-        Accept: 'application/pdf',
+        Accept: opts.accept,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
     }
@@ -299,9 +302,41 @@ export async function descargarInformeAreaPdf(informeId: string, nombre: string)
   link.href = url;
   link.download =
     nombreArchivoDesdeDisposition(response.headers.get('content-disposition')) ??
-    `${nombre.trim() || 'informe-area'}.pdf`;
+    `${nombre.trim() || 'informe-area'}.${opts.extensionPorDefecto}`;
   document.body.appendChild(link);
   link.click();
   link.remove();
   window.URL.revokeObjectURL(url);
+}
+
+/**
+ * Download one informe's PDF: fetch as a blob with the bearer token in the
+ * header, then hand it to the browser with the SERVER's filename (fallback:
+ * the row's nombre). Raw fetch on purpose — `apiFetch` parses JSON.
+ *
+ * @throws {InformesAreaApiError} 409 `informe_en_progreso` /
+ * `informe_fallido`, 503 `pdf_aun_no_disponible`, 404 private-or-missing.
+ */
+export function descargarInformeAreaPdf(informeId: string, nombre: string): Promise<void> {
+  return descargarArchivoInforme(informeId, nombre, {
+    sufijo: 'pdf',
+    accept: 'application/pdf',
+    extensionPorDefecto: 'pdf',
+  });
+}
+
+/**
+ * Download one informe's KMZ package with bearer auth and RFC 5987 filename handling.
+ */
+export function descargarInformeAreaKmz(informeId: string, nombre: string): Promise<void> {
+  return descargarArchivoInforme(informeId, nombre, {
+    sufijo: 'kmz',
+    accept: 'application/vnd.google-earth.kmz',
+    extensionPorDefecto: 'kmz',
+  });
+}
+
+/** Public `/campo/:token` URL respecting configured basePath. */
+export function urlMapaCampo(token: string): string {
+  return withBasePath(`/campo/${encodeURIComponent(token)}`);
 }
