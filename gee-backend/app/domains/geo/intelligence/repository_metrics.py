@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Callable
 from datetime import date
@@ -8,12 +9,15 @@ from typing import Any, Optional
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
+from app.db.session import relax_statement_timeout
 from app.domains.geo.intelligence.models import (
     AlertaGeo,
     IndiceHidrico,
     PuntoConflicto,
     ZonaOperativa,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class IntelligenceRepositoryMetricsMixin:
@@ -215,23 +219,37 @@ class IntelligenceRepositoryMetricsMixin:
 
     def refresh_materialized_views(self, db: Session) -> dict[str, str]:
         results: dict[str, str] = {}
-        for view in [
+        views = (
             "mv_dashboard_geo_stats",
             "mv_hci_por_zona",
             "mv_alertas_resumen",
             "mv_caminos_unificados",
-        ]:
+            "vt_parcelas_catastro",
+        )
+        for view in views:
             try:
+                relax_statement_timeout(db, "300s")
                 db.execute(text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {view}"))
+                db.commit()
                 results[view] = "ok"
-            except Exception:
+            except Exception as concurrent_exc:
                 db.rollback()
+                logger.warning(
+                    "Concurrent matview refresh failed for %s (%s); trying non-concurrent",
+                    view,
+                    concurrent_exc,
+                )
                 try:
+                    relax_statement_timeout(db, "300s")
                     db.execute(text(f"REFRESH MATERIALIZED VIEW {view}"))
+                    db.commit()
                     results[view] = "ok (non-concurrent)"
                 except Exception as inner_exc:
+                    db.rollback()
+                    logger.warning(
+                        "Non-concurrent matview refresh failed for %s: %s", view, inner_exc
+                    )
                     results[view] = f"error: {inner_exc!s}"
-        db.commit()
         return results
 
     def get_dashboard_stats(self, db: Session) -> dict[str, Any]:
