@@ -1,6 +1,128 @@
 {
+  "src/components/admin/CanalesPublicacionMap.tsx": {
+    "rgba(0, 0, 0, 0.75)": 3
+  },
+  "src/components/admin/images/ImageExplorerCalendar.tsx": {
+    "rgba(255, 255, 255, 0.7)": 1
+  },
+  "src/components/campo/campo.css": {
+    "#111827": 1,
+    "#2d8f68": 3,
+    "#374151": 1,
+    "#6b7280": 1,
+    "#92400e": 3,
+    "#b91c1c": 1,
+    "#cbd5e1": 1,
+    "#e9efe9": 1,
+    "#f8fafc": 1,
+    "#fef3c7": 1,
+    "#ffffff": 2,
+    "rgba(0, 0, 0, 0.18)": 1,
+    "rgba(0, 0, 0, 0.22)": 1,
+    "rgba(255, 255, 255, 0.92)": 1,
+    "rgba(255, 255, 255, 0.96)": 1
+  },
+  "src/components/HomePage.tsx": {
+    "rgba(0, 0, 0, 0.35)": 1
+  },
+  "src/components/map2d/alongLineLabel.ts": {
+    "rgba(0, 0, 0, 0.75)": 1
+  },
+  "src/components/map2d/comparisonOverlay.ts": {
+    "rgba(0, 0, 0, 0)": 1
+  },
+  "src/components/map2d/ElevationProfileChart.tsx": {
+    "rgba(0, 0, 0, 0.02)": 1,
+    "rgba(15, 118, 110, 0.06)": 1,
+    "rgba(15, 118, 110, 0.12)": 1,
+    "rgba(15, 118, 110, 0.2)": 1,
+    "rgba(255, 255, 255, 0.03)": 1
+  },
+  "src/components/map2d/ElevationProfileDock.tsx": {
+    "rgba(0, 0, 0, 0.12)": 1,
+    "rgba(255, 255, 255, 0.18)": 1
+  },
+  "src/components/map2d/fichaShared.tsx": {
+    "rgba(0, 0, 0, 0.2)": 1
+  },
+  "src/components/map2d/LayerOrderSection.tsx": {
+    "rgba(0, 0, 0, 0.03)": 1,
+    "rgba(255, 255, 255, 0.04)": 1
+  },
+  "src/components/map2d/LeyendaPanel.tsx": {
+    "rgba(0, 0, 0, 0.25)": 4
+  },
+  "src/components/map2d/MapViewportOverlay.tsx": {
+    "rgba(0, 0, 0, 0.3)": 2,
+    "rgba(255, 255, 255, 0.9)": 1
+  },
+  "src/components/map2d/measurement/MeasurementLabels.tsx": {
+    "rgba(0, 0, 0, 0.18)": 1
+  },
+  "src/components/map2d/measurement/MeasurementShapes.tsx": {
+    "rgba(0, 0, 0, 0.4)": 1,
+    "rgba(0, 0, 0, 0.45)": 2,
+    "rgba(124, 58, 237, 0.25)": 1
+  },
+  "src/components/map2d/puntosInteresLayers.ts": {
+    "rgba(0, 0, 0, 0.75)": 1
+  },
+  "src/components/map2d/RiesgoBins.tsx": {
+    "rgba(0, 0, 0, 0.2)": 1
+  },
+  "src/components/map2d/roadLabelLayer.ts": {
+    "rgba(0, 0, 0, 0.75)": 1
+  },
+  "src/components/map2d/useMapInitialization.ts": {
+    "rgba(0, 0, 0, 0)": 1
+  },
+  "src/components/terrain/TerrainLegendsPanel.tsx": {
+    "rgba(0, 0, 0, 0.25)": 1
+  },
+  "src/components/terrain/TerrainViewer3DChrome.tsx": {
+    "rgba(0, 0, 0, 0.5)": 1
+  },
+  "src/constants/index.ts": {
+    "rgba(59, 130, 246, 0.2)": 1
+  },
   "src/routeTree.gen.tsx": {
     "#f8faf9": 1
+  },
+  "src/styles/components/home.module.css": {
+    "rgba(0, 0, 0, 0.12)": 1,
+    "rgba(0, 0, 0, 0.4)": 1
+  },
+  "src/styles/components/map/mapCanvas.css": {
+    "#fff": 1,
+    "rgba(0, 0, 0, 0.6)": 1
+  },
+  "src/styles/components/map/mapChrome.css": {
+    "rgba(0, 0, 0, 0.1)": 1
+  },
+  "src/styles/components/map/mapControls.css": {
+    "#333": 1,
+    "rgba(0, 0, 0, 0.1)": 2
+  },
+  "src/styles/components/map/mapTokens.css": {
+    "#0d0d0d94": 1,
+    "#ffffff": 1,
+    "rgba(255, 255, 255, 0.78)": 1
+  },
+  "src/styles/components/map/mapWorkspace.css": {
+    "rgb(0 0 0 / 0.35)": 1
+  },
+  "src/styles/global.css": {
+    "#4b5563": 3,
+    "#7bc2ac": 1,
+    "#9a3412": 1,
+    "#a1a1a1": 1,
+    "#a3a3a3": 6,
+    "#c1c1c1": 1,
+    "#c2410c": 1,
+    "rgba(0, 0, 0, 0.08)": 1,
+    "rgba(0, 0, 0, 0.3)": 1,
+    "rgba(0, 0, 0, 0.75)": 1,
+    "rgba(0, 0, 0, 0.85)": 1
   },
   "vite.config.ts": {
     "#0f1f1a": 1,
