@@ -421,7 +421,7 @@ export default function PadronPanel() {
                 <Text size="sm">Registros creados: {importResult.created}</Text>
                 <Text size="sm">Filas omitidas: {importResult.skipped}</Text>
                 {importResult.errors.length > 0 && (
-                  <Text size="xs" c="alerta.7" mt="xs">
+                  <Text size="xs" c="var(--cc-color-danger)" mt="xs">
                     {`Errores: ${importResult.errors
                       .slice(0, 5)
                       .map((item) => `fila ${item.row}: ${item.error}`)

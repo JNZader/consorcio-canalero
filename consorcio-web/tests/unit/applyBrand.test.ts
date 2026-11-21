@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   applyBrand,
   bootBrandFromStorage,
+  buildBrandPreviewCssVars,
   getActiveBrandId,
+  pickAccentContrastInk,
 } from '../../src/lib/applyBrand';
 import {
   BRAND_CHANGE_EVENT,
@@ -209,5 +211,32 @@ describe('applyBrand', () => {
       expect(style.getPropertyValue('--mantine-primary-color-light')).toContain('light-dark(');
       expect(style.getPropertyValue('--mantine-primary-color-light-hover')).toContain('light-dark(');
     }
+  });
+
+  it('picks AA ink for every preset accent and builds isolated preview CSS vars', () => {
+    expect(pickAccentContrastInk(BRAND_PRESETS.humedal.accent!)).toBe('var(--mantine-color-white)');
+    expect(pickAccentContrastInk(BRAND_PRESETS.aprhi.accent!)).toBe('var(--mantine-color-dark-9)');
+
+    for (const preset of Object.values(BRAND_PRESETS)) {
+      if (!preset.accent) continue;
+      const ink = pickAccentContrastInk(preset.accent);
+      const inkHex = ink === 'var(--mantine-color-white)' ? '#ffffff' : preset.darkDeep;
+      expect(
+        contrastRatio(preset.accent, inkHex),
+        `${preset.id} accent contrast`
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+
+    const rioVars = buildBrandPreviewCssVars(BRAND_PRESETS.rio) as Record<string, string>;
+    const aprhiVars = buildBrandPreviewCssVars(BRAND_PRESETS.aprhi) as Record<string, string>;
+    expect(rioVars['--mantine-color-institucional-filled']).toBe(
+      BRAND_PRESETS.rio.institucional[6]
+    );
+    expect(aprhiVars['--mantine-color-institucional-filled']).toBe(
+      BRAND_PRESETS.aprhi.institucional[6]
+    );
+    expect(rioVars['--mantine-color-institucional-filled']).not.toBe(
+      aprhiVars['--mantine-color-institucional-filled']
+    );
   });
 });

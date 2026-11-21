@@ -374,7 +374,7 @@ export const mantineTheme = createTheme({
       '#a61e1e',
       '#8a1919',
       '#681212',
-      '#681212',
+      '#4a0c0c',
     ],
     orange: [
       '#fff4e6',
@@ -386,7 +386,7 @@ export const mantineTheme = createTheme({
       '#9a3412',
       '#7c2d12',
       '#5f210d',
-      '#5f210d',
+      '#431407',
     ],
     // Papel claro, con un verde apenas insinuado. gray-6 se queda en
     // #4b5563: es el texto chico y pasa AA sobre blanco y sobre gray-0.
@@ -453,9 +453,9 @@ export const mantineTheme = createTheme({
       '#f59082',
       '#f06d5c',
       '#9f1239',
-      '#c73d2a',
-      '#a3301f',
-      '#7f2516',
+      '#881337',
+      '#6b0f2b',
+      '#4c0a1e',
     ],
     // Paleta para exito/resuelto
     exito: [
@@ -466,9 +466,9 @@ export const mantineTheme = createTheme({
       '#56c074',
       '#38b058',
       '#14532d',
-      '#237a3a',
-      '#1a5f2d',
-      '#124521',
+      '#114324',
+      '#0c321b',
+      '#072011',
     ],
   },
 
@@ -676,6 +676,7 @@ export const cssVariablesResolver: CSSVariablesResolver = (theme) => {
       '--cc-color-danger': 'var(--mantine-color-alerta-6)',
       '--cc-color-warning': 'var(--mantine-color-orange-6)',
       '--cc-color-success': 'var(--mantine-color-exito-6)',
+      '--cc-color-info': 'var(--mantine-color-blue-7)',
       '--cc-color-status-review': 'var(--mantine-color-institucional-7)',
       '--mantine-color-dimmed': String(theme.other.dimmedColorLight ?? '#4b5563'),
       '--mantine-color-placeholder': String(theme.other.dimmedColorLight ?? '#4b5563'),
@@ -691,6 +692,7 @@ export const cssVariablesResolver: CSSVariablesResolver = (theme) => {
       '--cc-color-danger': 'var(--mantine-color-alerta-4)',
       '--cc-color-warning': 'var(--mantine-color-orange-4)',
       '--cc-color-success': 'var(--mantine-color-exito-4)',
+      '--cc-color-info': 'var(--mantine-color-blue-3)',
       '--cc-color-status-review': 'var(--mantine-color-institucional-3)',
       '--cc-color-wordmark': 'var(--mantine-color-institucional-3)',
       '--mantine-color-dimmed': String(theme.other.dimmedColorDark ?? '#a3a3a3'),

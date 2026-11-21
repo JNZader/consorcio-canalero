@@ -12,7 +12,7 @@ import {
   Title,
 } from '@mantine/core';
 import { useEffect, useState } from 'react';
-import { applyBrand, getActiveBrandId } from '../../lib/applyBrand';
+import { applyBrand, buildBrandPreviewCssVars, getActiveBrandId, pickAccentContrastInk } from '../../lib/applyBrand';
 import {
   BRAND_CHANGE_EVENT,
   BRAND_PRESET_LIST,
@@ -75,11 +75,11 @@ function PreviewChrome({ preset }: { preset: BrandPreset }) {
         </Badge>
         {preset.accent ? (
           <Badge
+            data-testid={`theme-lab-accent-${preset.id}`}
             variant="filled"
             style={{
               background: preset.accent,
-              // Oro/ámbar portal fails AA with white — dark ink on the chip.
-              color: 'var(--mantine-color-dark-9)',
+              color: pickAccentContrastInk(preset.accent),
             }}
           >
             Acento
@@ -144,10 +144,12 @@ function ThemeLabContent() {
           return (
             <Card
               key={preset.id}
+              data-testid={`theme-lab-card-${preset.id}`}
               padding="lg"
               radius="md"
               withBorder
               style={{
+                ...buildBrandPreviewCssVars(preset),
                 borderColor: selected
                   ? 'var(--mantine-color-institucional-6)'
                   : undefined,

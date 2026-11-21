@@ -368,6 +368,15 @@ body {
     min-height: var(--cc-touch-min, 44px);
   }
 
+  .cc-bandeja-filters :is(.mantine-Input-input, .mantine-Button-root) {
+    min-height: var(--cc-touch-min, 44px);
+  }
+}
+
+/* ET2-FILTROS: apilar filtros por ancho de viewport (< sm = 47.9375em),
+   no por pointer: coarse, para soportar ventanas desktop angostas y
+   notebooks táctiles anchas. */
+@media (max-width: 47.9375em) {
   .cc-bandeja-filters {
     flex-direction: column;
     align-items: stretch;
@@ -375,6 +384,9 @@ body {
 
   .cc-bandeja-filters :is(.mantine-TextInput-root, .mantine-Select-root, .mantine-Button-root) {
     width: 100% !important;
+  }
+
+  .cc-bandeja-filters :is(.mantine-Input-input, .mantine-Button-root) {
     min-height: var(--cc-touch-min, 44px);
   }
 }

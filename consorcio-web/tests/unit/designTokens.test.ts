@@ -86,7 +86,6 @@ describe('design tokens', () => {
 
   it('does not leave the old width literals in shared CSS or TS media queries', () => {
     const shared = [
-      'src/styles/global.css',
       'src/styles/components/header.module.css',
       'src/styles/components/footer.module.css',
       'src/styles/components/home.module.css',
@@ -97,10 +96,26 @@ describe('design tokens', () => {
       expect(css, file).not.toMatch(/62em|47\.9375em|48em|768px/);
     }
 
+    const globalCss = readFileSync('src/styles/global.css', 'utf8');
+    expect(globalCss).not.toMatch(/62em|48em|768px/);
+    expect(globalCss).toContain(`max-width: ${belowBreakpoint('sm')}`);
+    expect(globalCss).toContain('.cc-bandeja-filters :is(.mantine-Input-input, .mantine-Button-root)');
+
     const rawQuery = /useMediaQuery\(\s*['"`]\((?:max-width: (?:62em|768px)|min-width: 48em)\)/;
     for (const file of walk('src', [])) {
       if (file.endsWith('src/lib/breakpoints.ts')) continue;
       expect(readFileSync(file, 'utf8'), file).not.toMatch(rawQuery);
+    }
+  });
+
+  it('keeps custom color scales strictly monotonic darker from shade 0 to 9', () => {
+    const scales = ['institucional', 'agua', 'alerta', 'exito', 'blue', 'red', 'orange'] as const;
+    for (const name of scales) {
+      const scale = mantineTheme.colors![name]!;
+      expect(scale).toHaveLength(10);
+      for (let i = 0; i < scale.length - 1; i += 1) {
+        expect(luma(scale[i + 1]!), `${name}[${i + 1}] vs [${i}]`).toBeLessThan(luma(scale[i]!));
+      }
     }
   });
 
@@ -148,6 +163,10 @@ describe('design tokens', () => {
     expect(resolved.light['--cc-color-danger']).toBe('var(--mantine-color-alerta-6)');
     expect(resolved.light['--cc-color-warning']).toBe('var(--mantine-color-orange-6)');
     expect(resolved.light['--cc-color-success']).toBe('var(--mantine-color-exito-6)');
+    expect(resolved.light['--cc-color-info']).toBe('var(--mantine-color-blue-7)');
+    expect(resolved.dark['--cc-color-danger']).toBe('var(--mantine-color-alerta-4)');
+    expect(resolved.dark['--cc-color-success']).toBe('var(--mantine-color-exito-4)');
+    expect(resolved.dark['--cc-color-info']).toBe('var(--mantine-color-blue-3)');
     expect(resolved.light['--mantine-color-dimmed']).toBe('#4b5563');
     expect(resolved.light['--mantine-color-placeholder']).toBe('#4b5563');
     expect(resolved.dark['--mantine-color-dimmed']).toBe('#a3a3a3');

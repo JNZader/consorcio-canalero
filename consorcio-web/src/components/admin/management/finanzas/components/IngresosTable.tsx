@@ -24,7 +24,7 @@ export function IngresosTable({
               {ingreso.descripcion}
             </Text>,
             renderCategoriaBadge(ingreso.categoria),
-            <Text key="monto" fw={700} c="exito.7">
+            <Text key="monto" fw={700} c="var(--cc-color-success)">
               +${ingreso.monto.toLocaleString()}
             </Text>,
             <Text key="consorcista" size="xs" c="dimmed">

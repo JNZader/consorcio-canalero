@@ -24,7 +24,7 @@ export function GastosTable({
               {gasto.descripcion}
             </Text>,
             renderCategoriaBadge(gasto.categoria),
-            <Text key="monto" fw={700} c="alerta.7">
+            <Text key="monto" fw={700} c="var(--cc-color-danger)">
               -${gasto.monto.toLocaleString()}
             </Text>,
             gasto.proveedor || '-',

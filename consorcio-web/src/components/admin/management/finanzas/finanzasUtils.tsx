@@ -68,7 +68,10 @@ export function getBalanceCards(balance: Balance | null, currentYear: number) {
       amount: balance?.balance ?? 0,
       description: 'Saldo disponible en cuenta',
       icon: IconReportMoney,
-      bg: balance && balance.balance < 0 ? 'red.0' : 'blue.0',
+      background:
+        balance && balance.balance < 0
+          ? 'light-dark(var(--mantine-color-red-0), var(--mantine-color-dark-6))'
+          : 'light-dark(var(--mantine-color-blue-0), var(--mantine-color-dark-6))',
     },
   ];
 }
@@ -95,17 +98,17 @@ export function renderBalanceCard({
   amount,
   description,
   icon: Icon,
-  bg,
+  background,
 }: Readonly<{
   title: string;
   color: string;
   amount: number;
   description: string;
   icon: ComponentType<{ size?: number }>;
-  bg?: string;
+  background?: string;
 }>): ReactNode {
   return (
-    <Card withBorder padding="lg" radius="md" bg={bg}>
+    <Card withBorder padding="lg" radius="md" style={background ? { background } : undefined}>
       <Group justify="space-between">
         <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
           {title}

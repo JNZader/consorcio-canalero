@@ -44,7 +44,7 @@ export function FinanzasSummaryTab({
             <Text size="xs" c="dimmed" tt="uppercase" fw={600}>
               Total acreditado
             </Text>
-            <Text size="lg" fw={700} c="exito.7">
+            <Text size="lg" fw={700} c="var(--cc-color-success)">
               ${totalIngresos.toLocaleString()}
             </Text>
           </Paper>
@@ -52,7 +52,7 @@ export function FinanzasSummaryTab({
             <Text size="xs" c="dimmed" tt="uppercase" fw={600}>
               Total ejecutado ({executionPct}%)
             </Text>
-            <Text size="lg" fw={700} c="alerta.7">
+            <Text size="lg" fw={700} c="var(--cc-color-danger)">
               ${totalGastos.toLocaleString()}
             </Text>
           </Paper>
@@ -60,7 +60,7 @@ export function FinanzasSummaryTab({
             <Text size="xs" c="dimmed" tt="uppercase" fw={600}>
               Resultado neto
             </Text>
-            <Text size="lg" fw={700} c={netBalance < 0 ? 'red.7' : 'blue.7'}>
+            <Text size="lg" fw={700} c={netBalance < 0 ? 'var(--cc-color-danger)' : 'var(--cc-color-info)'}>
               ${netBalance.toLocaleString()}
             </Text>
           </Paper>
