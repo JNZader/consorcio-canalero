@@ -219,8 +219,6 @@ export function InformeAreaDrawer({ opened, onClose }: InformeAreaDrawerProps) {
   const sumarMovilRef = useRef(sumarMovil);
   sumarMovilRef.current = sumarMovil;
 
-  useDrawerHistoryClose({ opened, onClose, enabled: !esEscritorio });
-
   // Highlight: the promoteId source + per-feature `selected` states.
   useEffect(() => {
     if (!opened || !map) return;
@@ -337,6 +335,8 @@ export function InformeAreaDrawer({ opened, onClose }: InformeAreaDrawerProps) {
     setInformeCreado(null);
     onClose();
   };
+
+  useDrawerHistoryClose({ opened, onClose: cerrar, enabled: !esEscritorio });
 
   const zonasElegidas = zonasSeleccionadas(catalogo.zonas, seleccion);
 
