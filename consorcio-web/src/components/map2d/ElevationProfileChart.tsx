@@ -176,31 +176,35 @@ const SERIES = [
   {
     key: 'elevation_m' as const,
     name: 'GLO-30',
-    color: 'var(--mantine-color-blue-6)',
+    color: 'var(--mantine-color-blue-4)',
   },
   {
     key: 'elevation_mde_ar' as const,
     name: 'MDE-Ar',
-    color: 'light-dark(var(--mantine-color-orange-6), var(--mantine-color-orange-4))',
+    color: 'var(--mantine-color-orange-4)',
   },
   {
     key: 'elevation_aw3d30' as const,
     name: 'AW3D30',
-    color: 'var(--mantine-color-teal-6)',
+    color: 'var(--mantine-color-teal-4)',
   },
   {
     key: 'elevation_nasadem' as const,
     name: 'NASADEM',
-    color: 'var(--mantine-color-violet-6)',
+    color: 'var(--mantine-color-violet-4)',
   },
   {
     key: 'elevation_gem15' as const,
     name: 'GEM-15',
-    color: 'var(--mantine-color-pink-6)',
+    color: 'var(--mantine-color-pink-4)',
   },
 ];
 
 type SeriesKey = (typeof SERIES)[number]['key'];
+
+const SERIES_COLOR = Object.fromEntries(
+  SERIES.map((series) => [series.key, series.color])
+) as Record<SeriesKey, string>;
 
 function seriesValue(row: ProfileChartRow | undefined, key: SeriesKey): number | null {
   if (!row) {
@@ -253,6 +257,7 @@ export function ElevationProfileChart({
     startLoaded ? 'loading' : 'idle'
   );
   const [compareDems, setCompareDems] = useState(false);
+  const effectiveCompareDems = compareDems && canCompareGeeDems;
   const [compareSurvey, setCompareSurvey] = useState(false);
   const [simulateCanal, setSimulateCanal] = useState(false);
   const [soleraAnchor, setSoleraAnchor] = useState<'descarga' | 'cabecera'>('descarga');
@@ -282,6 +287,12 @@ export function ElevationProfileChart({
   activatedCb.current = onActivated;
 
   useEffect(() => {
+    if (!canCompareGeeDems && compareDems) {
+      setCompareDems(false);
+    }
+  }, [canCompareGeeDems, compareDems]);
+
+  useEffect(() => {
     setRange(null);
     setHoverIndex(null);
     rangeCb.current?.(null);
@@ -303,7 +314,7 @@ export function ElevationProfileChart({
     setStatus('loading');
     setError(null);
     activatedCb.current?.();
-    void fetchElevationProfile(line, undefined, compareDems).then(
+    void fetchElevationProfile(line, undefined, effectiveCompareDems).then(
       (data) => {
         if (gen !== requestGen.current) {
           return;
@@ -319,7 +330,7 @@ export function ElevationProfileChart({
         setStatus('error');
       }
     );
-  }, [autoLoad, compareDems, geometry]);
+  }, [autoLoad, effectiveCompareDems, geometry]);
 
   const serverRows = buildProfileChartRows(profile?.puntos ?? []);
   const chartRows = serverRows.length >= 2 ? serverRows : (coarseSamples ?? []);
@@ -371,7 +382,7 @@ export function ElevationProfileChart({
     setError(null);
     activatedCb.current?.();
     try {
-      const data = await fetchElevationProfile(line, undefined, compareDems);
+      const data = await fetchElevationProfile(line, undefined, effectiveCompareDems);
       if (gen !== requestGen.current) {
         return;
       }
@@ -397,6 +408,7 @@ export function ElevationProfileChart({
       : null;
   const shownIndex = hoverIndex ?? externalIndex;
   const visibleSeries = SERIES.filter((series) => chartRows.some((row) => row[series.key] != null));
+  const extraTableSeries = visibleSeries.filter((series) => series.key !== 'elevation_m');
   const grade = profileGrade(chartRows);
   const slopeScale = profileSlopeScale(chartRows);
   const elevations = chartRows
@@ -813,7 +825,7 @@ export function ElevationProfileChart({
                     type="linear"
                     dataKey="elevation_m"
                     name="GLO-30"
-                    stroke="var(--mantine-color-blue-6)"
+                    stroke={SERIES_COLOR.elevation_m}
                     strokeWidth={2}
                     dot={false}
                     connectNulls={false}
@@ -824,7 +836,7 @@ export function ElevationProfileChart({
                       type="linear"
                       dataKey="elevation_mde_ar"
                       name="MDE-Ar"
-                      stroke="light-dark(var(--mantine-color-orange-6), var(--mantine-color-orange-4))"
+                      stroke={SERIES_COLOR.elevation_mde_ar}
                       dot={false}
                       connectNulls={false}
                       isAnimationActive={false}
@@ -835,7 +847,7 @@ export function ElevationProfileChart({
                       type="linear"
                       dataKey="elevation_aw3d30"
                       name="AW3D30"
-                      stroke="var(--mantine-color-teal-6)"
+                      stroke={SERIES_COLOR.elevation_aw3d30}
                       dot={false}
                       connectNulls
                       isAnimationActive={false}
@@ -846,7 +858,7 @@ export function ElevationProfileChart({
                       type="linear"
                       dataKey="elevation_nasadem"
                       name="NASADEM"
-                      stroke="var(--mantine-color-violet-6)"
+                      stroke={SERIES_COLOR.elevation_nasadem}
                       dot={false}
                       connectNulls
                       isAnimationActive={false}
@@ -857,7 +869,7 @@ export function ElevationProfileChart({
                       type="linear"
                       dataKey="elevation_gem15"
                       name="GEM-15"
-                      stroke="var(--mantine-color-pink-6)"
+                      stroke={SERIES_COLOR.elevation_gem15}
                       dot={false}
                       connectNulls
                       isAnimationActive={false}
@@ -1267,13 +1279,28 @@ export function ElevationProfileChart({
                 <tr style={{ borderBottom: '1px solid var(--mantine-color-default-border)', textAlign: 'left' }}>
                   <th scope="col" style={{ padding: '2px 8px 2px 0' }}>Distancia (m)</th>
                   <th scope="col" style={{ padding: '2px 8px 2px 0' }}>Cota (m)</th>
+                  {extraTableSeries.map((series) => (
+                    <th key={series.key} scope="col" style={{ padding: '2px 8px 2px 0' }}>
+                      {`${series.name} (m)`}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {chartRows.map((row) => (
                   <tr key={row.distance_m} style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
                     <td style={{ padding: '2px 8px 2px 0' }}>{formatEs(row.distance_m, 1)}</td>
-                    <td style={{ padding: '2px 8px 2px 0' }}>{row.elevation_m == null ? '—' : formatEs(row.elevation_m, 1)}</td>
+                    <td style={{ padding: '2px 8px 2px 0' }}>
+                      {row.elevation_m == null ? '—' : formatEs(row.elevation_m, 1)}
+                    </td>
+                    {extraTableSeries.map((series) => {
+                      const val = seriesValue(row, series.key);
+                      return (
+                        <td key={series.key} style={{ padding: '2px 8px 2px 0' }}>
+                          {val == null ? '—' : formatEs(val, 1)}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>

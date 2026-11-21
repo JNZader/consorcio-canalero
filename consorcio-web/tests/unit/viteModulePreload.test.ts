@@ -36,8 +36,16 @@ describe('shell does not static-import dropzone', () => {
       join(here, '../../src/components/admin/sugerencias/components/SuggestionDetailModal.tsx'),
       'utf8'
     );
+    const explorer = readFileSync(
+      join(here, '../../src/components/admin/images/ImageExplorerPanel.tsx'),
+      'utf8'
+    );
+    const routeTree = readFileSync(join(here, '../../src/routeTree.gen.tsx'), 'utf8');
     const main = readFileSync(join(here, '../../src/main.tsx'), 'utf8');
     expect(modal).toMatch('@mantine/dates/styles.css');
+    expect(explorer).not.toMatch('@mantine/dates');
+    expect(routeTree).not.toMatch(/import\s+\{[^}]*AdminLayoutContent[^}]*\}\s+from\s+['"]\.\/components\/admin\/AdminLayout['"]/);
+    expect(routeTree).toMatch(/lazy\(\(\)\s*=>\s*import\(['"]\.\/components\/admin\/AdminLayout['"]\)\)/);
     expect(main).not.toMatch("from '@mantine/dates'");
     expect(main).not.toMatch("from './lib/sentry'");
     expect(main).not.toMatch("from './lib/logtail'");

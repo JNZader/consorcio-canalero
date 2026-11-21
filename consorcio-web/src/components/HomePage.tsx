@@ -159,7 +159,7 @@ const SHOW_INSTITUTIONAL_SECTIONS = false;
 const ABOUT_BULLETS: string[] = [
   'Persona jurídica de derecho público, creada bajo la Ley Provincial de Consorcios Canaleros de Córdoba.',
   'Cubre 88.484 hectáreas del departamento Unión y consorcios linderos (San Marcos Sud, Bell Ville, Leones y otros 6).',
-  'Trabaja en coordinación con APRHI (Agencia Provincial de Recursos Hídricos) y las consorcios viales viales municipales para mantenimiento de caminos rurales.',
+  'Trabaja en coordinación con APRHI (Agencia Provincial de Recursos Hídricos) y los consorcios viales municipales para mantenimiento de caminos rurales.',
   'Padrón abierto a inspección pública en sede; el sistema online es para tracking y reportes, no reemplaza la AGM presencial.',
 ];
 

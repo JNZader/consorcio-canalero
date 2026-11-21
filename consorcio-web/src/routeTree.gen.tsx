@@ -70,8 +70,8 @@ const ConocimientoPanel = lazy(() => import('./components/admin/ConocimientoPane
 const CanalesPublicacionPanel = lazy(() => import('./components/admin/CanalesPublicacionPanel'));
 const ThemeLabPanel = lazy(() => import('./components/admin/ThemeLabPanel'));
 
-// Import admin layout directly (not lazy) to prevent flicker
-import { AdminLayoutContent } from './components/admin/AdminLayout';
+// Lazy-load admin shell out of the public entry chunk
+const AdminLayout = lazy(() => import('./components/admin/AdminLayout'));
 
 // Suspense fallback for lazy loaded components.
 // 100dvh, not 50vh: with a half-viewport fallback the (static, full-height)
@@ -259,21 +259,26 @@ const verifyEmailRoute = createRoute({
   },
 });
 
-const mapaRoute = createRoute({
-  getParentRoute: () => rootRouteWithComponent,
-  path: '/mapa',
-  validateSearch: (search: Record<string, unknown>) => parseMapaRouteSearch(search),
-  component: () => (
+function MapaRouteComponent() {
+  const search = mapaRoute.useSearch() as { view?: '2d' | '3d' };
+  return (
     <RootLayout
       title="Mapa Interactivo"
       hideFooter={true}
       description="Explora el mapa interactivo de las cuencas hídricas del Consorcio Canalero 10 de Mayo."
     >
       <Suspense fallback={<PageLoader />}>
-        <MapaPage />
+        <MapaPage initialView={search.view} />
       </Suspense>
     </RootLayout>
-  ),
+  );
+}
+
+const mapaRoute = createRoute({
+  getParentRoute: () => rootRouteWithComponent,
+  path: '/mapa',
+  validateSearch: (search: Record<string, unknown>) => parseMapaRouteSearch(search),
+  component: MapaRouteComponent,
 });
 
 // Vista publica unificada: reportar un problema y proponer una mejora
@@ -608,11 +613,13 @@ function AdminLayoutWrapper() {
 
   return (
     <RootLayout title="Admin" noindex={true} hideHeader={true} hideFooter={true}>
-      <AdminLayoutContent currentPath={location.pathname}>
-        <Suspense fallback={<AdminContentLoader />}>
-          <Outlet />
-        </Suspense>
-      </AdminLayoutContent>
+      <Suspense fallback={<PageLoader />}>
+        <AdminLayout currentPath={location.pathname}>
+          <Suspense fallback={<AdminContentLoader />}>
+            <Outlet />
+          </Suspense>
+        </AdminLayout>
+      </Suspense>
     </RootLayout>
   );
 }

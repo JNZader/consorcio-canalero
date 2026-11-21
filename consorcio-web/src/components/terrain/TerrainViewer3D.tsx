@@ -132,18 +132,20 @@ export default function TerrainViewer3D({
   demLayerId,
   textureLayerId,
   center = DEFAULT_CENTER,
-  zoom = getDefaultZoom(),
+  zoom,
   height = 500,
 }: TerrainViewer3DProps) {
-  const handedCamera = useMapCameraStore.getState().camera;
-  const startCenter: [number, number] = handedCamera
-    ? [handedCamera.lng, handedCamera.lat]
-    : center;
-  const startZoom = handedCamera?.zoom ?? zoom;
-  const startPitch = resolveTerrainStartPitch(handedCamera?.pitch);
-  const startBearing = handedCamera?.bearing ?? -20;
+  const [initialCamera] = useState(() => ({
+    center,
+    zoom: zoom ?? getDefaultZoom(),
+  }));
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const flythroughAbortRef = useRef<AbortController | null>(null);
+  const cancelFlythrough = useCallback(() => {
+    flythroughAbortRef.current?.abort();
+    flythroughAbortRef.current = null;
+  }, []);
   const activeRasterLayerIdRef = useRef<string | null>(null);
   const activeRasterTileUrlRef = useRef<string | null>(null);
   const overlayOpacityRef = useRef(1);
@@ -561,6 +563,14 @@ export default function TerrainViewer3D({
   useEffect(() => {
     if (!mapContainer.current || !demLayerId) return;
 
+    const handedCamera = useMapCameraStore.getState().camera;
+    const startCenter: [number, number] = handedCamera
+      ? [handedCamera.lng, handedCamera.lat]
+      : initialCamera.center;
+    const startZoom = handedCamera?.zoom ?? initialCamera.zoom;
+    const startPitch = resolveTerrainStartPitch(handedCamera?.pitch);
+    const startBearing = handedCamera?.bearing ?? -20;
+
     // Read smoothing preference once at init; subsequent flips are handled
     // by a separate effect via `setTiles()` so we never remount the map.
     const initialState = useMapLayerSyncStore.getState();
@@ -698,13 +708,14 @@ export default function TerrainViewer3D({
     return () => {
       cancelled = true;
       abort.abort();
+      cancelFlythrough();
       cleanupCanvasListeners?.();
       destroyMapLibreMap(created);
       created = undefined;
       mapRef.current = null;
       setReady(false);
     };
-  }, [buildTerrainRgbUrl, center, demLayerId, zoom, terrainBootId]);
+  }, [buildTerrainRgbUrl, cancelFlythrough, demLayerId, initialCamera, terrainBootId]);
 
   useEffect(() => {
     const container = mapContainer.current;
@@ -913,6 +924,16 @@ export default function TerrainViewer3D({
 
   // Update exaggeration
   const exaggerationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      cancelFlythrough();
+      if (exaggerationTimer.current) {
+        clearTimeout(exaggerationTimer.current);
+        exaggerationTimer.current = null;
+      }
+    },
+    [cancelFlythrough]
+  );
   const handleExaggerationChange = useCallback((value: number) => {
     setExaggeration(value);
     if (exaggerationTimer.current) clearTimeout(exaggerationTimer.current);
@@ -1046,9 +1067,19 @@ export default function TerrainViewer3D({
         onFlythrough={() => {
           const map = mapRef.current;
           if (!map || !tourCoordinates) return;
-          void playFlythrough(map, flythroughFrames(tourCoordinates), (frame) => {
-            setTourDistance(frame.distance_m);
-          });
+          cancelFlythrough();
+          const controller = new AbortController();
+          flythroughAbortRef.current = controller;
+          void playFlythrough(
+            map,
+            flythroughFrames(tourCoordinates),
+            (frame) => {
+              if (!controller.signal.aborted) {
+                setTourDistance(frame.distance_m);
+              }
+            },
+            controller.signal
+          );
         }}
         onCloseInfoPanel={handleCloseInfoPanel}
         bpaEnriched={pilarVerde?.bpaEnriched ?? null}
@@ -1107,6 +1138,7 @@ export default function TerrainViewer3D({
           })
         }
         onCloseElevationProfile={() => {
+          cancelFlythrough();
           setPinnedProfile(null);
           setTourDistance(null);
         }}

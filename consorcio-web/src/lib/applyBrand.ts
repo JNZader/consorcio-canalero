@@ -7,12 +7,14 @@
  * MantineProvider. Map scientific `--cc-map-*` hexes are never written here.
  */
 
+import type { CSSProperties } from 'react';
 import {
   BRAND_CHANGE_EVENT,
   BRAND_PRESETS,
+  type BrandId,
+  type BrandPreset,
   BRAND_STORAGE_KEY,
   DEFAULT_BRAND_ID,
-  type BrandId,
   isBrandId,
 } from './brandPresets';
 
@@ -21,6 +23,14 @@ const INSTITUCIONAL_VAR_PREFIX = '--mantine-color-institucional-';
 /** CSS custom properties this module owns (cleared / rewritten on each apply). */
 const MANAGED_VARS = [
   ...Array.from({ length: 10 }, (_, i) => `${INSTITUCIONAL_VAR_PREFIX}${i}`),
+  `${INSTITUCIONAL_VAR_PREFIX}filled`,
+  `${INSTITUCIONAL_VAR_PREFIX}filled-hover`,
+  `${INSTITUCIONAL_VAR_PREFIX}light`,
+  `${INSTITUCIONAL_VAR_PREFIX}light-hover`,
+  `${INSTITUCIONAL_VAR_PREFIX}light-color`,
+  `${INSTITUCIONAL_VAR_PREFIX}outline`,
+  `${INSTITUCIONAL_VAR_PREFIX}outline-hover`,
+  `${INSTITUCIONAL_VAR_PREFIX}text`,
   '--mantine-color-gray-0',
   '--mantine-color-dimmed',
   '--mantine-color-placeholder',
@@ -44,6 +54,69 @@ const MANAGED_VARS = [
   '--mantine-primary-color-8',
   '--mantine-primary-color-9',
 ] as const;
+
+function hexLuminance(hex: string): number {
+  const clean = hex.replace('#', '');
+  const full =
+    clean.length === 3
+      ? clean
+          .split('')
+          .map((ch) => ch + ch)
+          .join('')
+      : clean;
+  const toLinear = (offset: number) => {
+    const srgb = Number.parseInt(full.slice(offset, offset + 2), 16) / 255;
+    return srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * toLinear(0) + 0.7152 * toLinear(2) + 0.0722 * toLinear(4);
+}
+
+/** Pick AA foreground ink on a custom accent badge background. */
+export function pickAccentContrastInk(
+  accentHex: string
+): 'var(--mantine-color-white)' | 'var(--mantine-color-dark-9)' {
+  return hexLuminance(accentHex) < 0.1791
+    ? 'var(--mantine-color-white)'
+    : 'var(--mantine-color-dark-9)';
+}
+
+/** Isolated CSS custom properties for previewing a brand preset card independently. */
+export function buildBrandPreviewCssVars(preset: BrandPreset): CSSProperties {
+  const vars: Record<string, string> = {};
+  for (let i = 0; i < 10; i += 1) {
+    const shade = preset.institucional[i]!;
+    vars[`${INSTITUCIONAL_VAR_PREFIX}${i}`] = shade;
+    vars[`--mantine-primary-color-${i}`] = shade;
+  }
+
+  const action = preset.institucional[6]!;
+  const light = preset.institucional[0]!;
+  const lightInk = preset.institucional[7]!;
+  const darkInk = preset.institucional[3]!;
+  const schemeInk = `light-dark(${lightInk}, ${darkInk})`;
+  const lightTint = `light-dark(${light}, color-mix(in srgb, ${preset.institucional[4]!} 18%, transparent))`;
+  const lightHover = `light-dark(${preset.institucional[1]!}, color-mix(in srgb, ${preset.institucional[4]!} 26%, transparent))`;
+  const outlineHover = `light-dark(${light}, color-mix(in srgb, ${preset.institucional[4]!} 14%, transparent))`;
+
+  vars[`${INSTITUCIONAL_VAR_PREFIX}7`] = schemeInk;
+  vars['--mantine-primary-color-7'] = schemeInk;
+  vars[`${INSTITUCIONAL_VAR_PREFIX}filled`] = action;
+  vars['--mantine-primary-color-filled'] = action;
+  vars[`${INSTITUCIONAL_VAR_PREFIX}filled-hover`] = lightInk;
+  vars['--mantine-primary-color-filled-hover'] = lightInk;
+  vars[`${INSTITUCIONAL_VAR_PREFIX}light`] = lightTint;
+  vars['--mantine-primary-color-light'] = lightTint;
+  vars[`${INSTITUCIONAL_VAR_PREFIX}light-hover`] = lightHover;
+  vars['--mantine-primary-color-light-hover'] = lightHover;
+  vars[`${INSTITUCIONAL_VAR_PREFIX}light-color`] = schemeInk;
+  vars['--mantine-primary-color-light-color'] = schemeInk;
+  vars[`${INSTITUCIONAL_VAR_PREFIX}outline`] = schemeInk;
+  vars[`${INSTITUCIONAL_VAR_PREFIX}outline-hover`] = outlineHover;
+  vars[`${INSTITUCIONAL_VAR_PREFIX}text`] = schemeInk;
+  vars['--mantine-color-agua-5'] = preset.water;
+
+  return vars as CSSProperties;
+}
 
 function readStoredBrandId(): BrandId {
   if (typeof globalThis.localStorage === 'undefined') return DEFAULT_BRAND_ID;
@@ -97,34 +170,14 @@ function writeBrandVars(root: HTMLElement, id: BrandId): void {
 
   root.setAttribute('data-brand', id);
 
-  for (let i = 0; i < 10; i += 1) {
-    const shade = preset.institucional[i]!;
-    root.style.setProperty(`${INSTITUCIONAL_VAR_PREFIX}${i}`, shade);
-    root.style.setProperty(`--mantine-primary-color-${i}`, shade);
+  for (const [prop, value] of Object.entries(buildBrandPreviewCssVars(preset)) as [
+    string,
+    string,
+  ][]) {
+    root.style.setProperty(prop, value);
   }
 
-  // Filled action uses shade 6 (same as theme primaryShade).
-  // Scheme-aware ink & light tints preserve AA contrast on both white and darkShell.
-  const action = preset.institucional[6]!;
   const brand = preset.institucional[5]!;
-  const light = preset.institucional[0]!;
-  const lightInk = preset.institucional[7]!;
-  const darkInk = preset.institucional[3]!;
-  const schemeInk = `light-dark(${lightInk}, ${darkInk})`;
-
-  root.style.setProperty(`${INSTITUCIONAL_VAR_PREFIX}7`, schemeInk);
-  root.style.setProperty('--mantine-primary-color-7', schemeInk);
-  root.style.setProperty('--mantine-primary-color-filled', action);
-  root.style.setProperty('--mantine-primary-color-filled-hover', lightInk);
-  root.style.setProperty(
-    '--mantine-primary-color-light',
-    `light-dark(${light}, color-mix(in srgb, ${preset.institucional[4]!} 18%, transparent))`
-  );
-  root.style.setProperty(
-    '--mantine-primary-color-light-hover',
-    `light-dark(${preset.institucional[1]!}, color-mix(in srgb, ${preset.institucional[4]!} 26%, transparent))`
-  );
-  root.style.setProperty('--mantine-primary-color-light-color', schemeInk);
 
   root.style.setProperty('--mantine-color-gray-0', preset.surface);
   // Scheme-aware: inline styles beat Mantine's dark resolver. A light muted
@@ -136,7 +189,6 @@ function writeBrandVars(root: HTMLElement, id: BrandId): void {
   root.style.setProperty('--mantine-color-dark-7', preset.darkShell);
   root.style.setProperty('--mantine-color-dark-8', preset.darkDeep);
   root.style.setProperty('--mantine-color-dark-9', preset.darkDeep);
-  root.style.setProperty('--mantine-color-agua-5', preset.water);
 
   // Brand mark for PWA chrome; filled buttons keep shade 6 via primary vars.
   syncThemeColorMeta(brand);

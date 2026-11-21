@@ -29,11 +29,40 @@ const TerrainViewer3D = lazy(() => import('./terrain/TerrainViewer3D'));
 
 type MapViewMode = '2d' | '3d';
 
+export function readInitialMapViewMode(
+  search = typeof window === 'undefined' ? '' : window.location.search
+): MapViewMode {
+  return new URLSearchParams(search).get('view') === '3d' ? '3d' : '2d';
+}
+
+const THREE_D_FALLBACK = (
+  <Box
+    p="xl"
+    style={{
+      minHeight: 500,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    }}
+  >
+    <Stack align="center" gap="md">
+      <Skeleton circle height={48} width={48} />
+      <Text size="sm" c="dimmed">
+        Cargando visualizador 3D...
+      </Text>
+    </Stack>
+  </Box>
+);
+
+export interface MapaPageProps {
+  readonly initialView?: MapViewMode;
+}
+
 /**
  * MapaContent - Contenido interno de la pagina de mapa.
  * Exportado para uso dentro de contextos que ya tienen MantineProvider.
  */
-export function MapaContent() {
+export function MapaContent({ initialView }: MapaPageProps = {}) {
   // Verificar permisos - solo miembros de la comision (admin/operador) ven las acciones internas
   const isCommissionMember = useCanAccess(['admin', 'operador']);
   const multiHazardEnabled = useMultiHazardGate();
@@ -58,8 +87,17 @@ export function MapaContent() {
   const reportAnchor = useReportAnchorStore((state) => state.anchor);
 
   // 2D/3D view toggle — UX-17 keeps 2D mounted after first 3D open.
-  const [mapViewMode, setMapViewMode] = useState<MapViewMode>('2d');
-  const [threeDArmed, setThreeDArmed] = useState(false);
+  const [mapViewMode, setMapViewMode] = useState<MapViewMode>(
+    () => initialView ?? readInitialMapViewMode()
+  );
+  const [threeDArmed, setThreeDArmed] = useState(
+    () => (initialView ?? readInitialMapViewMode()) === '3d'
+  );
+  useEffect(() => {
+    if (initialView) {
+      setMapViewMode(initialView);
+    }
+  }, [initialView]);
   useEffect(() => {
     setThreeDArmed((prev) => shouldArmThreeD(prev, mapViewMode));
     if (mapViewMode === '2d') notifyMapPaneShown();
@@ -170,28 +208,13 @@ export function MapaContent() {
               threeDArmed={threeDArmed}
               twoD={<MapaContenido />}
               threeD={
-                <Suspense
-                  fallback={
-                    <Box
-                      p="xl"
-                      style={{
-                        minHeight: 500,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Stack align="center" gap="md">
-                        <Skeleton circle height={48} width={48} />
-                        <Text size="sm" c="dimmed">
-                          Cargando visualizador 3D...
-                        </Text>
-                      </Stack>
-                    </Box>
-                  }
-                >
-                  <TerrainViewer3D demLayerId={demRawLayer?.id} height="var(--map-canvas-height)" />
-                </Suspense>
+                demLoading && !demRawLayer ? (
+                  THREE_D_FALLBACK
+                ) : (
+                  <Suspense fallback={THREE_D_FALLBACK}>
+                    <TerrainViewer3D demLayerId={demRawLayer?.id} height="var(--map-canvas-height)" />
+                  </Suspense>
+                )
               }
             />
           </Paper>
@@ -204,6 +227,6 @@ export function MapaContent() {
 /**
  * MapaPage - Page component (MantineProvider is provided by main.tsx).
  */
-export default function MapaPage() {
-  return <MapaContent />;
+export default function MapaPage({ initialView }: MapaPageProps = {}) {
+  return <MapaContent initialView={initialView} />;
 }

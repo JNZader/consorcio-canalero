@@ -180,11 +180,18 @@ export function ImageExplorerInfoPanels(props: ImageExplorerInfoPanelsProps) {
       )}
 
       {!hidePublishBanners && selectedImage && (
-        <Paper p="sm" withBorder radius="md" bg="exito.0">
+        <Paper
+          p="sm"
+          withBorder
+          radius="md"
+          style={{
+            background: 'light-dark(var(--mantine-color-exito-0), var(--mantine-color-dark-5))',
+          }}
+        >
           <Group justify="space-between">
             <Group gap="xs">
-              <IconCheck size={18} color="var(--mantine-color-exito-7)" />
-              <Text size="sm" fw={500} c="exito.7">
+              <IconCheck size={18} color="var(--cc-color-success)" />
+              <Text size="sm" fw={500} c="var(--cc-color-success)">
                 Imagen activa en otras vistas:
               </Text>
               <Badge variant="light" color="exito">

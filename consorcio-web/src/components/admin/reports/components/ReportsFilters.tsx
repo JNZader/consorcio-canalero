@@ -67,7 +67,7 @@ export function ReportsFilters({
           aria-label="Filtrar por categoría de la denuncia"
         />
         {/* En móvil la fila ya apila a columna full-width via
-            `.cc-bandeja-filters` (pointer: coarse), así que este Select
+            `.cc-bandeja-filters` (< sm / 47.9375em), así que este Select
             hereda el mismo layout sin wrappers extra. En escritorio la
             tabla ordena por encabezado; este select queda como affordance
             visible también ahí. */}

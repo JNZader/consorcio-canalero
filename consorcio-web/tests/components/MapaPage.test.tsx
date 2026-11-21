@@ -3,10 +3,11 @@
  * Cubre renderizado del mapa, estadisticas, y controles.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
-import { MapaContent } from '../../src/components/MapaPage';
 import { MantineProvider } from '@mantine/core';
+import { render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MapaContent, readInitialMapViewMode } from '../../src/components/MapaPage';
+import { useGeoLayers } from '../../src/hooks/useGeoLayers';
 
 const { mockDashboardStats } = vi.hoisted(() => ({
   mockDashboardStats: vi.fn(),
@@ -49,7 +50,7 @@ vi.mock('../../src/stores/authStore', () => ({
 
 // Mock useGeoLayers hook
 vi.mock('../../src/hooks/useGeoLayers', () => ({
-  useGeoLayers: vi.fn(() => ({ layers: [], isLoading: false, error: null })),
+  useGeoLayers: vi.fn(() => ({ layers: [], loading: false, error: null, reload: vi.fn() })),
 }));
 
 // Mock useSelectedImageListener hook
@@ -66,6 +67,12 @@ vi.mock('../../src/components/MapaInteractivo', () => ({
   MapaContenido: () => <div data-testid="mapa-contenido">Mapa Mock</div>,
 }));
 
+vi.mock('../../src/components/terrain/TerrainViewer3D', () => ({
+  default: ({ demLayerId }: { demLayerId?: string }) => (
+    <div data-testid="terrain-viewer-3d-stub" data-dem-id={demLayerId ?? ''} />
+  ),
+}));
+
 // Wrapper con MantineProvider
 const renderWithMantine = (component: React.ReactNode) => {
   return render(<MantineProvider env="test">{component}</MantineProvider>);
@@ -75,6 +82,13 @@ describe('MapaPage', () => {
   describe('MapaContent', () => {
     beforeEach(() => {
       vi.clearAllMocks();
+      vi.mocked(useGeoLayers).mockReturnValue({
+        layers: [],
+        loading: false,
+        error: null,
+        reload: vi.fn(),
+      } as unknown as ReturnType<typeof useGeoLayers>);
+      window.history.replaceState({}, '', '/mapa');
       mockDashboardStats.mockReturnValue({
         stats: {
           denuncias: {
@@ -84,6 +98,10 @@ describe('MapaPage', () => {
         },
         isLoading: false,
       });
+    });
+
+    afterEach(() => {
+      window.history.replaceState({}, '', '/');
     });
 
     describe('header section', () => {
@@ -234,6 +252,44 @@ describe('MapaPage', () => {
       it('should show image explorer when user is commission member', () => {
         renderWithMantine(<MapaContent />);
         expect(screen.getByRole('link', { name: /Cambiar imagen/i })).toBeInTheDocument();
+      });
+    });
+
+    describe('/mapa?view=3d deep-link (W-FE-02)', () => {
+      it('parses view=3d from query string helper', () => {
+        expect(readInitialMapViewMode('?view=3d')).toBe('3d');
+        expect(readInitialMapViewMode('?view=2d')).toBe('2d');
+        expect(readInitialMapViewMode('')).toBe('2d');
+      });
+
+      it('mounts TerrainViewer3D when opened with initialView="3d" or ?view=3d', async () => {
+        vi.mocked(useGeoLayers).mockReturnValue({
+          layers: [{ id: 'dem-layer-1', tipo: 'dem_raw', nombre: 'DEM', formato: 'geotiff', created_at: '' }],
+          loading: false,
+          error: null,
+          reload: vi.fn(),
+        } as unknown as ReturnType<typeof useGeoLayers>);
+
+        window.history.replaceState({}, '', '/mapa?view=3d');
+        renderWithMantine(<MapaContent />);
+
+        await waitFor(() => {
+          const viewer = screen.getByTestId('terrain-viewer-3d-stub');
+          expect(viewer).toHaveAttribute('data-dem-id', 'dem-layer-1');
+        });
+      });
+
+      it('shows the 3D loading skeleton instead of mounting without DEM while layers load', () => {
+        vi.mocked(useGeoLayers).mockReturnValue({
+          layers: [],
+          loading: true,
+          error: null,
+          reload: vi.fn(),
+        } as unknown as ReturnType<typeof useGeoLayers>);
+
+        renderWithMantine(<MapaContent initialView="3d" />);
+        expect(screen.getByText('Cargando visualizador 3D...')).toBeInTheDocument();
+        expect(screen.queryByTestId('terrain-viewer-3d-stub')).not.toBeInTheDocument();
       });
     });
   });

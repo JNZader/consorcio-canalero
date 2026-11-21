@@ -50,4 +50,46 @@ describe('lint de hex nuevos', () => {
       execFileSync('node', ['scripts/lint-no-new-hex.mjs'], { encoding: 'utf8' })
     ).not.toThrow();
   });
+
+  it('escanea archivos .css ignorando selectores, comentarios y url(#id)', () => {
+    const hits = collectHexLiterals(
+      'styles.css',
+      `
+      #cafe {
+        color: #fff;
+        background: /* #123456 */ #112233;
+        clip-path: url(#mi-gradiente);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        border-color: rgb(255 0 0 / 50%);
+      }
+      @media (max-width: 48em) {
+        .box {
+          color: #aabbcc; /* hex-color-allow */
+          /* hex-color-allow */
+          background: rgba(1, 2, 3, 0.4);
+        }
+      }
+      `
+    );
+    expect(hits.map((hit) => hit.hex)).toEqual([
+      '#fff',
+      '#112233',
+      'rgba(0, 0, 0, 0.5)',
+      'rgb(255 0 0 / 50%)',
+    ]);
+  });
+
+  it('respeta hex-color-allow-file en .css y detecta rgb/rgba en .ts sin falsos positivos de texto libre', () => {
+    expect(collectHexLiterals('tokens.css', '/* hex-color-allow-file */\n.a { color: #ff0000; }')).toEqual([]);
+
+    const tsHits = collectHexLiterals(
+      'x.ts',
+      `
+      const label = 'No uses rgba() hardcodeado';
+      const shadow = '0 1px 2px rgba(0,0,0,0.2)';
+      const ok = '0 1px 2px rgba(0, 0, 0, 0.3)'; // hex-color-allow
+      `
+    );
+    expect(tsHits.map((hit) => hit.hex)).toEqual(['rgba(0, 0, 0, 0.2)']);
+  });
 });

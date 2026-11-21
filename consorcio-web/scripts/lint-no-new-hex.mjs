@@ -1,17 +1,17 @@
 /**
- * Freno de hex nuevos en .ts/.tsx.
+ * Freno de colores literales (hex y rgb/rgba) nuevos en .ts/.tsx/.css.
  *
- * El repo ya tiene cientos de hex en literales de string. Este script no los
+ * El repo ya tiene cientos de literales históricos. Este script no los
  * reescribe: compara el conteo por archivo contra `hex-color-baseline.json`
- * y falla si un archivo tiene MÁS ocurrencias de un hex que las permitidas.
+ * y falla si un archivo tiene MÁS ocurrencias de un color que las permitidas.
  *
  * Excepciones, en el fuente:
  *   - `hex-color-allow-file` en las primeras 20 líneas (paleta del tema,
  *     UI y mapa, en `theme.ts`).
  *   - `hex-color-allow` en la misma línea del literal o en la anterior.
  *
- * No mira tests, comentarios ni `.css`. Actualizar la línea de base, a mano
- * y solo cuando el hex nuevo es intencional:
+ * No mira tests ni comentarios. Actualizar la línea de base, a mano
+ * y solo cuando el color nuevo es intencional:
  *   node scripts/lint-no-new-hex.mjs --update
  */
 
@@ -21,7 +21,13 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE_PATH = join(ROOT, 'scripts/hex-color-baseline.json');
-const HEX_SOURCE = '#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\\b';
+const HEX_PATTERN = '#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\\b';
+const RGB_COMMA_PATTERN =
+  'rgba?\\(\\s*\\d{1,3}(?:\\s*,\\s*\\d{1,3}){2}(?:\\s*,\\s*(?:0?\\.\\d+|1(?:\\.0+)?|0))?\\s*\\)';
+const RGB_SPACE_PATTERN =
+  'rgba?\\(\\s*\\d{1,3}(?:\\s+\\d{1,3}){2}(?:\\s*\\/\\s*(?:0?\\.\\d+|1(?:\\.0+)?|0|\\d{1,3}%))?\\s*\\)';
+const COLOR_SOURCE = `${HEX_PATTERN}|${RGB_COMMA_PATTERN}|${RGB_SPACE_PATTERN}`;
+const FILE_EXT_RE = /\.(?:tsx?|css)$/;
 
 const SCAN_ROOTS = ['src', 'vite.config.ts', 'vite.modulePreload.ts', 'vitest.config.ts'];
 
@@ -35,7 +41,7 @@ function walk(dir, acc) {
       walk(full, acc);
       continue;
     }
-    if (/\.tsx?$/.test(entry.name)) acc.push(full);
+    if (FILE_EXT_RE.test(entry.name)) acc.push(full);
   }
   return acc;
 }
@@ -51,7 +57,7 @@ function filesToScan() {
       continue;
     }
     if (stat.isDirectory()) walk(full, found);
-    else if (stat.isFile() && /\.tsx?$/.test(full)) found.push(full);
+    else if (stat.isFile() && FILE_EXT_RE.test(full)) found.push(full);
   }
   return found;
 }
@@ -66,14 +72,148 @@ function lineAllowed(lines, lineIndex) {
   return line.includes('hex-color-allow') || previous.includes('hex-color-allow');
 }
 
+export function normalizeColorToken(raw) {
+  if (raw.startsWith('#')) return raw;
+  return raw
+    .toLowerCase()
+    .replace(/\(\s+/g, '(')
+    .replace(/\s+\)/g, ')')
+    .replace(/\s*,\s*/g, ', ')
+    .replace(/\s*\/\s*/g, ' / ')
+    .replace(/\s{2,}/g, ' ');
+}
+
+function neutralizeCssUrls(value) {
+  return value.replace(/url\((?:[^)"']|"[^"]*"|'[^']*')*\)/gi, (match) =>
+    match.replace(/[^\n]/g, ' ')
+  );
+}
+
+function collectCssColorLiterals(text) {
+  const hits = [];
+  const lines = text.split('\n');
+  const len = text.length;
+  let line = 0;
+  let declText = '';
+  let declStartLine = 0;
+
+  const flushDeclaration = () => {
+    const raw = declText;
+    const startLine = declStartLine;
+    declText = '';
+    if (!raw.trim()) return;
+
+    let colonIndex = -1;
+    let depth = 0;
+    let quote = null;
+    for (let k = 0; k < raw.length; k += 1) {
+      const ch = raw[k];
+      if (quote) {
+        if (ch === '\\') {
+          k += 1;
+          continue;
+        }
+        if (ch === quote) quote = null;
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        quote = ch;
+        continue;
+      }
+      if (ch === '(') depth += 1;
+      else if (ch === ')' && depth > 0) depth -= 1;
+      else if (ch === ':' && depth === 0) {
+        colonIndex = k;
+        break;
+      }
+    }
+    if (colonIndex === -1) return;
+
+    const prefix = raw.slice(0, colonIndex + 1);
+    const valueStartLine = startLine + (prefix.match(/\n/g) ?? []).length;
+    const value = neutralizeCssUrls(raw.slice(colonIndex + 1));
+
+    const regex = new RegExp(COLOR_SOURCE, 'gi');
+    let match;
+    while ((match = regex.exec(value)) !== null) {
+      const preceding = value.slice(0, match.index);
+      const matchLine = valueStartLine + (preceding.match(/\n/g) ?? []).length;
+      if (!lineAllowed(lines, matchLine)) {
+        hits.push({ line: matchLine + 1, hex: normalizeColorToken(match[0]) });
+      }
+    }
+  };
+
+  let i = 0;
+  while (i < len) {
+    const ch = text[i];
+    const next = text[i + 1];
+    if (ch === '/' && next === '*') {
+      if (declText.length === 0) declStartLine = line;
+      declText += ' ';
+      i += 2;
+      while (i < len && !(text[i] === '*' && text[i + 1] === '/')) {
+        if (text[i] === '\n') {
+          line += 1;
+          declText += '\n';
+        }
+        i += 1;
+      }
+      i += 2;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      if (declText.length === 0) declStartLine = line;
+      const quote = ch;
+      declText += ch;
+      i += 1;
+      while (i < len) {
+        const sCh = text[i];
+        if (sCh === '\\') {
+          declText += sCh + (text[i + 1] ?? '');
+          if (text[i + 1] === '\n') line += 1;
+          i += 2;
+          continue;
+        }
+        if (sCh === '\n') line += 1;
+        declText += sCh;
+        i += 1;
+        if (sCh === quote) break;
+      }
+      continue;
+    }
+    if (ch === '{') {
+      declText = '';
+      i += 1;
+      continue;
+    }
+    if (ch === ';' || ch === '}') {
+      flushDeclaration();
+      i += 1;
+      continue;
+    }
+    if (declText.length === 0) declStartLine = line;
+    declText += ch;
+    if (ch === '\n') line += 1;
+    i += 1;
+  }
+
+  flushDeclaration();
+  return hits;
+}
+
 /**
- * Literales de string (comillas, template). Ignora comentarios.
+ * Literales de color en strings `.ts/.tsx` o declaraciones `.css`. Ignora comentarios.
  * Dentro de un template, `${...}` se recorre como código.
+ * @param {string} filename
  * @param {string} text
  * @returns {{ line: number, hex: string }[]}
  */
-export function collectHexLiterals(_filename, text) {
+export function collectHexLiterals(filename, text) {
   if (isFileAllowed(text)) return [];
+  if (typeof filename === 'string' && filename.endsWith('.css')) {
+    return collectCssColorLiterals(text);
+  }
   const hits = [];
   const lines = text.split('\n');
   const len = text.length;
@@ -105,9 +245,14 @@ export function collectHexLiterals(_filename, text) {
       i += 1;
     }
     if (!lineAllowed(lines, startLine)) {
-      const matches = value.match(new RegExp(HEX_SOURCE, 'g'));
-      if (matches) {
-        for (const hex of matches) hits.push({ line: startLine + 1, hex });
+      const regex = new RegExp(COLOR_SOURCE, 'gi');
+      let match;
+      while ((match = regex.exec(value)) !== null) {
+        const preceding = value.slice(0, match.index);
+        const matchLine = startLine + (preceding.match(/\n/g) ?? []).length;
+        if (!lineAllowed(lines, matchLine)) {
+          hits.push({ line: matchLine + 1, hex: normalizeColorToken(match[0]) });
+        }
       }
     }
   };
@@ -230,7 +375,7 @@ function main() {
     console.log('hex: sin literales nuevos');
     return;
   }
-  console.error('Hex nuevo en .ts/.tsx. Usá un token, o un comentario de excepción:');
+  console.error('Color literal (hex o rgb/rgba) nuevo en .ts/.tsx/.css. Usá un token, o un comentario de excepción:');
   console.error('  // hex-color-allow');
   console.error('  /* hex-color-allow-file */  (paleta del tema: UI y mapa)');
   for (const violation of violations) {

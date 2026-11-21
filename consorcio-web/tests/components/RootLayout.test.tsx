@@ -4,6 +4,7 @@
  * Coverage Target: 90%+ for layout component
  */
 
+import { readFileSync } from 'node:fs';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RootLayout } from '../../src/components/RootLayout';
@@ -337,6 +338,13 @@ describe('RootLayout', () => {
       );
 
       expect(container).toBeInTheDocument();
+    });
+
+    it('does not advertise missing /og-image assets by default in index.html or RootLayout', () => {
+      const html = readFileSync('index.html', 'utf8');
+      const rootLayout = readFileSync('src/components/RootLayout.tsx', 'utf8');
+      expect(html).not.toContain('/og-image.');
+      expect(rootLayout).not.toContain('/og-image.');
     });
   });
 });

@@ -71,7 +71,7 @@ export function SugerenciasFilters({
           aria-label="Filtrar por tipo de sugerencia"
         />
         {/* En móvil la fila ya apila a columna full-width via
-            `.cc-bandeja-filters` (pointer: coarse); este Select hereda
+            `.cc-bandeja-filters` (< sm / 47.9375em); este Select hereda
             el mismo layout sin wrappers extra. */}
         <Select
           placeholder="Ordenar"

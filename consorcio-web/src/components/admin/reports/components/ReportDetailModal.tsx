@@ -226,7 +226,7 @@ export function ReportDetailModal({
                 borderColor: 'var(--mantine-color-exito-4)',
               }}
             >
-              <Text size="sm" fw={600} c="exito.7" mb={4}>
+              <Text size="sm" fw={600} c="var(--cc-color-success)" mb={4}>
                 Respuesta pública actual
               </Text>
               <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>

@@ -45,12 +45,29 @@ export function flythroughFrames(
   return frames;
 }
 
+function waitAbortable(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const onAbort = () => {
+      window.clearTimeout(timer);
+      resolve();
+    };
+    const timer = window.setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 export async function playFlythrough(
   map: { easeTo: (options: { center: [number, number]; bearing: number; pitch: number; duration: number }) => void },
   frames: readonly FlyFrame[],
-  onFrame: (frame: FlyFrame) => void
+  onFrame: (frame: FlyFrame) => void,
+  signal?: AbortSignal
 ): Promise<void> {
   for (const frame of frames) {
+    if (signal?.aborted) return;
     onFrame(frame);
     map.easeTo({
       center: [frame.lon, frame.lat],
@@ -58,8 +75,7 @@ export async function playFlythrough(
       pitch: 55,
       duration: 450,
     });
-    await new Promise((resolve) => {
-      window.setTimeout(resolve, 480);
-    });
+    await waitAbortable(480, signal);
+    if (signal?.aborted) return;
   }
 }
