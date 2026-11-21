@@ -6,10 +6,12 @@ the FastAPI app and they do not need Postgres.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 import importlib.util
 import json
 import os
 import re
+import stat
 import subprocess
 from pathlib import Path
 
@@ -590,3 +592,225 @@ def test_backup_postgres_retention_and_restore_drill_contracts() -> None:
     assert "POSTGRES_CONTAINER" in drill_sh
     assert "shared-postgres" in drill_sh
     assert "docker exec -i" in drill_sh
+
+
+def _write_exec(path: Path, body: str) -> Path:
+    path.write_text(body, encoding="utf-8")
+    path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    return path
+
+
+def test_backup_postgres_hetzner_sftp_key_and_pass_paths(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    trace = tmp_path / "sftp_trace.log"
+
+    _write_exec(fake_bin / "pg_dump", "#!/usr/bin/env bash\necho '-- fake dump'\n")
+    _write_exec(fake_bin / "zstd", "#!/usr/bin/env bash\ncat\n")
+    _write_exec(fake_bin / "openssl", "#!/usr/bin/env bash\ncat\n")
+    _write_exec(
+        fake_bin / "sftp",
+        f"#!/usr/bin/env bash\nprintf 'sftp %s\\n' \"$*\" >> {trace!s}\ncat >/dev/null\n",
+    )
+    _write_exec(
+        fake_bin / "sshpass",
+        f'#!/usr/bin/env bash\nprintf \'sshpass %s\\n\' "$*" >> {trace!s}\nshift\nexec "$@"\n',
+    )
+
+    known_hosts = tmp_path / "known_hosts"
+    known_hosts.write_text("u123.your-storagebox.de ssh-ed25519 AAAA\n", encoding="utf-8")
+    ssh_key = tmp_path / "id_test"
+    ssh_key.write_text("dummy", encoding="utf-8")
+
+    base_env = {
+        **os.environ,
+        "PATH": f"{fake_bin}:/usr/bin:/bin",
+        "DATABASE_URL": "postgresql://test:test@localhost:5432/test",
+        "BACKUP_ENCRYPTION_PASSPHRASE": "unit-test-passphrase",
+        "BACKUP_BACKEND": "hetzner-sb",
+        "HETZNER_SB_HOST": "u123.your-storagebox.de",
+        "HETZNER_SB_USER": "u123",
+        "HETZNER_SB_KNOWN_HOSTS": str(known_hosts),
+        "HOME": str(tmp_path),
+    }
+
+    res_key = subprocess.run(
+        ["bash", str(REPO_ROOT / "scripts" / "backup_postgres.sh")],
+        env={**base_env, "HETZNER_SB_SSH_KEY": str(ssh_key)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert res_key.returncode == 0, res_key.stderr
+    key_calls = trace.read_text(encoding="utf-8").splitlines()
+    assert key_calls and all(line.startswith("sftp ") for line in key_calls)
+    assert f"-i {ssh_key}" in key_calls[0]
+    assert "StrictHostKeyChecking=yes" in key_calls[0]
+    assert f"UserKnownHostsFile={known_hosts}" in key_calls[0]
+
+    trace.unlink()
+    res_pass = subprocess.run(
+        ["bash", str(REPO_ROOT / "scripts" / "backup_postgres.sh")],
+        env={**base_env, "HETZNER_SB_PASS": "pw123"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert res_pass.returncode == 0, res_pass.stderr
+    pass_calls = trace.read_text(encoding="utf-8").splitlines()
+    assert any(line.startswith("sshpass -e sftp ") for line in pass_calls)
+
+
+def test_cron_scripts_forward_deploy_digests_env_file(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    trace = tmp_path / "docker_trace.log"
+    _write_exec(
+        fake_bin / "docker",
+        f"#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> {trace!s}\n",
+    )
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / ".env").write_text("POSTGRES_PASSWORD=dummy\n", encoding="utf-8")
+    digest_env = stack_dir / "deploy-digests.env"
+    digest_env.write_text("BACKEND_DIGEST=sha256:" + "a" * 64 + "\n", encoding="utf-8")
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
+
+    res = subprocess.run(
+        ["bash", str(REPO_ROOT / "deploy" / "backup.sh")],
+        env={
+            **os.environ,
+            "PATH": f"{fake_bin}:/usr/bin:/bin",
+            "STACK_DIR": str(stack_dir),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert res.returncode == 0, res.stderr
+    calls = trace.read_text(encoding="utf-8").splitlines()
+    assert len(calls) == 2
+    assert all(f"--env-file {digest_env}" in line for line in calls)
+
+    for rel in ("deploy/etl-refresh.sh", "deploy/restore-drill.sh"):
+        text = _read(rel)
+        assert "deploy-digests.env" in text, rel
+        assert '"${COMPOSE_ENV_ARGS[@]}"' in text, rel
+
+
+def test_backup_age_check_rejects_26h01m_without_truncation(tmp_path: Path) -> None:
+    stamp = tmp_path / "backup-last-success"
+    stale_26h01m = (datetime.now(timezone.utc) - timedelta(hours=26, minutes=1)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    stamp.write_text(stale_26h01m + "\n", encoding="utf-8")
+    res = subprocess.run(
+        ["bash", str(REPO_ROOT / "deploy" / "backup-age-check.sh")],
+        env={
+            **os.environ,
+            "STACK_DIR": str(tmp_path),
+            "BACKUP_STAMP_FILE": str(stamp),
+            "BACKUP_MAX_AGE_HOURS": "26",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert res.returncode == 1
+    assert "old" in res.stderr
+
+
+def test_deploy_webhook_rolls_back_digest_env_and_sets_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    hook = _load("deploy/deploy_webhook.py", "deploy_webhook")
+    digest_env = tmp_path / "deploy-digests.env"
+    original = "DEPLOY_REVISION=" + ("0" * 40) + "\n"
+    digest_env.write_text(original, encoding="utf-8")
+
+    def fail_compose(*_args, **_kwargs):
+        return subprocess.CompletedProcess(args=["docker"], returncode=1, stdout="", stderr="err")
+
+    monkeypatch.setattr(hook.subprocess, "run", fail_compose)
+    with pytest.raises(hook.WebhookError) as exc_fail:
+        hook.default_apply(
+            tmp_path, digest_env, "1" * 40, "sha256:" + "a" * 64, "sha256:" + "b" * 64
+        )
+    assert exc_fail.value.code == "compose_failed"
+    assert digest_env.read_text(encoding="utf-8") == original
+
+    digest_env.unlink()
+
+    def timeout_compose(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired(cmd=["docker"], timeout=1)
+
+    monkeypatch.setattr(hook.subprocess, "run", timeout_compose)
+    with pytest.raises(hook.WebhookError) as exc_timeout:
+        hook.default_apply(
+            tmp_path, digest_env, "2" * 40, "sha256:" + "a" * 64, "sha256:" + "b" * 64
+        )
+    assert exc_timeout.value.status == 504
+    assert not digest_env.exists()
+
+    server = hook.DeployWebhookServer(
+        ("127.0.0.1", 0),
+        "secret-token-at-least-32-characters-long",
+        tmp_path / "revisions",
+        lambda *_args: None,
+        request_timeout=7.5,
+    )
+    try:
+        assert server.request_timeout == 7.5
+        assert hook.DEFAULT_SOCKET_TIMEOUT_S > 0
+    finally:
+        server.server_close()
+
+
+def test_wave2_compose_systemd_and_doc_redaction_contracts() -> None:
+    for path in ("docker-compose.prod.yml", "docker-compose.deploy.yml"):
+        blocks = _service_blocks(path)
+        assert "- denuncia-uploads:/app/uploads" in blocks["celery-worker"], path
+        assert "uploads-init:" in blocks["celery-worker"], path
+        assert "data/waterways:/app/data/waterways:ro" not in blocks["backend"], path
+        assert "memory: 1536M" in blocks["geo-worker"], path
+
+    prod_blocks = _service_blocks("docker-compose.prod.yml")
+    for svc in ("backend", "celery-worker", "celery-beat", "geo-worker"):
+        assert "APP_DATABASE_URL:-${DATABASE_URL}" in prod_blocks[svc], svc
+    for svc in ("pgbouncer", "migrate", "backup-postgres", "backup-volumes"):
+        assert "limits:" in prod_blocks[svc] and "memory:" in prod_blocks[svc], svc
+
+    dev_blocks = _service_blocks("docker-compose.yml")
+    assert "redis:7-alpine@sha256:" in dev_blocks["redis"]
+    assert "- denuncia-uploads:/app/uploads" in dev_blocks["worker"]
+    for svc in ("backend", "worker", "celery-beat", "geo-worker"):
+        assert "${REDIS_PASSWORD:-consorcio_dev_redis}@redis:6379/0" in dev_blocks[svc], svc
+
+    sup = _read("gee-backend/supervisord-geo.conf")
+    assert "-Q geo -c 1" in sup
+    assert "--workers 1" in sup
+
+    assert "python3-pip" in _read("gee-backend/Dockerfile.geo").split("apt-get purge", 1)[1]
+    assert "HEALTHCHECK" in _read("gee-backend/Dockerfile.geo")
+    assert "/usr/local/bin/pip3.15" in _read("gee-backend/Dockerfile")
+
+    notify = _read("deploy/notify@.service")
+    assert "User=javier" in notify and "NoNewPrivileges=yes" in notify
+    assert "StateDirectory=consorcio-deploy" in _read("deploy/deploy-webhook.service")
+    assert "SupplementaryGroups=docker" in _read("deploy/etl-refresh.service")
+    assert "OnCalendar=Sun *-*-* 01:00:00" in _read("deploy/etl-refresh.timer")
+
+    deploy_yml = _read(".github/workflows/deploy.yml").split("\n  deploy:\n", 1)[1]
+    assert "timeout-minutes: 20" in deploy_yml
+    assert "--max-time 960" in deploy_yml
+
+    for rel in (
+        "docs/RUNBOOK.md",
+        "docs/ROADMAP.md",
+        "docs/PERF_BACKEND_COLDSTART.md",
+        "scripts/deploy_b3p.py",
+    ):
+        content = _read(rel)
+        assert "157.180.29.238" not in content, rel
+        assert "hetzner_ghagga" not in content, rel
