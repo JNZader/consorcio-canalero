@@ -22,7 +22,7 @@ describe('ThemeLabPanel', () => {
 
   it('isolates each preview card with its own palette variables regardless of active global brand', () => {
     render(
-      <MantineProvider theme={mantineTheme} env="test">
+      <MantineProvider env="test" theme={mantineTheme}>
         <ThemeLabPanel />
       </MantineProvider>
     );
@@ -48,7 +48,7 @@ describe('ThemeLabPanel', () => {
 
   it('uses high-contrast white ink on the humedal clay accent badge and dark ink on bright gold/amber', () => {
     render(
-      <MantineProvider theme={mantineTheme} env="test">
+      <MantineProvider env="test" theme={mantineTheme}>
         <ThemeLabPanel />
       </MantineProvider>
     );
