@@ -13,27 +13,44 @@
  * the SAME pure function inline (never a dead dropzone).
  */
 
-import { ErrorKml, type MensajeKmlWorker, procesarArchivoKml } from './leerKml';
+import {
+  ErrorKml,
+  extraerTextoArchivoKml,
+  type MensajeKmlWorker,
+  procesarArchivoKml,
+} from './leerKml';
 
 self.onmessage = async (evento: MessageEvent<File>) => {
   const responder = (mensaje: MensajeKmlWorker) => {
     self.postMessage(mensaje);
   };
 
-  if (typeof DOMParser === 'undefined') {
-    responder({
-      ok: false,
-      codigo: 'worker_incapaz',
-      mensaje: 'Este contexto no tiene DOMParser.',
-    });
-    return;
-  }
+  const esKmz = evento.data.name.toLowerCase().endsWith('.kmz');
 
   try {
+    if (typeof DOMParser === 'undefined') {
+      if (esKmz) {
+        const texto = await extraerTextoArchivoKml(evento.data);
+        responder({
+          ok: false,
+          codigo: 'worker_solo_texto',
+          texto,
+          mensaje: 'KML descomprimido en worker sin DOMParser.',
+        });
+        return;
+      }
+      responder({
+        ok: false,
+        codigo: 'worker_incapaz',
+        mensaje: 'Este contexto no tiene DOMParser.',
+      });
+      return;
+    }
+
     const poligonos = await procesarArchivoKml(evento.data);
     responder({ ok: true, poligonos });
   } catch (error) {
-    // procesarArchivoKml only ever throws ErrorKml; the instanceof walk
+    // procesarArchivoKml and extraerTextoArchivoKml only ever throw ErrorKml; the instanceof walk
     // keeps a stray non-ErrorKml from lying about its code.
     const codigo = error instanceof ErrorKml ? error.codigo : 'lectura_fallida';
     const mensaje = error instanceof Error && error.message ? error.message : 'No se pudo leer.';

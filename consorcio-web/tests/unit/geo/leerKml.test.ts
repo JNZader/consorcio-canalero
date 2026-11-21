@@ -18,7 +18,6 @@ import {
   ErrorKml,
   kmlAPoligonos,
   kmzATexto,
-  LIMITE_VERTICES_KML,
   leerArchivoKml,
   procesarArchivoKml,
 } from '../../../src/lib/geo/leerKml';
@@ -209,6 +208,55 @@ describe('procesarArchivoKml — caps de archivo (S4)', () => {
     await expect(procesarArchivoKml(archivo)).rejects.toMatchObject({
       codigo: 'archivo_grande',
     });
+  });
+
+  it('un KMZ con zip-bomb (KML descomprimido por encima del límite) rechaza con archivo_grande', async () => {
+    const zip = new JSZip();
+    const relleno = 'A'.repeat(64 * 1024);
+    zip.file(
+      'bomba.kml',
+      `<?xml version="1.0"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${relleno}</name></Document></kml>`
+    );
+    const buffer = await zip.generateAsync({
+      type: 'arraybuffer',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 9 },
+    });
+    // Comprimido pesa apenas ~2 KB, pero descomprimido excede 32 KB.
+    expect(buffer.byteLength).toBeLessThan(10_000);
+    await expect(kmzATexto(buffer, 32 * 1024)).rejects.toMatchObject({
+      codigo: 'archivo_grande',
+    });
+  });
+
+  it('rechaza anillos degenerados (menos de 3 vértices distintos) y no promueve huecos sin exterior válido', () => {
+    // 2 vértices distintos repetidos -> 3 puntos contando cierre o 4 puntos repetidos: inválido.
+    const degenerado = kml(placemarkPoligono('degenerado', '-62,-32 -61,-32 -62,-32 -61,-32'));
+    expect(() => kmlAPoligonos(degenerado)).toThrow();
+    try {
+      kmlAPoligonos(degenerado);
+    } catch (error) {
+      expect((error as ErrorKml).codigo).toBe('sin_poligonos');
+    }
+
+    // Outer degenerado (4 coordenadas, sólo 2 puntos distintos) + inner válido de 4 vértices distintos: no debe promover inner.
+    const soloHueco = kml(
+      placemarkPoligono(
+        'hueco-huerfano',
+        '-62,-32 -61,-32 -62,-32 -61,-32',
+        anilloCuadro(-61.997, -31.997, 0.004)
+      )
+    );
+    expect(() => kmlAPoligonos(soloHueco)).toThrow();
+    try {
+      kmlAPoligonos(soloHueco);
+    } catch (error) {
+      expect((error as ErrorKml).codigo).toBe('sin_poligonos');
+    }
+
+    // Coordenadas NaN/Infinitas en anillo se descartan y no rompen ni pasan como válidos.
+    const nanKml = kml(placemarkPoligono('nan', '-62,-32 NaN,-32 -61,-32'));
+    expect(() => kmlAPoligonos(nanKml)).toThrow();
   });
 
   it('un archivo legible pasa por el mismo camino que el worker', async () => {
