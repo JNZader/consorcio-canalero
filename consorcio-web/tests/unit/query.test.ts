@@ -119,7 +119,7 @@ describe('query helpers and hooks', () => {
     expect(dashboard.refetch).toBe(refetch);
     expect(useQueryMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        queryKey: ['dashboard-stats', '30d'],
+        queryKey: ['monitoring-dashboard'],
         enabled: true,
       })
     );
@@ -173,10 +173,12 @@ describe('query helpers and hooks', () => {
     await statusMutation.onSuccess();
     expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['reports'] });
     expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['dashboard-stats'] });
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['monitoring-dashboard'] });
 
     const reportMutation = useUpdateReport();
     await reportMutation.onSuccess(undefined, { id: 'rep-9', data: {} });
     expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['report', 'rep-9'] });
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['monitoring-dashboard'] });
 
     const createLayer = useCreateLayer();
     await createLayer.onSuccess();
@@ -194,6 +196,7 @@ describe('query helpers and hooks', () => {
     await invalidateAll();
 
     expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['dashboard-stats'] });
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['monitoring-dashboard'] });
     expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['reports'] });
     expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['layers'] });
     expect(invalidateQueriesMock).toHaveBeenCalledWith();
@@ -202,7 +205,7 @@ describe('query helpers and hooks', () => {
     await prefetchReports({ page: 2, limit: 20, status: 'en_revision', cuenca: 'sur', tipo: 'canal' });
 
     expect(prefetchQueryMock).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: ['dashboard-stats', '15d'] })
+      expect.objectContaining({ queryKey: ['monitoring-dashboard'] })
     );
     expect(prefetchQueryMock).toHaveBeenCalledWith(
       expect.objectContaining({

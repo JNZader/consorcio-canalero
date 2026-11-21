@@ -22,6 +22,7 @@ describe('Cloudflare Pages routing (SPA + FE-01)', () => {
       })
       .join('\n');
     expect(rules).toMatch(/^\/reportes \/participacion 301/m);
+    expect(rules).toMatch(/^\/reports \/participacion 301/m);
     expect(rules).toMatch(/^\/sugerencias \/participacion\?tab=sugerencias 301/m);
     expect(rules).not.toMatch(/\/index\.html\s+200/);
     expect(rules).not.toMatch(/^\s*\/\*\s+\/\s+200/m);

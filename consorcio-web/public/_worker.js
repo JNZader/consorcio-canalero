@@ -51,8 +51,8 @@ export function plainNotFound() {
  * Rutas que el router de la SPA conoce. Una URL que no está acá y que el
  * fallback de Pages sirvió como `index.html` 200 es un soft-404: la
  * devolvemos con el mismo shell (para que el cliente pinte Not Found) pero
- * con status 404. `/reports` es el alias cliente hacia Participación;
- * `/reportes` y `/sugerencias` además redirigen 301 en `_redirects`.
+ * con status 404. `/reports`, `/reportes` y `/sugerencias` ademas
+ * redirigen 301 en `_redirects`.
  */
 const SPA_ROUTES = new Set([
   '/',

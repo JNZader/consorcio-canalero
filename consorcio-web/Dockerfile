@@ -131,6 +131,14 @@ RUN apk --no-network del curl
 # Remove default nginx config
 RUN rm -rf /etc/nginx/conf.d/default.conf /usr/share/nginx/html/*
 
+# Shared security headers included in server and in every location that defines add_header
+COPY <<'EOF' /etc/nginx/security-headers.conf
+add_header X-Frame-Options "DENY" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header Permissions-Policy "camera=(), microphone=(), geolocation=(self), interest-cohort=()" always;
+EOF
+
 # Copy custom nginx configuration
 COPY <<'EOF' /etc/nginx/nginx.conf
 worker_processes auto;
@@ -203,12 +211,6 @@ http {
         text/x-cross-domain-policy
         text/xml;
 
-    # Security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-
     # Rate limiting
     limit_req_zone $binary_remote_addr zone=general:10m rate=10r/s;
     limit_conn_zone $binary_remote_addr zone=addr:10m;
@@ -222,23 +224,62 @@ http {
 
         # Security
         server_tokens off;
+        include /etc/nginx/security-headers.conf;
 
         # Rate limiting
         limit_req zone=general burst=20 nodelay;
         limit_conn addr 100;
 
+        # Block Cloudflare Pages control files if ever present
+        location ~ ^/_(worker\.js|headers|redirects)$ {
+            include /etc/nginx/security-headers.conf;
+            return 404;
+        }
+
+        # Service worker scripts and freshness probe must never be cached immutably
+        location = /sw.js {
+            expires -1;
+            add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+            include /etc/nginx/security-headers.conf;
+        }
+
+        location = /registerSW.js {
+            expires -1;
+            add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+            include /etc/nginx/security-headers.conf;
+        }
+
+        location ~ ^/workbox-.*\.js$ {
+            expires -1;
+            add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+            include /etc/nginx/security-headers.conf;
+        }
+
+        location = /version.json {
+            expires -1;
+            add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+            include /etc/nginx/security-headers.conf;
+        }
+
+        location = /manifest.webmanifest {
+            expires -1;
+            add_header Cache-Control "no-cache, must-revalidate" always;
+            include /etc/nginx/security-headers.conf;
+        }
+
         # Health check endpoint
         location /health {
             access_log off;
-            return 200 'OK';
             add_header Content-Type text/plain;
+            include /etc/nginx/security-headers.conf;
+            return 200 'OK';
         }
 
-        # Static assets with aggressive caching
+        # Static assets with aggressive caching (sw.js / registerSW.js / workbox-* handled above)
         location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|webp|avif)$ {
             expires 1y;
             add_header Cache-Control "public, immutable";
-            add_header X-Content-Type-Options "nosniff" always;
+            include /etc/nginx/security-headers.conf;
             access_log off;
         }
 
@@ -246,6 +287,7 @@ http {
         location ~* \.html$ {
             expires -1;
             add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate";
+            include /etc/nginx/security-headers.conf;
         }
 
         # SPA fallback - serve index.html for all routes
@@ -281,8 +323,9 @@ EOF
 # Copy built files from builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Set correct permissions
-RUN chown -R nginx:nginx /usr/share/nginx/html \
+# Strip Cloudflare Pages control files and set correct permissions
+RUN rm -f /usr/share/nginx/html/_worker.js /usr/share/nginx/html/_headers /usr/share/nginx/html/_redirects \
+    && chown -R nginx:nginx /usr/share/nginx/html \
     && chmod -R 755 /usr/share/nginx/html
 
 # Create and own every nginx runtime temp directory before dropping privileges.
