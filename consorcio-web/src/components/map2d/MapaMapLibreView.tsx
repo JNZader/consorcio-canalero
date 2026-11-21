@@ -32,6 +32,7 @@ import type { UseFichaTerritorialResult } from '../../hooks/useFichaTerritorial'
 import type { GeoLayerInfo } from '../../hooks/useGeoLayers';
 import type { HazardPrecipMonth, HazardRiskClass } from '../../hooks/useHazardUrlState';
 import { FICHA_MAX_BUFFER_M } from '../../lib/api/ficha';
+import { showError } from '../../lib/notifications';
 import { erroresUi } from '../../lib/userFacingError';
 import { useReportAnchorStore } from '../../stores/reportAnchorStore';
 import { useIsAuthenticated } from '../../stores/authStore';
@@ -553,12 +554,31 @@ export function MapaMapLibreView(props: MapaMapLibreViewProps) {
               });
             }}
             onGeolocate={() => {
-              requestMapGeolocate(mapRef.current, undefined, (coords) => {
-                useReportAnchorStore.getState().setGeolocatePin({
-                  lat: coords.latitude,
-                  lng: coords.longitude,
-                });
-              });
+              const requested = requestMapGeolocate(
+                mapRef.current,
+                undefined,
+                (coords) => {
+                  useReportAnchorStore.getState().setGeolocatePin({
+                    lat: coords.latitude,
+                    lng: coords.longitude,
+                  });
+                },
+                (geoError) => {
+                  const message =
+                    geoError.code === 1
+                      ? 'Permiso de ubicación denegado. Habilitalo en tu navegador para centrar el mapa.'
+                      : geoError.code === 3
+                        ? 'Se agotó el tiempo al obtener tu ubicación. Intentá nuevamente.'
+                        : 'No se pudo obtener tu ubicación actual.';
+                  showError('Ubicación no disponible', message);
+                }
+              );
+              if (!requested) {
+                showError(
+                  'Ubicación no disponible',
+                  'Tu navegador no permite geolocalización en este dispositivo.'
+                );
+              }
             }}
           />
         }

@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { LineString } from 'geojson';
 import type { ReactNode } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('recharts', async () => {
   const actual = await vi.importActual<typeof import('recharts')>('recharts');
@@ -44,6 +44,20 @@ vi.mock('../../src/lib/api/elevationProfile', () => ({
 
 import { fetchElevationProfile } from '../../src/lib/api/elevationProfile';
 import { ElevationProfileChart } from '../../src/components/map2d/ElevationProfileChart';
+import { useAuthStore, type UserRole } from '../../src/stores/authStore';
+
+function setAuthRole(rol: UserRole | null) {
+  if (rol === null) {
+    useAuthStore.setState({ user: null, profile: null, loading: false, initialized: true });
+    return;
+  }
+  useAuthStore.setState({
+    user: { id: 'u-1', email: `${rol}@test.com` },
+    profile: { id: 'u-1', email: `${rol}@test.com`, nombre: rol, rol },
+    loading: false,
+    initialized: true,
+  });
+}
 
 const line: LineString = {
   type: 'LineString',
@@ -58,6 +72,10 @@ function renderWithMantine(ui: ReactNode) {
 }
 
 describe('<ElevationProfileChart />', () => {
+  afterEach(() => {
+    setAuthRole(null);
+  });
+
   it('does not fetch until the operator asks', () => {
     renderWithMantine(<ElevationProfileChart geometry={line} />);
     expect(screen.getByRole('button', { name: 'Perfil de elevación' })).toBeInTheDocument();
@@ -249,6 +267,7 @@ describe('<ElevationProfileChart />', () => {
   });
 
   it('only asks GEE when the operator opts into DEM comparison', async () => {
+    setAuthRole('operador');
     const glo30 = {
       puntos: [
         { distance_m: 0, elevation_m: 120 },
@@ -631,5 +650,41 @@ describe('<ElevationProfileChart />', () => {
     expect(stats).toHaveTextContent('corte máx 7,6 m');
     expect(stats).toHaveTextContent('100% en corte (drenaje continuo por gravedad)');
     expect(screen.getByTestId('simulated-canal-controls')).toBeInTheDocument();
+  });
+
+  it('hides Comparar DEMs (GEE) for anonymous and ciudadano users and shows it for operador/admin', async () => {
+    vi.mocked(fetchElevationProfile).mockResolvedValue({
+      puntos: [
+        { distance_m: 0, elevation_m: 120 },
+        { distance_m: 15, elevation_m: 118 },
+      ],
+      length_m: 15,
+      min_elevation_m: 118,
+      max_elevation_m: 120,
+      source: 'dem_filled.tif',
+      cell_m: 15,
+      disclaimer: 'Perfil sobre Copernicus GLO-30 (~30 m).',
+    });
+
+    setAuthRole(null);
+    const { rerender } = renderWithMantine(<ElevationProfileChart geometry={line} autoLoad />);
+    await screen.findByTestId('elevation-profile-extrema');
+    expect(screen.queryByTestId('elevation-profile-compare-dems')).not.toBeInTheDocument();
+
+    setAuthRole('ciudadano');
+    rerender(
+      <MantineProvider env="test">
+        <ElevationProfileChart geometry={line} autoLoad />
+      </MantineProvider>
+    );
+    expect(screen.queryByTestId('elevation-profile-compare-dems')).not.toBeInTheDocument();
+
+    setAuthRole('operador');
+    rerender(
+      <MantineProvider env="test">
+        <ElevationProfileChart geometry={line} autoLoad />
+      </MantineProvider>
+    );
+    expect(screen.getByTestId('elevation-profile-compare-dems')).toBeInTheDocument();
   });
 });

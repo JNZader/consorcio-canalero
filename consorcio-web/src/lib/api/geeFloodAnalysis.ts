@@ -311,6 +311,13 @@ function isAbortError(err: unknown): boolean {
   return err instanceof Error && err.name === 'AbortError';
 }
 
+function isNonRetryablePollError(err: unknown): boolean {
+  return (
+    err instanceof QueryError &&
+    (err.statusCode === 401 || err.statusCode === 403 || err.statusCode === 404)
+  );
+}
+
 export async function pollFloodAnalysisUntilDone(
   analisisId: string,
   options: PollFloodAnalysisOptions = {}
@@ -329,8 +336,8 @@ export async function pollFloodAnalysisUntilDone(
     try {
       current = await getFloodAnalysis(analisisId, options.signal);
     } catch (err) {
-      // La cancelación (operador, run nuevo, desmonte) corta inmediato: ni retry ni tragar.
-      if (isAbortError(err)) throw err;
+      // La cancelación (operador, run nuevo, desmonte) y 401/403/404 cortan inmediato.
+      if (isAbortError(err) || isNonRetryablePollError(err)) throw err;
       transientErrors += 1;
       if (transientErrors >= maxTransientErrors) {
         throw err;

@@ -12,6 +12,7 @@ const announceMock = vi.fn();
 vi.mock('../../src/lib/api', () => ({
   reportsApi: {
     getAll: vi.fn(),
+    getStats: vi.fn(),
     bulkUpdate: vi.fn(),
   },
   apiFetch: vi.fn(),
@@ -72,6 +73,7 @@ describe('ReportsPanel', () => {
       total: 1,
       page: 1,
     });
+    vi.mocked(reportsApi.getStats).mockResolvedValue(null as never);
 
     // El endpoint `/management/seguimiento` se retiró. El historial
     // ahora viaja DENTRO del response de `GET /denuncias/{id}` y los
@@ -516,5 +518,19 @@ describe('ReportsPanel', () => {
     expect(screen.getByRole('button', { name: 'Pasar 1 a en revisión' })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: 'Seleccionar denuncia rep-1' })).toBeChecked();
     expect(reportsApi.getAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads por_estado from GET /denuncias/stats contract (C16)', async () => {
+    vi.mocked(reportsApi.getStats).mockResolvedValueOnce({
+      total: 12,
+      por_estado: { pendiente: 7, en_revision: 3, resuelto: 2, descartado: 0 },
+      por_tipo: { desborde: 12 },
+      por_cuenca: { norte: 12 },
+    });
+
+    renderPanel();
+
+    expect(await screen.findByText('7 pendientes')).toBeInTheDocument();
+    expect(screen.getByText('3 en revision')).toBeInTheDocument();
   });
 });

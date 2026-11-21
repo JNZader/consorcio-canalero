@@ -131,7 +131,7 @@ describe('ResponsiveRecordList', () => {
     expect(nextVirtualRecordIndex(3, 'Tab', count, true)).toBe(2);
   });
 
-  it('End from the virtualized list reaches the last row', async () => {
+  it('End from the virtualized list reaches the last row and moves focus inside the row', async () => {
     mockViewport(false);
     const user = userEvent.setup();
     const count = RECORD_VIRTUALIZE_THRESHOLD + 20;
@@ -141,6 +141,25 @@ describe('ResponsiveRecordList', () => {
     scroller?.focus();
     await user.keyboard('{End}');
     expect(await screen.findByText(`Persona ${count - 1}`)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: `Editar ${count - 1}` })).toHaveFocus();
+  });
+
+  it('ArrowDown and ArrowUp move keyboard focus between already-mounted virtualized rows (C14)', async () => {
+    mockViewport(false);
+    const user = userEvent.setup();
+    const count = RECORD_VIRTUALIZE_THRESHOLD + 20;
+    renderList(count, { virtualize: true });
+
+    const btn0 = screen.getByRole('button', { name: 'Editar 0' });
+    const btn1 = screen.getByRole('button', { name: 'Editar 1' });
+    btn0.focus();
+    expect(btn0).toHaveFocus();
+
+    await user.keyboard('{ArrowDown}');
+    expect(document.activeElement).toBe(btn1);
+
+    await user.keyboard('{ArrowUp}');
+    expect(document.activeElement).toBe(btn0);
   });
 
   it('renders every row when the list is under the threshold', () => {

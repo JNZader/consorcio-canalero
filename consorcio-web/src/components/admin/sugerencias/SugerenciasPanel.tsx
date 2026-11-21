@@ -45,7 +45,9 @@ function readSugerenciaQuery() {
   };
 }
 
-export default function SugerenciasPanel() {
+export default function SugerenciasPanel({
+  active = true,
+}: Readonly<{ active?: boolean }> = {}) {
   const [sugerencias, setSugerencias] = useState<Sugerencia[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -113,6 +115,7 @@ export default function SugerenciasPanel() {
   const [page, setPage] = useState(sugerenciaQuery.page);
 
   useEffect(() => {
+    if (!active) return;
     const params = new URLSearchParams(window.location.search);
     const put = (key: string, value: string | null) => {
       if (value) params.set(key, value);
@@ -131,7 +134,7 @@ export default function SugerenciasPanel() {
       '',
       `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`
     );
-  }, [searchQuery, filterEstado, filterTipo, page, sort, order]);
+  }, [active, searchQuery, filterEstado, filterTipo, page, sort, order]);
   const [totalPages, setTotalPages] = useState(1);
 
   // Edit state

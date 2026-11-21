@@ -1,4 +1,5 @@
-import { act, renderHook } from '@testing-library/react';
+import { act, cleanup, render, renderHook } from '@testing-library/react';
+import { createElement, StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -20,7 +21,9 @@ describe('useDrawerHistoryClose', () => {
     backSpy = vi.spyOn(window.history, 'back').mockImplementation(() => {});
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    cleanup();
+    await Promise.resolve();
     vi.restoreAllMocks();
   });
 
@@ -58,7 +61,7 @@ describe('useDrawerHistoryClose', () => {
     expect(backSpy).not.toHaveBeenCalled();
   });
 
-  it('rewinds the marker when the drawer closes by other means', () => {
+  it('rewinds the marker when the drawer closes by other means', async () => {
     const onClose = vi.fn();
     const { rerender } = renderHook(
       ({ opened }: { opened: boolean }) => useDrawerHistoryClose({ opened, onClose }),
@@ -68,12 +71,13 @@ describe('useDrawerHistoryClose', () => {
     expect(markerIsOnTop()).toBe(true);
 
     rerender({ opened: false });
+    await Promise.resolve();
 
     expect(backSpy).toHaveBeenCalledTimes(1);
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('does NOT rewind when a real navigation landed on top of the marker', () => {
+  it('does NOT rewind when a real navigation landed on top of the marker', async () => {
     const onClose = vi.fn();
     const { rerender } = renderHook(
       ({ opened }: { opened: boolean }) => useDrawerHistoryClose({ opened, onClose }),
@@ -86,19 +90,21 @@ describe('useDrawerHistoryClose', () => {
     });
 
     rerender({ opened: false });
+    await Promise.resolve();
 
     expect(backSpy).not.toHaveBeenCalled();
   });
 
-  it('rewinds the marker when the component unmounts with the drawer open', () => {
+  it('rewinds the marker when the component unmounts with the drawer open', async () => {
     const { unmount } = renderHook(() => useDrawerHistoryClose({ opened: true, onClose: vi.fn() }));
 
     unmount();
+    await Promise.resolve();
 
     expect(backSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('never touches history while disabled (desktop layout)', () => {
+  it('never touches history while disabled (desktop layout)', async () => {
     const onClose = vi.fn();
     const pushSpy = vi.spyOn(window.history, 'pushState');
     const { rerender, unmount } = renderHook(
@@ -113,6 +119,7 @@ describe('useDrawerHistoryClose', () => {
     });
     rerender({ opened: false });
     unmount();
+    await Promise.resolve();
 
     expect(pushSpy).not.toHaveBeenCalled();
     expect(backSpy).not.toHaveBeenCalled();
@@ -165,5 +172,83 @@ describe('useDrawerHistoryClose', () => {
     });
 
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores synthetic popstate events while its own marker entry is still on top', () => {
+    const onClose = vi.fn();
+    renderHook(() => useDrawerHistoryClose({ opened: true, onClose }));
+
+    expect(markerIsOnTop()).toBe(true);
+    act(() => {
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('does not rewind a sibling drawer marker on unmount (#740)', async () => {
+    const first = renderHook(() => useDrawerHistoryClose({ opened: true, onClose: vi.fn() }));
+    const second = renderHook(() => useDrawerHistoryClose({ opened: true, onClose: vi.fn() }));
+
+    first.unmount();
+    await Promise.resolve();
+    expect(backSpy).not.toHaveBeenCalled();
+
+    second.unmount();
+    await Promise.resolve();
+    expect(backSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('coalesces StrictMode mount-cleanup-remount without calling history.back()', async () => {
+    const pushSpy = vi.spyOn(window.history, 'pushState');
+    const onClose = vi.fn();
+
+    function Harness() {
+      useDrawerHistoryClose({ opened: true, onClose });
+      return null;
+    }
+
+    render(createElement(StrictMode, null, createElement(Harness)));
+    await Promise.resolve();
+
+    expect(pushSpy).toHaveBeenCalledTimes(1);
+    expect(backSpy).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(markerIsOnTop()).toBe(true);
+
+    // Real user Back still dismisses the drawer once.
+    act(() => {
+      window.history.replaceState(null, '');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a lower nested drawer open when the upper drawer pops', () => {
+    const lowerClose = vi.fn();
+    const upperClose = vi.fn();
+
+    renderHook(() => useDrawerHistoryClose({ opened: true, onClose: lowerClose }));
+    const lowerState = window.history.state as Record<string, unknown>;
+
+    renderHook(() => useDrawerHistoryClose({ opened: true, onClose: upperClose }));
+
+    // Popping from upper back to lower closes ONLY the upper drawer.
+    act(() => {
+      window.history.replaceState(lowerState, '');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+
+    expect(upperClose).toHaveBeenCalledTimes(1);
+    expect(lowerClose).not.toHaveBeenCalled();
+
+    // Popping once more exits the lower drawer.
+    act(() => {
+      window.history.replaceState(null, '');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+
+    expect(lowerClose).toHaveBeenCalledTimes(1);
   });
 });

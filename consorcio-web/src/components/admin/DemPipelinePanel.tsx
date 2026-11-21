@@ -28,6 +28,8 @@ import { useDemPipeline } from '../../hooks/useDemPipeline';
 import type { GeoLayerResponse } from '../../lib/api/demPipeline';
 import { demPipelineApi } from '../../lib/api/demPipeline';
 import { withBasePath } from '../../lib/basePath';
+import { showError } from '../../lib/notifications';
+import { erroresUi, textoError } from '../../lib/userFacingError';
 import {
   Icon3dCubeSphere,
   IconAlertTriangle,
@@ -59,6 +61,20 @@ export default function DemPipelinePanel() {
     useDemPipeline();
 
   const [minBasinAreaHa, setMinBasinAreaHa] = useState<number>(5000);
+  const [downloadingLayerId, setDownloadingLayerId] = useState<string | null>(null);
+
+  const handleDownloadLayer = useCallback(async (layer: GeoLayerResponse) => {
+    setDownloadingLayerId(layer.id);
+    try {
+      const ext = layer.formato === 'geojson' ? 'geojson' : 'tif';
+      await demPipelineApi.downloadLayerFile(layer.id, `${layer.nombre}.${ext}`);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : undefined;
+      showError('No se pudo descargar la capa', textoError(erroresUi.exportarDashboard, detail));
+    } finally {
+      setDownloadingLayerId((current) => (current === layer.id ? null : current));
+    }
+  }, []);
 
   // On mount, try to fetch existing layers and basins
   useEffect(() => {
@@ -205,7 +221,7 @@ export default function DemPipelinePanel() {
                 highlightOnHover
                 records={layers.map((layer) => ({
                   id: layer.id,
-                  cells: layerCells(layer),
+                  cells: layerCells(layer, handleDownloadLayer, downloadingLayerId === layer.id),
                 }))}
               />
             </Paper>
@@ -244,7 +260,11 @@ export default function DemPipelinePanel() {
   );
 }
 
-function layerCells(layer: GeoLayerResponse): ReactNode[] {
+function layerCells(
+  layer: GeoLayerResponse,
+  onDownload: (layer: GeoLayerResponse) => void,
+  downloading: boolean
+): ReactNode[] {
   const label = LAYER_TYPE_LABELS[layer.tipo] || layer.tipo;
   const formatBadge = layer.formato === 'geojson' ? 'GeoJSON' : 'GeoTIFF';
 
@@ -271,8 +291,9 @@ function layerCells(layer: GeoLayerResponse): ReactNode[] {
       size="xs"
       variant="subtle"
       leftSection={<IconDownload size={14} />}
+      loading={downloading}
       onClick={() => {
-        window.open(demPipelineApi.getLayerFileUrl(layer.id), '_blank');
+        void onDownload(layer);
       }}
     >
       Descargar

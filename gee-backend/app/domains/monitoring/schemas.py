@@ -187,6 +187,7 @@ class DashboardStatsResponse(BaseModel):
     """Aggregated dashboard statistics."""
 
     denuncias: DenunciaStats
+    denuncias_nuevas_semana: int = 0
     total_assets: int = 0
     total_sugerencias: int = 0
     total_tramites: int = 0

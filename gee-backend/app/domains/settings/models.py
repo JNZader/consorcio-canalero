@@ -1,6 +1,6 @@
 """SQLAlchemy models for the settings domain."""
 
-import enum
+from enum import StrEnum
 from typing import Any, Optional
 
 from sqlalchemy import Enum, String, Text
@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base, TimestampMixin, UUIDMixin
 
 
-class CategoriaSettings(str, enum.Enum):
+class CategoriaSettings(StrEnum):
     GENERAL = "general"
     BRANDING = "branding"
     TERRITORIO = "territorio"

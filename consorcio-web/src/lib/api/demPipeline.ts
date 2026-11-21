@@ -5,7 +5,7 @@
  * and fetching generated layers/basins.
  */
 
-import { GEE_TIMEOUT, apiFetch } from './core';
+import { API_PREFIX, API_URL, GEE_TIMEOUT, apiFetch, fetchAuthenticatedFile } from './core';
 
 // ===========================================
 // TYPES
@@ -106,8 +106,23 @@ export const demPipelineApi = {
   /**
    * Get download URL for a layer file.
    */
-  getLayerFileUrl: (layerId: string): string => {
-    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-    return `${baseUrl}/api/v2/geo/layers/${layerId}/file`;
+  getLayerFileUrl: (layerId: string): string =>
+    `${API_URL}${API_PREFIX}/geo/layers/${layerId}/file`,
+
+  /**
+   * Download a layer file with Bearer authentication and trigger a browser download.
+   */
+  downloadLayerFile: async (layerId: string, fallbackFilename?: string): Promise<void> => {
+    const { blob, filename } = await fetchAuthenticatedFile(`/geo/layers/${layerId}/file`, {
+      timeout: GEE_TIMEOUT,
+    });
+    const objectUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = filename || fallbackFilename || `layer-${layerId}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
   },
 };

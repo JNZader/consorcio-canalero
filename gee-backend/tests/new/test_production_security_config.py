@@ -92,6 +92,9 @@ def test_martin_only_publishes_explicit_sanitized_views(config_path: str) -> Non
     assert not re.search(
         r"^    (denuncias|geo_jobs|geo_layers|geo_analisis_gee):", config, re.MULTILINE
     )
+    for uuid_view in ("vt_zonas_operativas", "vt_puntos_conflicto"):
+        section = config.split(f"    {uuid_view}:\n", 1)[1].split("    vt_", 1)[0]
+        assert "id_column:" not in section
 
 
 @pytest.mark.parametrize(

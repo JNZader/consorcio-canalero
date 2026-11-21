@@ -46,12 +46,18 @@ describe('reportsApi', () => {
     expect(apiFetch).toHaveBeenNthCalledWith(
       3,
       '/denuncias/rep-1',
-      expect.objectContaining({ method: 'PATCH' })
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ asignado_a: 'oper-1', comentario: 'asignado' }),
+      })
     );
     expect(apiFetch).toHaveBeenNthCalledWith(
       4,
       '/denuncias/rep-1',
-      expect.objectContaining({ method: 'PATCH' })
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ estado: 'resuelto', respuesta: undefined }),
+      })
     );
   });
 

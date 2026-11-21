@@ -143,6 +143,10 @@ export function MapWorkspace({
   });
   const [tab, setTab] = useState<SidebarTab>(hasSelection ? 'info' : 'capas');
   const [seenKey, setSeenKey] = useState<unknown>(selectionKey);
+  const prevSelectionRef = useRef<{ hasSelection: boolean; selectionKey: unknown }>({
+    hasSelection: false,
+    selectionKey: null,
+  });
   if (seenKey !== selectionKey) {
     setSeenKey(selectionKey);
     setTab(hasSelection ? 'info' : 'capas');
@@ -164,13 +168,17 @@ export function MapWorkspace({
   }, [isDesktop, closeDrawer]);
 
   useEffect(() => {
-    if (!hasSelection) return;
+    const prev = prevSelectionRef.current;
+    const selectionChanged =
+      hasSelection && (!prev.hasSelection || prev.selectionKey !== selectionKey);
+    prevSelectionRef.current = { hasSelection, selectionKey };
+    if (!hasSelection || !selectionChanged) return;
     if (isDesktop) {
       if (useMapWorkspaceStore.getState().sidebarCollapsed) setSidebarCollapsed(false);
-    } else if (!drawerOpened) {
+    } else {
       openDrawer();
     }
-  }, [hasSelection, selectionKey, isDesktop, drawerOpened, openDrawer, setSidebarCollapsed]);
+  }, [hasSelection, selectionKey, isDesktop, openDrawer, setSidebarCollapsed]);
 
   useEffect(() => {
     if (!showInfo) return;

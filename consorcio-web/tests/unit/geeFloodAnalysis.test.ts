@@ -222,6 +222,15 @@ describe('pollFloodAnalysisUntilDone', () => {
     expect(apiFetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it.each([401, 403, 404])('corta inmediato sin reintentos cuando GET responde QueryError %i', async (status) => {
+    apiFetchMock.mockRejectedValue(new QueryError(`HTTP ${status}`, status));
+
+    await expect(pollFloodAnalysisUntilDone('job-1')).rejects.toMatchObject({
+      statusCode: status,
+    });
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('un GET exitoso resetea el contador de transitorios', async () => {
     vi.useFakeTimers();
     try {

@@ -99,6 +99,20 @@ function normalizeUniqueDates(values: unknown): string[] {
   return [...new Set(values.filter((value): value is string => typeof value === 'string'))].sort();
 }
 
+function parseIsoYearMonthIndex(dateStr: string): { year: number; monthIndex: number } | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr.trim());
+  if (match) {
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    if (Number.isFinite(year) && Number.isFinite(month) && month >= 1 && month <= 12) {
+      return { year, monthIndex: month - 1 };
+    }
+  }
+  const parsed = new Date(dateStr);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return { year: parsed.getFullYear(), monthIndex: parsed.getMonth() };
+}
+
 function isImageScene(value: unknown): value is ImageSceneLike {
   return (
     !!value &&
@@ -247,9 +261,11 @@ export function useImageExplorerController() {
         updateTileLayer(data.tile_url);
         if (data.flood_info) {
           activeHistoricFloodRef.current = { id: floodId, date: data.flood_info.date };
-          const floodDate = new Date(data.flood_info.date);
-          setCalendarYear(floodDate.getFullYear());
-          setCalendarMonth(floodDate.getMonth());
+          const parsedFlood = parseIsoYearMonthIndex(data.flood_info.date);
+          if (parsedFlood) {
+            setCalendarYear(parsedFlood.year);
+            setCalendarMonth(parsedFlood.monthIndex);
+          }
           // Sync the calendar with the flood date WITHOUT letting the generic
           // day-fetch effect replace the historic result we just rendered.
           suppressDayFetchRef.current = data.flood_info.date;
@@ -507,11 +523,17 @@ export function useImageExplorerController() {
       signal: controller.signal,
       timeout: GEE_TIMEOUT,
     })
-      .then((data) => setAvailableDates(normalizeUniqueDates(data.dates)))
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        setAvailableDates(normalizeUniqueDates(data.dates));
+      })
       .catch((err) => {
         if (controller.signal.aborted) return;
         logger.error('Error fetching available dates:', err);
         setAvailableDates([]);
+        setError(
+          err instanceof Error ? err.message : 'No se pudieron cargar las fechas disponibles'
+        );
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoadingDates(false);
