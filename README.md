@@ -123,22 +123,22 @@ The platform covers four broad areas:
 
 | Layer | Technologies |
 |-------|--------------|
-| Backend | FastAPI, Python 3.14, SQLAlchemy 2.0, Alembic, Pydantic v2 |
-| Frontend | React 19, TypeScript, Vite 7, Mantine v8, TanStack Router, TanStack Query, Zustand |
+| Backend | FastAPI, Python 3.14+ (3.15 prod image), SQLAlchemy 2.1, Alembic, Pydantic v2 |
+| Frontend | React 19, TypeScript, Vite 8, Mantine 9, TanStack Router, TanStack Query, Zustand |
 | Database | PostgreSQL, PostGIS, GeoAlchemy2 |
 | GIS and imagery | Google Earth Engine, Rasterio, GDAL, WhiteboxTools, Shapely, PyVista |
-| Vector tiles and maps | MapLibre GL, PMTiles, Martin tile server |
+| Vector tiles and maps | MapLibre GL 6, PMTiles, Martin tile server |
 | Background processing | Celery, Redis |
 | Reporting | ReportLab, QGIS project export, KMZ export |
-| Testing | Pytest, Vitest, Playwright, Stryker |
-| Tooling | Ruff, Biome, Docker Compose, GitHub Actions |
+| Testing | Pytest, Vitest 5, Playwright, Cosmic Ray, Stryker 10 |
+| Tooling | Ruff, Biome 2, Docker Compose, GitHub Actions |
 | Hosting | Cloudflare Pages, Hetzner, GHCR |
 
 Versions reflect the manifests in `gee-backend/requirements.txt` and `consorcio-web/package.json`. Backend containers build on `python:3.15.2-slim-trixie`; the geo worker builds on the OSGeo GDAL image for native raster/vector tooling.
 
 ## Architecture
 
-The backend follows **Screaming Architecture**. The repository structure prioritizes business capabilities over technical layers, so the codebase tells you what the system does: `padron`, `denuncias`, `tramites`, `finanzas`, `reuniones`, `capas`, `monitoring`, `settings`, `geo`.
+The backend follows **Screaming Architecture**. The repository structure prioritizes business capabilities over technical layers, so the codebase tells you what the system does: `padron`, `denuncias`, `tramites`, `finanzas`, `reuniones`, `capas`, `conocimiento` (feature-flagged, off by default), `monitoring`, `settings`, `geo`.
 
 Each domain under `gee-backend/app/domains/` owns its internal slice:
 
@@ -251,6 +251,7 @@ Sub-areas include:
 - GEE-backed imagery and layer catalog.
 - Analysis jobs with asynchronous execution state.
 - An `intelligence` sub-module with endpoints for HCI, conflicts, zonification, alerts, and composite analysis.
+- Area reports (`informe_area`) with PDF/KMZ generation and token-scoped offline field packages (`/api/v2/public/campo/*`).
 - Visualization/export support including QGIS project generation and terrain outputs.
 
 ## Geospatial Capabilities
@@ -304,8 +305,9 @@ Role model:
 
 Auth mechanisms:
 
-- JWT via `fastapi-users` bearer tokens. The current frontend adapter stores the
-  session in `sessionStorage` and sends `Authorization: Bearer ...` to `/api/v2/*`.
+- JWT via `fastapi-users` bearer tokens. The frontend adapter stores the
+  access token in `sessionStorage` (`Authorization: Bearer ...` on `/api/v2/*`)
+  paired with an HttpOnly `refresh_token` cookie (`credentials: 'include'`).
 - Optional Google OAuth.
 - Refresh tokens with a `logout-all` path that revokes previously issued JWTs.
 - Invitation-based operator onboarding with activation tokens.
@@ -544,24 +546,28 @@ The frontend and backend are intentionally decoupled so the public web app can d
 
 ## CI/CD Notes
 
-The repository has four GitHub Actions workflows: frontend, backend, backend
-image publication, and CodeQL (`.github/workflows/`).
+The repository runs nine GitHub Actions workflows under `.github/workflows/`:
+`frontend.yml`, `backend.yml`, `deploy.yml`, `pages.yml`, `pages-prod-smoke.yml`,
+`e2e-canary.yml`, `sast.yml`, `codeql.yml`, and `rainfall-multi-parcel-e2e.yml`.
 
 At a high level:
 
-- Pull requests to `main` and manual frontend runs cover lint, unit/smoke
-  tests, type checking, mutation testing, the locked Playwright accessibility
-  matrix, and the production build.
-- Pull requests to `main` and manual backend runs cover Ruff, scoped strict
-  mypy, the full Pytest coverage gate, Cosmic Ray mutation testing, and Trivy.
-- CodeQL keeps JavaScript/TypeScript and Python analysis on pull requests and
-  its scheduled run.
-- Backend and geo-worker images are published only by a push to `main` after
-  the deploy workflow's quality gate passes.
+- Pull requests to `main` and manual frontend runs (`frontend.yml`) cover Biome lint,
+  unit/smoke tests, type checking, Stryker mutation testing, the locked Playwright
+  accessibility matrix, and the production build.
+- Pull requests to `main` and manual backend runs (`backend.yml`) cover Ruff,
+  scoped strict mypy, `alembic upgrade head` + full Pytest coverage gate,
+  `scripts/tests`, Cosmic Ray mutation testing, and Trivy image security gates.
+- `sast.yml` (Gitleaks + Semgrep) and `codeql.yml` (JavaScript/TypeScript and Python)
+  run on pull requests, pushes, and schedules.
+- Backend and geo-worker images (`deploy.yml`) are built and published to GHCR on pushes
+  to `main` after `tests/new/` and `tests/unit/` pass; `pages-prod-smoke.yml`,
+  `e2e-canary.yml`, and `rainfall-multi-parcel-e2e.yml` cover production smoke,
+  canary journeys, and harness E2E checks.
 - The production webhook rollout is disabled unless both its URL and
   `ENABLE_PRODUCTION_DEPLOY=true` are configured. See `DEPLOY.md`.
-- Cloudflare Pages owns frontend deployment from the connected repository; the
-  GitHub frontend workflow is a quality gate and does not deploy.
+- Cloudflare Pages serves production from `pages-production`, which `pages.yml`
+  fast-forwards only after `Frontend` CI succeeds on `main`.
 
 ## License
 

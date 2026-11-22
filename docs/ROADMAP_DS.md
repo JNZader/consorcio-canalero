@@ -23,8 +23,8 @@ Lo que no se reprodujo con un clic está marcado como hipótesis.
 este frente.
 
 No hay fechas ni costos. Un ítem no está hecho hasta que su criterio de
-aceptación pase. La implementación que acompaña este texto está en el
-árbol de trabajo y todavía no tiene commit propio: no está en `main`.
+aceptación pase. *(Nota posterior: la implementación de ET1–ET4 resumida al final
+de este documento ya fue mergeada a `main`; este texto se conserva como registro histórico del diseño y su verificación inicial.)*
 
 ## Qué se conserva
 
@@ -50,7 +50,7 @@ aceptación pase. La implementación que acompaña este texto está en el
 | `exito-6` 2,79:1 y `orange-6` 2,23:1 | Esos ratios son el tono 5 sobre blanco: `#38b058` y `#ff922b`. El tono 6 de éxito es `#2d9648` (3,77 sobre blanco, 3,13 sobre el tint del badge) y también falla AA. El tono 6 de naranja es `#9a3412` (7,31 / 5,65) y pasa. |
 | Blue/red se oscurecieron y orange no | `orange` 6–9 ya está oscuro (`theme.ts:370-380`), igual que blue y red (`theme.ts:350-368`). `exito` y `alerta` no (`theme.ts:439-463`). |
 | El oscuro semántico está sano | Éxito, alerta y aviso en tono 4 pasan sobre el tint oscuro. «En revisión» usa `#2d8f68` y no pasa (4,19 sobre `dark-7`, 3,45 sobre el tint). |
-| API de asignación sin UI | `reportsApi.assign` arma un PATCH (`reports.ts:88-96`) y ningún componente lo llama. `DenunciaUpdate` no tiene `asignado_a` (`schemas.py:39-47`). En `gee-backend` ese campo no existe. El `schema.d.ts` está viejo. |
+| API de asignación sin UI | `reportsApi.assign` arma un PATCH (`reports.ts:88-96`) y ningún componente lo llama. `DenunciaUpdate` no tiene `asignado_a` (`schemas.py:39-47`). En `gee-backend` ese campo no existe. El `schema.d.ts` está viejo. *(Actualización: implementado posteriormente en ET4-ASIG con migración `zz_denuncia_asignacion`, `GET /denuncias/operadores` y select en el modal; ya mergeado en `main`.)* |
 | Tracking público deprecado y sin reemplazo | `GET /denuncias/{id}/status` sigue montado con `deprecated=True` (`public.py:220-239`). Quien tiene cuenta ve «Mis denuncias» (`HomePage.tsx:130`). |
 | Reportar desde el mapa no existe | El botón está en `MapaPage.tsx:138-146`. En un viewport de 360×800, el 2026-11-08, su caja empezaba en `y = 933`. |
 | Tap sin join | El clic ya une `nro_cuenta` con BPA (`InfoPanel.tsx:156`, `PilarVerdeBadges.tsx:7-13`). Eso no es el padrón de personas. |
@@ -405,9 +405,8 @@ textos no prometen el mail.
 
 ### ET4-ASIG — Asignar una denuncia a un operador
 
-Definir, no iniciar. Bloqueado: el backend no tiene el campo. El helper
-del front y el `schema.d.ts` no alcanzan. Si se retoma, empieza por modelo
-y permisos, no por un select.
+**Estado:** implementado y mergeado en `main` (ver sección de estado al final).
+*(Diagnóstico histórico de 2026-11-08: el backend aún no tenía el campo; si se retomaba, debía empezar por modelo y permisos.)*
 
 ### ET4-SORT — Orden en listados paginados
 
@@ -457,12 +456,12 @@ No están abiertos. No se empiezan desde este cambio.
 10. ET3-PODA, ET3-TOKENS, ET3-EXPORT, ET3-CANCEL, en PRs chicos.
 11. Etapa 4: recién con un alcance propio por ítem.
 
-## Estado al 2026-11-09
+## Estado al 2026-11-09 (luego mergeado a `main`)
 
-La implementación de las cuatro etapas está en el árbol de trabajo de la
-rama `roadmap-ds-impl`, sobre `929eec56`. Esta sección distingue lo
-implementado (código escrito), lo validado (probado) y lo pendiente.
-El código no está commiteado a `main`.
+La implementación de las cuatro etapas se desarrolló inicialmente en la rama
+`roadmap-ds-impl`, sobre `929eec56`, y posteriormente fue mergeada a `main`
+(con sus hallazgos de auditoría cerrados en PRs `#765`–`#774`). Esta sección conserva el registro de lo
+implementado (código escrito), lo validado (probado) y lo pendiente en ese corte.
 
 ### Implementado y validado
 

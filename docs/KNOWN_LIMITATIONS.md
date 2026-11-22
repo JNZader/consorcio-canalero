@@ -349,24 +349,8 @@ schemas. Two remain. Both have shapes that don't fit the standard
 
 ## Builds / bundles
 
-### Mantine CSS imports stay monolithic
+### ~~Mantine CSS imports stay monolithic~~ — RESOLVED in Wave C1 (Mantine 9)
 
-Phase 3 / F3-D evaluated swapping `@mantine/core/styles.css` for 43
-per-component imports. The uncompressed 228 KB compresses to ~30 KB
-gzipped + SW cache for a year. The migration is mechanically safe but
-the surface for "forgot to import the CSS of a Tooltip" bugs is
-large.
+Originally documented (Phase 3 / F3-D): `@mantine/core/styles.css` was loaded monolithically, and Mantine 9.2.1 did not yet eliminate CSS imports.
 
-**Status** (Phase 5 / F5-L, 2026-05-20): deferred indefinitely.
-Mantine 9.x released (currently 9.2.1) did NOT bring the CSS
-tree-shaking story we were waiting on — the maintainers confirmed in
-discussion #500 that components stay ESM with monolithic CSS, and
-`optimizePackageImports` continues to be the recommended JS-side
-optimisation (which we already have). The patch upgrade
-`8.3.14 → 8.3.18` was applied to capture the bug fixes within 8.x
-without breaking changes; the major 8 → 9 jump (~2-4h, new TreeSelect
-/ SankeyChart / RollingNumber) brings no concrete value for our
-current screens, so we stay on 8.x.
-
-**Trigger to revisit**: a 9.x-only component lands that we actually
-need, OR Mantine ships real CSS tree-shaking in a future version.
+**Resolved**: Mantine `9.8.1` is now active in `consorcio-web/package.json` and `consorcio-web/src/main.tsx` imports per-component `@mantine/core/styles/*.css` stylesheets alongside `@mantine/notifications`, `@mantine/dropzone`, and `@mantine/dates` styles.

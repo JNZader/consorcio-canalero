@@ -1,7 +1,0 @@
-[32m15:14:07 (1614901) INFO ProjectReader[39m Found 3 of 772 file(s) to be mutated.
-[32m15:14:07 (1614901) INFO Instrumenter[39m Instrumented 3 source file(s) with 198 mutant(s)
-[32m15:14:09 (1614901) INFO ConcurrencyTokenProvider[39m Creating 4 test runner process(es).
-[32m15:14:09 (1614901) INFO Sandbox[39m In place mode is enabled, Stryker will be overriding YOUR files. Find your backup at: .stryker-tmp/backup-3676GF
-[32m15:14:09 (1614901) INFO DryRunExecutor[39m Starting initial test run (command test runner with "off" coverage analysis). This may take a while.
-[32m15:14:35 (1614901) INFO DryRunExecutor[39m Initial test run succeeded. Ran 1 tests in 25 seconds (net 25909 ms, overhead 1 ms).
-Detecting unexpected exit, recovering original files from .stryker-tmp/backup-3676GF

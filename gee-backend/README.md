@@ -31,8 +31,8 @@ Backend FastAPI con arquitectura por dominios (Screaming Architecture), PostgreS
 | Componente | Tecnología |
 |------------|------------|
 | **Framework** | FastAPI |
-| **Lenguaje** | Python 3.11+ |
-| **ORM** | SQLAlchemy 2.0 (declarative + Mapped) |
+| **Lenguaje** | Python 3.14+ (imagen prod 3.15) |
+| **ORM** | SQLAlchemy 2.1 (declarative + Mapped) |
 | **Migrations** | Alembic |
 | **Schemas** | Pydantic v2 |
 | **Auth** | fastapi-users (JWT + OAuth2) |
@@ -59,7 +59,7 @@ Cada dominio sigue el patrón:
 
 ```
 domain/
-├── models.py       # SQLAlchemy 2.0 (Mapped, mapped_column)
+├── models.py       # SQLAlchemy 2.1 (Mapped, mapped_column)
 ├── schemas.py      # Pydantic v2 (request/response)
 ├── repository.py   # Data access (SELECT/INSERT/UPDATE)
 ├── service.py      # Business logic, orquesta repository + reglas
@@ -243,6 +243,7 @@ gee-backend/
 │   │   ├── finanzas/
 │   │   ├── reuniones/
 │   │   ├── capas/
+│   │   ├── conocimiento/             # QA legal / buzón RAG (flag off por defecto)
 │   │   ├── monitoring/
 │   │   ├── settings/
 │   │   └── geo/
@@ -252,6 +253,7 @@ gee-backend/
 │   ├── core/                         # Logging, exceptions, rate limiting
 │   └── shared/                       # Utilidades cross-domain
 ├── tests/
+│   ├── unit/                         # Tests unitarios y contratos (sin DB)
 │   └── new/                          # Tests de la nueva arquitectura
 │       ├── conftest.py               # Fixtures: db, db_session_factory, test_engine
 │       └── (tests por dominio)

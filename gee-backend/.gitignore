@@ -64,6 +64,7 @@ logs/
 .mypy_cache/
 .ruff_cache/
 .cosmic-ray.sqlite
+.cr-session
 
 # === OS ===
 .DS_Store
