@@ -48,7 +48,13 @@ more unfixed `libsqlite3-0@3.46.1-7+deb13u2` HIGH rows (CVE-2026-119374,
 CVE-2026-119379 — no `FixedVersion`, same class as the util-linux debt). The
 multiset was regenerated from that PR's own CI Trivy report (55 rows, +2/-0,
 provenance unchanged per the 2026-10-21 precedent) and verified with
-`validate` against that report before commit. See the consolidated evidence block in
+`validate` against that report before commit. On 2026-11-21 PR #774 (run
+44965196948) encountered three more unfixed HIGH rows (`CVE-2026-124709`,
+OpenSSL QUIC stream-handling memory leak, no `FixedVersion`) on
+`libssl3t64`, `openssl`, and `openssl-provider-legacy` (`3.5.9-1~deb13u1`);
+the multiset was regenerated from that CI report (58 rows, +3/-0, provenance
+unchanged) and verified with `validate` against that report before commit.
+See the consolidated evidence block in
 `scripts/validate_image_security_policy.py`.
 
 Frontend Alpine `nginx`/`libxml2` debt is separate from this Debian baseline.

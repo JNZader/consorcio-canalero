@@ -171,6 +171,11 @@ PLATFORM = "linux/amd64"
 # 2026-11-17: +2 libsqlite3-0 HIGH sin fix (CVE-2026-119374/-119379, drift de
 # trixie visto en el build del PR #729) -> 55 filas; multiset regenerado del
 # reporte Trivy de ese mismo run de CI y validado contra el antes del commit.
+# 2026-11-21: +3 openssl/libssl3t64/openssl-provider-legacy@3.5.9-1~deb13u1
+# HIGH affected sin FixedVersion (CVE-2026-124709, QUIC stream handling
+# memory leak; drift de trixie visto en PR #774 / run 44965196948) -> 58
+# filas; multiset regenerado del reporte Trivy de ese run y validado antes
+# del commit.
 # Palanca externa: un digest nuevo de python:3.14-slim-trixie no ayuda (misma
 # trixie); solo Debian 13.8 o un DSA puntual bajan filas.
 #

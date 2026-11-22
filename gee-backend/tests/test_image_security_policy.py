@@ -476,13 +476,18 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     # libsqlite3-0 3.46.1-7+deb13u2, HIGH affected, sin FixedVersion (drift
     # de trixie visto en el build del PR #729). Multiset regenerado del
     # reporte Trivy de ese run de CI y validado contra el antes del commit.
-    assert len(backend_findings) == 55
-    assert sum(finding["count"] for finding in backend_findings) == 55
+    # 55 -> 58 el 2026-11-21: CVE-2026-124709 sobre libssl3t64, openssl y
+    # openssl-provider-legacy 3.5.9-1~deb13u1, HIGH affected, sin FixedVersion
+    # (OpenSSL QUIC stream-handling memory leak; drift de trixie visto en
+    # PR #774 / run 44965196948). Multiset regenerado del reporte Trivy de ese
+    # run de CI y validado contra el antes del commit.
+    assert len(backend_findings) == 58
+    assert sum(finding["count"] for finding in backend_findings) == 58
     assert {finding["count"] for finding in backend_findings} == {1}
     assert {finding["target"] for finding in backend_findings} == {"<image> (debian 13.7)"}
-    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 54
+    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 57
     assert sum(finding["severity"] == "CRITICAL" for finding in backend_findings) == 1
-    assert sum(finding["status"] == "affected" for finding in backend_findings) == 54
+    assert sum(finding["status"] == "affected" for finding in backend_findings) == 57
     assert sum(finding["status"] == "fix_deferred" for finding in backend_findings) == 1
     assert all(finding["fixed"] == "" for finding in backend_findings)
     assert all("layer" not in finding for finding in backend_findings)
@@ -529,6 +534,9 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
         finding["pkg_id"].partition("@")[0]: finding["installed"] for finding in backend_findings
     }
     assert "libexpat1" not in installed_by_package
+    assert installed_by_package["libssl3t64"] == "3.5.9-1~deb13u1"
+    assert installed_by_package["openssl"] == "3.5.9-1~deb13u1"
+    assert installed_by_package["openssl-provider-legacy"] == "3.5.9-1~deb13u1"
     assert installed_by_package["perl-base"] == "5.40.1-6+deb13u1"
     assert installed_by_package["util-linux"] == "2.41.5-0+deb13u1"
     rows_by_cve = {
@@ -546,6 +554,7 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
         "CVE-2026-119373": ["libsqlite3-0"],
         "CVE-2026-119374": ["libsqlite3-0"],
         "CVE-2026-119379": ["libsqlite3-0"],
+        "CVE-2026-124709": sorted(OPENSSL_HOTFIX_PACKAGES),
         "CVE-2026-16742": ["libsystemd0", "libudev1"],
         "CVE-2026-54369": ["libacl1"],
         "CVE-2026-6653": ["libxml2"],
