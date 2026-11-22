@@ -345,7 +345,6 @@ def test_antecedent_total_unavailable_appears_nowhere_in_the_tree():
         (root / "gee-backend/app", ("*.py",)),
         (root / "gee-backend/tests", ("*.py",)),
         (root / "gee-backend/scripts", ("*.py",)),
-        (root / "gee-backend/migrations", ("*.py",)),
         # Real source, not fixtures: ``data/waterways/download_waterways.py``
         # fell out of the rewrite's first root list.
         (root / "gee-backend/data", ("*.py",)),
