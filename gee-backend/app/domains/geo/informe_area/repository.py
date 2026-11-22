@@ -24,6 +24,7 @@ from app.domains.geo.informe_area.models import InformeArea
 _EN_CURSO = (EstadoGeoJob.PENDING, EstadoGeoJob.RUNNING)
 
 LISTA_LIMITE = 100
+BORRAR_VENCIDOS_BATCH_SIZE = 500
 
 
 class InformeAreaRepository:
@@ -168,9 +169,28 @@ class InformeAreaRepository:
         db.commit()
         return int(getattr(result, "rowcount", 0) or 0) == 1
 
-    def borrar_vencidos(self, db: Session, *, ahora: datetime | None = None) -> int:
-        """Delete every row past its retention deadline (S11)."""
+    def borrar_vencidos(
+        self,
+        db: Session,
+        *,
+        ahora: datetime | None = None,
+        batch_size: int = BORRAR_VENCIDOS_BATCH_SIZE,
+    ) -> int:
+        """Delete rows past their retention deadline in bounded batches (S11)."""
         corte = ahora or datetime.now(timezone.utc)
-        result = db.execute(delete(InformeArea).where(InformeArea.vence_at < corte))
-        db.commit()
-        return int(getattr(result, "rowcount", 0) or 0)
+        limite = max(1, int(batch_size))
+        total_borrados = 0
+        while True:
+            lote_ids = (
+                select(InformeArea.id)
+                .where(InformeArea.vence_at < corte)
+                .order_by(InformeArea.vence_at.asc(), InformeArea.id.asc())
+                .limit(limite)
+            )
+            result = db.execute(delete(InformeArea).where(InformeArea.id.in_(lote_ids)))
+            db.commit()
+            borrados = int(getattr(result, "rowcount", 0) or 0)
+            total_borrados += borrados
+            if borrados < limite:
+                break
+        return total_borrados

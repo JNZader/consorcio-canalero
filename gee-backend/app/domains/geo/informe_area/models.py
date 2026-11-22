@@ -26,7 +26,18 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, LargeBinary, String, Text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    desc,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -34,6 +45,9 @@ from app.db.base import Base, TimestampMixin, UUIDMixin
 from app.domains.geo.models import EstadoGeoJob
 
 VERSION_CLAVE_MAX = 600
+PDF_BYTES_DB_MAX = 20 * 1024 * 1024  # 20 MiB hard ceiling (soft budget is 5 MB)
+KMZ_BYTES_DB_MAX = 25 * 1024 * 1024  # 25 MiB hard ceiling
+CAMPO_PAQUETE_DB_MAX = 20 * 1024 * 1024  # 20 MiB hard ceiling (soft target is 15 MB)
 
 
 class InformeArea(UUIDMixin, TimestampMixin, Base):
@@ -45,6 +59,23 @@ class InformeArea(UUIDMixin, TimestampMixin, Base):
         Index("ix_informes_area_usuario_version", "usuario_id", "version_clave"),
         # The retention sweep scans this daily (S11).
         Index("ix_informes_area_vence_at", "vence_at"),
+        # Job status filters and per-user ceiling counts.
+        Index("ix_informes_area_estado", "estado"),
+        # Listing page: filter by usuario_id ordered by created_at DESC.
+        Index("ix_informes_area_usuario_created_at", "usuario_id", desc("created_at")),
+        # Hard DB ceilings preventing pathological blob bloat in TOAST / pg_dump.
+        CheckConstraint(
+            f"pdf_bytes IS NULL OR octet_length(pdf_bytes) <= {PDF_BYTES_DB_MAX}",
+            name="ck_informes_area_pdf_bytes_size",
+        ),
+        CheckConstraint(
+            f"kmz_bytes IS NULL OR octet_length(kmz_bytes) <= {KMZ_BYTES_DB_MAX}",
+            name="ck_informes_area_kmz_bytes_size",
+        ),
+        CheckConstraint(
+            f"campo_paquete IS NULL OR octet_length(campo_paquete) <= {CAMPO_PAQUETE_DB_MAX}",
+            name="ck_informes_area_campo_paquete_size",
+        ),
     )
 
     usuario_id: Mapped[uuid.UUID] = mapped_column(
