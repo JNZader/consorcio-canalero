@@ -1,0 +1,7 @@
+# OWASP ZAP baseline rules configuration
+# Format: <rule-id>\t<IGNORE|WARN|FAIL>\t(optional note)
+# Passive scan stays non-destructive; informational SPA/HTTP status rules are
+# downgraded or silenced while real header, CSP, cookie, and leak findings remain WARN/FAIL.
+10096	IGNORE	(Timestamp Disclosure - Unix; noisy on Vite bundles and JSON timestamps)
+10049	WARN	(Storable and Cacheable Content - informational cache guidance)
+100000	WARN	(A Client Error response code was returned by the server - expected on 404 routes)

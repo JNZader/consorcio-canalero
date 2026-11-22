@@ -919,6 +919,28 @@ Compare against the equivalent values in
 hand-edited the server's compose without updating the repo —
 reconcile before the next deploy.
 
+### 4.2 Load test & DAST baseline
+
+- **Load test (`scripts/load_test.py`)**: stdlib-only concurrent harness
+  covering `/live`, `/ready`, `/api/v2/public/layers/catalog`,
+  `POST /api/v2/geo/analisis-zona`, `GET /api/v2/public/campo/{token}`, and
+  `GET /api/v2/geo/informes-area/{id}/pdf`.
+  ```bash
+  # Local or staging target (production hostnames fail closed unless --allow-prod)
+  python3 scripts/load_test.py --base-url http://127.0.0.1:8000 --scenario smoke-public --requests 20 --concurrency 4
+
+  # Explicit production smoke / load check with token via env var (never CLI flag)
+  LOAD_TEST_BEARER_TOKEN="<jwt>" python3 scripts/load_test.py \
+    --base-url https://cc10demayo-api.javierzader.com --allow-prod \
+    --scenario all --informe-id "<uuid>" --campo-token "<token>" --json-out /tmp/load.json
+  ```
+- **DAST passive scan (`.github/workflows/dast.yml`)**: on-demand `workflow_dispatch`
+  OWASP ZAP baseline scan pinned by digest (`rules.tsv` in `.zap/rules.tsv`)
+  and restricted to an explicit allowlist of Cloudflare Pages and Hetzner URLs:
+  ```bash
+  gh workflow run dast.yml -f target_url=https://consorcio-canalero.pages.dev
+  ```
+
 ---
 
 ## 5. Where things live
@@ -930,7 +952,7 @@ reconcile before the next deploy.
 | Backend, geo-worker, martin | Hetzner CX33 — `/home/javier/stacks/consorcio` |
 | Postgres + Redis | Same VPS, shared across stacks |
 | Container registry | `ghcr.io/jnzader/consorcio-canalero` |
-| CI/CD | GitHub Actions — `.github/workflows/{frontend,backend,deploy,pages,pages-prod-smoke,e2e-canary,sast,codeql,rainfall-multi-parcel-e2e}.yml` |
+| CI/CD | GitHub Actions — `.github/workflows/{frontend,backend,deploy,pages,pages-prod-smoke,e2e-canary,sast,codeql,rainfall-multi-parcel-e2e,dast}.yml` |
 | Tile server | `https://cc10demayo-tiles.javierzader.com` (Martin) |
 | API | `https://cc10demayo-api.javierzader.com` |
 | Sentry | <https://sentry.io> (when configured) |
