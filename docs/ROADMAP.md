@@ -7,7 +7,7 @@
 > carpetas de exploración puntuales pueden quedar sin commitear) — y la memoria
 > persistente de sesión (engram, proyecto `consorcio-canalero`).
 >
-> Última actualización del arco de producto, RAG y box: **2026-10-24** · Mantiene: @javier
+> Última actualización del arco de producto, RAG y box: **2026-11-21** · Mantiene: @javier
 >
 > Plan de design system y componentes (2026-11-08): [`docs/ROADMAP_DS.md`](ROADMAP_DS.md).
 > Sustituye las olas de la PR #681. Este archivo no las agenda.
@@ -39,6 +39,8 @@
 | **Wave C3 — Vite 8** | #327 | `vite` 7 → 8, `@vitejs/plugin-react` 6; `rolldownOptions` code-splitting. |
 | **Wave C4 — toolchain FE** | #328 | Vitest 5, Stryker 10, Biome 2; pre-commit Biome alineado. |
 | **Wave C5 — SQLAlchemy 2.1 + psycopg3** | #329 | SQLAlchemy 2.1.1, `psycopg[binary]` 3.x; URLs `postgresql+psycopg://`; `.sqlstate` en timeouts ficha. |
+| **Informes de Área + Campo Offline + DS/ImageExplorer** | #681–#760 | Informes privados por área (PDF/KMZ/paquete de campo offline con token), etapas ET1–ET4 de `ROADMAP_DS.md` (`asignado_a`, `POST /denuncias/bulk`, filtros URL, contraste AA) y rediseño de ImageExplorer. |
+| **Remediación Auditoría 2026-11-20 (Olas 0–7A)** | #765–#774 | Cierre de los 20 hallazgos críticos y warnings de seguridad, PostGIS/Alembic, CI/testing/RUM, backend, `informe_area`, frontend, DB hygiene, ops y Docker hardening. |
 
 ## ✅ RAG — cadena COMPLETA (2026-08-25)
 
@@ -61,9 +63,9 @@ Las 10 unidades de `consorcio-conocimiento-semantico` mergeadas: U1 #217 · U2 #
 ## 🗄️ Backlog (anotado, sin apuro)
 
 - ~~**Reaper de `geo_jobs`**~~ ✅ 2026-08-31: `reconcile_stale_geo_jobs` ya existía (15 min / 300 min). Idle 45 min + heartbeat en DEM `run_step` y cómputo de cruces; GEE sin heartbeat queda en 300 min. RUNNING huérfano → `error=worker_lost`.
-- **Sunset image-policy: revisar antes del 2026-12-12.** Prorrogado el 2026-10-12 (2026-10-31 → 2026-12-12) porque el tracker Debian (trixie) sigue `vulnerable` / `no-dsa` para las filas congeladas (libxml2 CVE-2026-6653, expat CVE-2026-77214, util-linux CVE-2026-76642); sid/forky ya las tiene, trixie no. Sin `FixedVersion` no hay hotfix. Prórroga previa 2026-09-24 (2026-09-18 → 2026-10-31) sí vino con remediación real: Debian 13.7 habilitó `perl-base 5.40.1-6+deb13u1`, `gzip 1.13-1+deb13u1`, `libsqlite3-0 3.46.1-7+deb13u2` y trixie-security `libpcre2-8-0 10.46-1~deb13u2`; los cuatro van como hotfix `--only-upgrade` en el Dockerfile (salen 7 perl + 1 gzip + 2 sqlite del baseline). La DB del día reveló deuda nueva sin fix en trixie (util-linux ×36, libxml2 +7, libexpat1 +3, systemd ×2): baseline backend **56 filas (55 HIGH + 1 CRITICAL)**, 0 con `FixedVersion`. Palanca: Debian 13.8 o DSA puntual; un digest nuevo de `python:3.11-slim-trixie` no ayuda. El 2026-10-21 el reporte Trivy de la imagen de producción dejó de traer las cinco filas `libexpat1@2.8.3-1~deb13u1`; el baseline bajó de 57 a 52. CVE-2026-92392 del geo-worker tiene fix (`libcurl` 8.18.0-1ubuntu2.8) y se actualiza en `Dockerfile.geo`, no se congela.
+- **Sunset image-policy: revisar antes del 2026-12-12.** Prorrogado el 2026-10-12 (2026-10-31 → 2026-12-12) porque el tracker Debian (trixie) sigue `vulnerable` / `no-dsa` para las filas congeladas (`libxml2` CVE-2026-6653, `util-linux` CVE-2026-76642, etc.); sid/forky ya las tiene, trixie no. Sin `FixedVersion` no hay hotfix. Refrescos posteriores en trixie: `2026-10-21` (-5 `libexpat1`), `2026-11-02`/`03`/`06` (reemplazo upstream de `zlib`/`expat`), `2026-11-17` (+2 `libsqlite3-0` en PR #732) y `2026-11-21` (+3 `openssl`/`libssl3t64`/`openssl-provider-legacy` CVE-2026-124709 en PR #774). Baseline backend vigente: **58 filas (57 HIGH + 1 CRITICAL)**, 0 con `FixedVersion`, sunset `2026-12-12`. Geo-worker se mantiene en 0 filas congeladas con `--only-upgrade` en `Dockerfile.geo`.
 - **Frontend nginx:** pin `nginx:1.30.6-alpine` (Alpine 3.24, paquetes de nginx.org). Trivy 0.70 ya no marca **CVE-2026-6732** (`libxml2`) ni los tres HIGH de nginx 1.30.5-r1 (CVE-2026-15176, CVE-2026-93479, CVE-2026-97205). El repo de Alpine seguía en 1.30.5-r1, así que el arreglo es el pin, no `apk upgrade`. Sigue el `apk upgrade` de libexpat, pcre2 y tiff. Dependabot ignora `>= 1.31`.
-- **Decisión estructural**: ¿commitear `openspec/changes/`? Hoy untracked — permitió el drift que U2 pagó. La reconciliación manual con `diff -r` es el paliativo vigente.
+- **Artefactos OpenSpec en git**: `openspec/changes/` ya está trackeado en `git` (decisión adoptada desde `2026-10`, ver encabezado); solo carpetas de exploración locales pueden quedar sin commitear.
 - Follow-up router: bajar `mixto→legal` (hoy 2/13) vía tuning de banda/piso — re-medición en U9 con más gold.
 - Follow-ups RAG fuera del gate: re-chunk de las 10 unidades gigantes (fix principled de D-8), más gold de retrieval, juicio abierto del decreto 3780-C/65 (matchea por PDF de OTRO documento).
 - ~~Limpieza worktrees + containers de ablación~~ ✅ 2026-09-24: 52 worktrees mergeados removidos; `consorcio-rag-o3` / `consorcio-rag-eval-pg` borrados (estaban Exited). Queda eventual leftover `consorcio-expat-20260831` (cache trivy root-owned) si `sudo rm` no corre. Imágenes rmeh: sin apuro.
@@ -72,7 +74,7 @@ Las 10 unidades de `consorcio-conocimiento-semantico` mergeadas: U1 #217 · U2 #
 
 | Qué | Dónde |
 |---|---|
-| Artefactos SDD (proposal/design/specs/tasks) | `openspec/changes/<change>/` — **untracked**, copias en checkout principal + worktrees, reconciliadas con `diff -r` |
+| Artefactos SDD (proposal/design/specs/tasks) | `openspec/changes/<change>/` — **trackeados en git** |
 | Reportes empíricos RAG (eval, diagnóstico, reranker, campaña recall) | `docs/rag/*.md` (untracked) + `gee-backend/artifacts/rag/` (gitignored — incluye gold del router ratificado) |
 | Gold privado de retrieval + corpus legal | `~/Escritorio/consorcio/` (fuera del repo, checkout pineado `12043582`) |
 | Memoria de decisiones/lecciones | engram, proyecto `consorcio-canalero` (topic keys `sdd/*`, `rag/*`, `backlog/*`) |

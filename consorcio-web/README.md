@@ -26,23 +26,23 @@ Aplicación React 19 con visor cartográfico interactivo, panel de administraci�
 
 | Componente | Tecnología |
 |-----------|------------|
-| **Framework** | React 19 + Vite 7 |
+| **Framework** | React 19 + Vite 8 |
 | **Lenguaje** | TypeScript |
 | **Routing** | TanStack Router |
 | **State** | Zustand + TanStack Query |
-| **UI** | Mantine v8 |
-| **Mapas** | MapLibre GL + PMTiles |
+| **UI** | Mantine 9 |
+| **Mapas** | MapLibre GL 6 + PMTiles |
 | **3D** | Terrain integrado en MapLibre + backend geo/render para PNG/MP4 |
 | **Geo cálculos** | Turf.js (`@turf/*`) |
 | **Drawing tools** | `@mapbox/mapbox-gl-draw` con compatibilidad sobre MapLibre |
 | **Charts** | Recharts |
-| **Formularios** | Mantine Form + Zod (validación) |
+| **Formularios** | Mantine Form |
 | **HTTP** | Fetch nativo + interceptors |
 | **Auth** | JWT del backend + Google OAuth |
-| **Lint / Format** | Biome |
-| **Tests** | Vitest + Testing Library |
+| **Lint / Format** | Biome 2 |
+| **Tests** | Vitest 5 + Testing Library |
 | **E2E** | Playwright |
-| **Mutation testing** | Stryker |
+| **Mutation testing** | Stryker 10 |
 | **Hosting** | Cloudflare Pages |
 
 ---
@@ -196,7 +196,7 @@ Servidor disponible en `http://localhost:5173`.
 | `npm run preview` | Preview local del build |
 | `npm test` | Tests unitarios con Vitest |
 | `npm run test:coverage` | Tests + reporte de cobertura |
-| `npm run test:mutation` | Mutation testing con Stryker (canales-format) |
+| `npm run mutation:run` | Mutation testing con Stryker |
 | `npm run lint` | Linting con Biome |
 | `npm run lint:fix` | Lint + autofix |
 | `npx playwright test` | Tests E2E |
@@ -286,7 +286,7 @@ Definir en el dashboard de Cloudflare:
 - `VITE_API_URL` — URL pública del backend.
 - `VITE_MARTIN_URL` — URL pública del Martin tile server (si aplica).
 
-Cada push a `main` dispara un build automático de Cloudflare Pages.
+Cada push a `main` pasa por `Frontend` CI y `pages.yml` promueve `pages-production`, desde donde despliega Cloudflare Pages.
 
 ---
 

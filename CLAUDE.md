@@ -12,7 +12,7 @@ run on the box. It does not run Alembic.
 
 ### Stack
 
-- **Frontend**: React 19, TypeScript, Vite, Mantine UI, MapLibre GL (`consorcio-web/`)
+- **Frontend**: React 19, TypeScript, Vite 8, Mantine 9, MapLibre GL 6 (`consorcio-web/`)
 - **Backend**: FastAPI, Python 3.14+ (3.15 prod image), SQLAlchemy 2.1, Alembic, fastapi-users (`gee-backend/`)
 - **Database**: PostgreSQL + PostGIS
 - **Auth**: JWT (fastapi-users) + optional Google OAuth
@@ -34,9 +34,10 @@ consorcio-canalero/
 │   │   │   └── migrations/     # Alembic migrations
 │   │   ├── domains/            # Screaming Architecture domains
 │   │   │   ├── capas/          # Map layers management
+│   │   │   ├── conocimiento/   # Legal QA / RAG mailbox (feature-flagged, default off)
 │   │   │   ├── denuncias/      # Citizen reports
 │   │   │   ├── finanzas/       # Finance (ingresos, gastos, presupuestos)
-│   │   │   ├── geo/            # Geo processing + GEE + tiles + intelligence
+│   │   │   ├── geo/            # Geo processing + GEE + tiles + intelligence + informe_area
 │   │   │   ├── monitoring/     # Sugerencias + GEE analysis tracking
 │   │   │   ├── padron/         # Consorcista registry
 │   │   │   ├── reuniones/      # Meeting minutes + agenda
@@ -44,6 +45,7 @@ consorcio-canalero/
 │   │   │   └── tramites/       # Procedures + tracking
 │   │   ├── core/               # Logging, exceptions, rate limiting
 │   │   └── shared/             # Cross-domain utilities
+│   ├── tests/unit/             # Unit & contract tests (no DB fixture)
 │   ├── tests/new/              # Tests for new architecture
 │   └── alembic.ini
 ├── setup.sh                    # Clone-and-deploy setup script
@@ -58,7 +60,7 @@ Each domain under `gee-backend/app/domains/` follows the same pattern:
 
 ```
 domain/
-├── models.py       # SQLAlchemy 2.0 models (Mapped, mapped_column)
+├── models.py       # SQLAlchemy 2.1 models (Mapped, mapped_column)
 ├── schemas.py      # Pydantic v2 schemas (request/response)
 ├── repository.py   # Data access layer (SELECT/INSERT/UPDATE only)
 ├── service.py      # Business logic (orchestrates repository + rules)
@@ -141,11 +143,13 @@ All new endpoints are under `/api/v2`. Key route groups:
 | `/api/v2/tramites/*` | Procedures | Operator+ |
 | `/api/v2/reuniones/*` | Meeting minutes + agenda | Operator+ |
 | `/api/v2/capas/*` | Map layers | Operator+ |
-| `/api/v2/geo/*` | Geo processing + GEE + tiles | Operator+ |
+| `/api/v2/conocimiento/*` | Legal QA / RAG mailbox (off by default) | Operator+ |
+| `/api/v2/geo/*` | Geo processing + GEE + tiles + informes-area | Operator+ |
 | `/api/v2/monitoring/*` | Sugerencias + analysis | Varies |
 | `/api/v2/settings/*` | System settings | Operator+ (read), Admin (write) |
-| `/api/v2/public/*` | Public viewer, branding | No auth |
+| `/api/v2/public/*` | Public viewer, branding, `/public/campo/*` | No auth (token for campo) |
 | `/api/v2/admin/publish/*` | Layer publication | Admin |
+| `/api/v2/admin/suelos/*` | Soils matview maintenance | Admin |
 | `/api/v2/admin/users/*` | User administration | Admin |
 | `/api/v2/admin/invitations/*` | Invitations | Admin |
 
@@ -210,5 +214,5 @@ Pattern: real database, transaction-per-test, no mocking for data access.
 
 ---
 
-Last updated: 2026-10-24
+Last updated: 2026-11-21
 Maintained by: @javier

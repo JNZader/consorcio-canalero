@@ -872,3 +872,49 @@ def test_wave7_ops_docker_and_resource_limits_contracts() -> None:
     assert "app.domains.geo.etl.idecor_suelos_50mil" in etl_sh
     for rel in ("deploy/backup.timer", "deploy/etl-refresh.sh", "deploy/README-etl-cron.md"):
         assert "03:00" not in _read(rel), rel
+
+
+def test_wave7b_dead_residues_removed_and_docs_aligned() -> None:
+    removed_paths = (
+        "gee-backend/.cr-session",
+        "gee-backend/koyeb.yaml",
+        "gee-backend/migrations",
+        "odd",
+        "consorcio-web/ACCESSIBILITY_AUDIT_REPORT.md",
+        "consorcio-web/ANALISIS_PROBLEMAS_2026.md",
+        "consorcio-web/BASELINE_RESULTS.md",
+        "consorcio-web/PHASE2_EXECUTION_PLAN.md",
+        "consorcio-web/REAL_HOOKS_TESTING_PATTERNS.md",
+        "consorcio-web/ROADMAP_MEJORAS.md",
+        "consorcio-web/analyze-mutations.sh",
+        "consorcio-web/extract-all-scores.sh",
+        "consorcio-web/extract-scores.sh",
+        "consorcio-web/mutation-results.txt",
+        "consorcio-web/phase-3-analysis.md",
+        "consorcio-web/run-stryker-for-hook.sh",
+    )
+    for rel in removed_paths:
+        assert not (REPO_ROOT / rel).exists(), f"Dead residue still exists: {rel}"
+
+    assert ".cr-session" in _read("gee-backend/.gitignore")
+
+    runbook = _read("docs/RUNBOOK.md")
+    for bad in (" worker celery-worker", "backend geo-worker worker", "(see 4.1)"):
+        assert bad not in runbook, bad
+
+    for rel in ("README.md", "README.es.md", "consorcio-web/README.md", "gee-backend/README.md"):
+        doc = _read(rel)
+        for stale in (
+            "Vite 7",
+            "Mantine v8",
+            "SQLAlchemy 2.0",
+            "Python 3.11+",
+            "GitHub Pages, Fly",
+        ):
+            assert stale not in doc, f"{rel}: stale {stale!r}"
+
+    roadmap = _read("docs/ROADMAP.md")
+    backlog_and_locations = roadmap.split("## 🗄️ Backlog", 1)[1]
+    assert "`openspec/changes/<change>/` — **trackeados en git**" in backlog_and_locations
+    assert "hoy untracked" not in backlog_and_locations.lower()
+    assert "`openspec/changes/<change>/` — **untracked**" not in backlog_and_locations.lower()

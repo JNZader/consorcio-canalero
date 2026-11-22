@@ -26,8 +26,8 @@ docker compose logs --tail 200 backend | jq -c 'select(.level=="error")'
 # Restart a service safely
 docker compose restart backend
 
-# Full redeploy from main (build local)
-git pull origin main && docker compose up -d --build backend worker celery-beat geo-worker
+# Full box redeploy from main (preserves host compose + umask 022; never runs Alembic)
+./scripts/deploy-box.sh
 ```
 
 ---
@@ -49,7 +49,7 @@ configuration disables all three. To turn them on:
    SENTRY_DSN=https://<key>@<org>.ingest.us.sentry.io/<project_id>
    SENTRY_TRACES_SAMPLE_RATE=0.0   # bump to 0.1 if you want perf traces
    ```
-   Then `docker compose up -d backend worker celery-worker`.
+   Then `docker compose up -d backend worker` (en `docker-compose.prod.yml` usar `celery-worker` en lugar de `worker`).
 5. **Frontend**: Cloudflare Pages → project → *Settings → Environment
    variables*. Add:
    ```
@@ -76,7 +76,7 @@ configuration disables all three. To turn them on:
    BETTERSTACK_TOKEN=<token from FastAPI source>
    # BETTERSTACK_HOST=https://eu1.logs.betterstack.com   # only if EU region
    ```
-   `docker compose up -d backend worker celery-worker`.
+   `docker compose up -d backend worker` (en `docker-compose.prod.yml` usar `celery-worker`).
 5. **Frontend** Cloudflare Pages env vars:
    ```
    VITE_LOGTAIL_TOKEN=<token from JS/Browser source>
@@ -232,6 +232,23 @@ SPF/DKIM/DMARC.
    API (Brevo, Resend, SES all have a transactional API alongside
    SMTP) which doesn't leave the token in a stored body.
 
+### 1.6 Things that look weird but are by design
+
+See **[docs/KNOWN_LIMITATIONS.md](./KNOWN_LIMITATIONS.md)** for the full
+list with rationale + expected-fix milestones. Quick reference:
+
+- Boot logs deduplication under 2 uvicorn workers was resolved in F5-N (`worker_id` in structured logs).
+- PWA icons are a green "CC" placeholder; replace under
+  ``consorcio-web/public/icons/`` (resolved in F5-M per `KNOWN_LIMITATIONS.md`).
+- Celery DB pool intentionally smaller than backend (5+5 vs 20+20).
+- ``celery-beat`` is a singleton — do NOT ``--scale celery-beat=2``.
+- ``logout-all`` has a ≤15 min residual access-token window.
+- SMTP message bodies log to provider; switch to API mode to avoid.
+- Refresh-token replay-detection timing has a microsecond-grade
+  side-channel residual (theoretical, sub-threat-model).
+- Mantine 9.8.1 landed with per-component CSS imports in `consorcio-web/src/main.tsx` (see `KNOWN_LIMITATIONS.md`).
+- React Compiler opted-out on `LocationSection.tsx` + `TerrainViewer3D.tsx`.
+
 ### 1.7 Registro del banco de datos en AAIP (Phase 4 / F4-L)
 
 Trámite **obligatorio** bajo la Ley 25.326 si tratamos datos
@@ -322,7 +339,7 @@ The flag is opt-in so installs without PgBouncer don't pay the
    ```
 
 3. ``docker compose up -d pgbouncer`` first; wait for healthy.
-   Then ``docker compose up -d backend worker``. Order matters
+   Then ``docker compose up -d backend celery-worker`` (or ``worker`` en compose local). Order matters
    because backend's ``depends_on`` lists pgbouncer.
 
 4. Verify multiplexing actually happened:
@@ -358,11 +375,11 @@ documented source-of-truth. To check the live values match what
 this RUNBOOK describes:
 
 ```bash
-ssh production
+ssh consorcio-prod
 docker exec consorcio-pgbouncer env | grep -E '(POOL_MODE|MAX_CLIENT_CONN|DEFAULT_POOL_SIZE|SERVER_RESET_QUERY|AUTH_TYPE)'
 ```
 
-Expected output (all four must match):
+Expected output (all five must match):
 
 ```
 POOL_MODE=transaction
@@ -413,23 +430,6 @@ The whole rollback is reversible: re-enable the same way (set
 restart app containers) once whatever caused the failure is
 understood.
 
-### 1.6 Things that look weird but are by design
-
-See **[docs/KNOWN_LIMITATIONS.md](./KNOWN_LIMITATIONS.md)** for the full
-list with rationale + expected-fix milestones. Quick reference:
-
-- Boot logs duplicated (2 uvicorn workers).
-- PWA icons are a green "CC" placeholder; replace under
-  ``consorcio-web/public/icons/``.
-- Celery DB pool intentionally smaller than backend (5+5 vs 20+20).
-- ``celery-beat`` is a singleton — do NOT ``--scale celery-beat=2``.
-- ``logout-all`` has a ≤15 min residual access-token window.
-- SMTP message bodies log to provider; switch to API mode to avoid.
-- Refresh-token replay-detection timing has a microsecond-grade
-  side-channel residual (theoretical, sub-threat-model).
-- Mantine CSS imports stay monolithic until v9 lands.
-- React Compiler opted-out on `LocationSection.tsx` + `TerrainViewer3D.tsx`.
-
 ---
 
 ## 2. Daily ops
@@ -478,35 +478,100 @@ file lands, fix the underlying issue rather than widening the
 
 ### 2.2 Deploy from `main`
 
-The Hetzner stack currently builds locally on `git pull` (no image
-pull). The simpler flow:
+The Hetzner stack currently builds locally via `./scripts/deploy-box.sh`
+(per `AGENTS.md`, preserves the host's compose file, enforces `umask 022` for
+`geo-worker`, and never runs Alembic migrations):
 
 ```bash
 ssh consorcio-prod
 cd /home/javier/stacks/consorcio
-git pull origin main
-docker compose up -d --build backend worker celery-beat geo-worker
+./scripts/deploy-box.sh
 ```
 
-This rebuilds the affected containers in place and rolling-restarts
-them; healthchecks gate the rollover.
+Always confirm a single Alembic head (`alembic heads`) and apply schema
+changes separately when needed (never inside `deploy-box.sh`).
 
-#### Optional path: pull pre-built images from GHCR
+#### Optional path: pull pre-built images from GHCR (INF-07 cutover)
 
 The GitHub Actions workflow `.github/workflows/deploy.yml` publishes
 images to `ghcr.io/jnzader/consorcio-canalero/{backend,geo-worker}`
-on every push to `main` with two tags: the short SHA and `:latest`.
-The summary on every workflow run prints the SHA + the `.env` line
-to paste. To migrate the server to this mode:
+on every push to `main` after tests pass. To migrate the server to
+`docker-compose.prod.yml` (see [`docs/runbooks/infra-cicd-v6.md`](runbooks/infra-cicd-v6.md)):
 
 1. Replace `/home/javier/stacks/consorcio/docker-compose.yml` with a
-   copy of `docker-compose.prod.yml` from the repo.
-2. In `.env`, set `BACKEND_IMAGE` and `GEO_WORKER_IMAGE` to the SHA-pinned
-   refs (see `.env.prod.example` for the format).
-3. To deploy a new build: edit those two lines, then
-   `docker compose pull backend geo-worker && docker compose up -d backend geo-worker worker`.
-4. To roll back: same flow, just point at the previous SHA from
-   <https://github.com/JNZader/consorcio-canalero/pkgs/container/consorcio-canalero%2Fbackend>.
+   copy of `docker-compose.prod.yml` from the repo (and `martin/config.prod.yaml`).
+2. In `.env`, set `BACKEND_DIGEST` and `GEO_WORKER_DIGEST` to the
+   published `@sha256:...` digests (see `.env.prod.example` for format).
+3. To deploy a new build: update digests, then
+   `docker compose pull backend geo-worker && docker compose up -d backend geo-worker celery-worker celery-beat`.
+4. To roll back: point those digest vars to the previous published digests from
+   <https://github.com/JNZader/consorcio-canalero/pkgs/container/consorcio-canalero%2Fbackend>
+   or use `deploy/deploy_webhook.py`.
+
+#### 2.2.a B3-P backend deployment preparation (fail-closed)
+
+Do **not** use this package to deploy yet. It is a deterministic controller-side
+plan and read-only preflight; `execute` deliberately refuses after its three
+admission gates until the canary/cutover state machine receives its own review.
+It never accesses Biogas and never runs migrations, workers, geo-worker, Compose
+`down`, Docker cleanup, or Caddy/firewall changes.
+
+```bash
+python3 scripts/deploy_b3p.py preflight             # current-checkout admission only; never claims deploy-ready
+python3 scripts/deploy_b3p.py preflight --target-sha <40-lowercase-hex-sha>  # full readiness only when HEAD is that target
+python3 scripts/deploy_b3p.py plan --target-sha <40-lowercase-hex-sha>
+```
+
+Connection defaults resolve from `CONSORCIO_VPS_HOST` (default SSH alias
+`consorcio-prod`), `CONSORCIO_VPS_USER`, `CONSORCIO_VPS_PORT`, and
+`CONSORCIO_VPS_SSH_KEY` (keep the real IP, custom SSH port, and private key path in private `~/.ssh/config`), stack `/home/javier/stacks/consorcio`, repository
+`JNZader/consorcio-canalero`, and backend-only scope. Every plan or executor
+requires an operator-supplied exact lowercase 40-hex `--target-sha`; there is
+no future-release SHA default. The executor requires its configured target and
+CLI target to match exactly, verifies GitHub's `verification.verified=true` /
+`reason=valid`, runs read-only current-checkout admission, then fetches and
+ff-only advances to that target. While holding the deployment lock, it then
+rechecks the exact target HEAD, clean Git state, base Compose integrity, full
+production-local Compose contract, and actual backend mounts before any Docker
+build/tag/run/up. A failure there leaves runtime untouched; the clean repository
+may remain advanced at the target for recovery.
+
+The production-local selector is `docker compose -f docker-compose.yml -f
+docker-compose.production-local.yml`. It preserves `docker-compose.yml` as the
+dev/local stack. In the production `.env`, set `FORWARDED_ALLOW_IPS=caddy`:
+`caddy` is the intended Docker DNS peer, not a network CIDR.
+
+The preflight fails closed on its first non-zero read-only SSH gate and redacts
+credential-shaped output. It includes fresh branch/HEAD/status/staged/untracked/
+unfinished-operation, Compose/custom-prod/no-reload, exact normalized backend
+mounts, fetch/ancestry/collision/no-compose-or-Alembic, resources/port/live-image,
+and Consorcio+Biogas read-only baselines. Runtime volume names normalize exactly
+from `consorcio-backend-cache`, `consorcio-geo-data`, and
+`consorcio-denuncia-uploads`; extras, anonymous volumes, binds (including code,
+root, or Docker socket) fail. A future executable state machine must retain an
+immutable `OLD_ID` rollback tag, backup the Compose file, build backend only,
+canary on `127.0.0.1:18080`, require a local credentialed tunnel smoke (health,
+ready, anonymous 401, authenticated real-basin membership 200), bound/redact
+observations, and automatically restore the old image ID after failed cutover.
+
+#### 2.2.b B3-P executor slice
+
+This executor depends on the merged deployment-preflight slice. The existing
+`deploy_b3p.py plan` remains zero-subprocess by default. The executor is an
+explicit operation, never a replacement for the planner:
+
+```bash
+python3 scripts/deploy_b3p_executor.py --target-sha <merged-main-sha> --confirm DEPLOY-B3P --basin <real-basin-id>
+```
+
+It additionally requires local `CONSORCIO_B3P_DEPLOY_ALLOW_EXECUTE=1` and local
+`E2E_ADMIN_EMAIL`/`E2E_ADMIN_PASSWORD`; credentials are not transferred in SSH
+arguments or written to evidence. It replays GitHub plus remote preflight before
+mutation, builds/backend-canaries only, tunnels loopback smoke, checks public
+health after cutover, and rolls back only post-cutover failures. It never runs
+migrations/workers/geo-worker, Compose down, prune, or global restarts; Biogas is
+captured before/after as a read-only equality baseline. Do not run it without an
+approved production change window and a real basin identifier.
 
 ### 2.3 Rotate JWT secret
 
@@ -636,7 +701,7 @@ docker compose logs --tail 100 postgres | tail -50
   in the multi-stack shared-postgres setup the host is `shared-postgres`
   (Docker network alias).
 - If the volume is corrupt: `docker compose down postgres`, restore
-  from the last `pg_dump` (see 4.1), `docker compose up -d postgres`.
+  from the last `pg_dump` (see 3.6), `docker compose up -d postgres`.
 
 **Root cause**
 - Disk full? `df -h` on the host.
@@ -704,12 +769,11 @@ Common causes:
 
 **Mitigation**
 - Fix the revision (locally, push, redeploy).
-- Roll back one revision: `docker compose run --rm migrate alembic downgrade -1`.
+- Roll back one revision: `docker compose --profile migrate run --rm migrate alembic downgrade -1`.
 
 ### 3.6 Restore from backup
 
-> **Pre-req**: backups must already exist. Phase 1 doesn't wire
-> Pre-req: section 1.4 (offsite backups) must be configured. The
+> **Pre-req**: section 1.4 (offsite backups) must be configured. The
 > commands below assume Backblaze B2; for Hetzner SB just swap the
 > download step.
 
@@ -731,13 +795,13 @@ openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
   -in latest.sql.zst.enc | zstd -d -o latest.sql
 
 # 3. Stop dependants so they don't write during restore
-docker compose stop backend worker celery-worker
+docker compose stop backend worker   # en prod GHCR: docker compose stop backend celery-worker
 
 # 4. Wipe + restore (psql, since the dump uses CLEAN/IF-EXISTS)
 docker compose exec -T postgres psql -U "$DB_USER" -d consorcio_canalero < latest.sql
 
 # 5. Restart
-docker compose up -d backend worker celery-worker
+docker compose up -d backend worker  # en prod GHCR: docker compose up -d backend celery-worker
 ```
 
 **File-backed volumes restore** (F2-B, restic):
@@ -766,8 +830,9 @@ docker compose up -d backend geo-worker
 
 ## 4. Periodic drills
 
-- **Daily (automated)**: section 1.4.d cron triggers
-  `backup-postgres` at 03:15 UTC and `backup-volumes` at 03:45 UTC.
+- **Daily (automated)**: `deploy/backup.timer` triggers both
+  `backup-postgres` and `backup-volumes` daily at 03:20 via systemd
+  (`deploy/backup-age-check.timer` alerts if the stamp is >26 h old).
   Confirm both runs every Monday — check `/var/log/consorcio-backup-*.log`
   for "backup OK" within the past 24 h.
 - **Monthly (manual drill)**: practice section 3.6 against a
@@ -865,7 +930,7 @@ reconcile before the next deploy.
 | Backend, geo-worker, martin | Hetzner CX33 — `/home/javier/stacks/consorcio` |
 | Postgres + Redis | Same VPS, shared across stacks |
 | Container registry | `ghcr.io/jnzader/consorcio-canalero` |
-| CI/CD | GitHub Actions — `.github/workflows/{frontend,backend,deploy,pages,sast,codeql}.yml` |
+| CI/CD | GitHub Actions — `.github/workflows/{frontend,backend,deploy,pages,pages-prod-smoke,e2e-canary,sast,codeql,rainfall-multi-parcel-e2e}.yml` |
 | Tile server | `https://cc10demayo-tiles.javierzader.com` (Martin) |
 | API | `https://cc10demayo-api.javierzader.com` |
 | Sentry | <https://sentry.io> (when configured) |
@@ -891,68 +956,3 @@ yet activated.
 | SMTP (email verify, reset) | ☐ | `.env` SMTP_HOST / USERNAME / PASSWORD | 1.5 |
 | Backup encryption passphrase | ☐ | `.env` BACKUP_ENCRYPTION_PASSPHRASE (LOSE = backups unrecoverable) | 1.4 |
 | Restic passphrase | ☐ | `.env` RESTIC_PASSWORD (LOSE = backups unrecoverable) | 1.4 |
-
-#### 2.2.a B3-P backend deployment preparation (fail-closed)
-
-Do **not** use this package to deploy yet. It is a deterministic controller-side
-plan and read-only preflight; `execute` deliberately refuses after its three
-admission gates until the canary/cutover state machine receives its own review.
-It never accesses Biogas and never runs migrations, workers, geo-worker, Compose
-`down`, Docker cleanup, or Caddy/firewall changes.
-
-```bash
-python3 scripts/deploy_b3p.py preflight             # current-checkout admission only; never claims deploy-ready
-python3 scripts/deploy_b3p.py preflight --target-sha <40-lowercase-hex-sha>  # full readiness only when HEAD is that target
-python3 scripts/deploy_b3p.py plan --target-sha <40-lowercase-hex-sha>
-```
-
-Connection defaults resolve from `CONSORCIO_VPS_HOST` (default SSH alias
-`consorcio-prod`), `CONSORCIO_VPS_USER`, `CONSORCIO_VPS_PORT`, and
-`CONSORCIO_VPS_SSH_KEY` (keep the real IP, custom SSH port, and private key path in private `~/.ssh/config`), stack `/home/javier/stacks/consorcio`, repository
-`JNZader/consorcio-canalero`, and backend-only scope. Every plan or executor
-requires an operator-supplied exact lowercase 40-hex `--target-sha`; there is
-no future-release SHA default. The executor requires its configured target and
-CLI target to match exactly, verifies GitHub's `verification.verified=true` /
-`reason=valid`, runs read-only current-checkout admission, then fetches and
-ff-only advances to that target. While holding the deployment lock, it then
-rechecks the exact target HEAD, clean Git state, base Compose integrity, full
-production-local Compose contract, and actual backend mounts before any Docker
-build/tag/run/up. A failure there leaves runtime untouched; the clean repository
-may remain advanced at the target for recovery.
-
-The production-local selector is `docker compose -f docker-compose.yml -f
-docker-compose.production-local.yml`. It preserves `docker-compose.yml` as the
-dev/local stack. In the production `.env`, set `FORWARDED_ALLOW_IPS=caddy`:
-`caddy` is the intended Docker DNS peer, not a network CIDR.
-
-The preflight fails closed on its first non-zero read-only SSH gate and redacts
-credential-shaped output. It includes fresh branch/HEAD/status/staged/untracked/
-unfinished-operation, Compose/custom-prod/no-reload, exact normalized backend
-mounts, fetch/ancestry/collision/no-compose-or-Alembic, resources/port/live-image,
-and Consorcio+Biogas read-only baselines. Runtime volume names normalize exactly
-from `consorcio-backend-cache`, `consorcio-geo-data`, and
-`consorcio-denuncia-uploads`; extras, anonymous volumes, binds (including code,
-root, or Docker socket) fail. A future executable state machine must retain an
-immutable `OLD_ID` rollback tag, backup the Compose file, build backend only,
-canary on `127.0.0.1:18080`, require a local credentialed tunnel smoke (health,
-ready, anonymous 401, authenticated real-basin membership 200), bound/redact
-observations, and automatically restore the old image ID after failed cutover.
-
-#### 2.2.b B3-P executor slice
-
-This executor depends on the merged deployment-preflight slice. The existing
-`deploy_b3p.py plan` remains zero-subprocess by default. The executor is an
-explicit operation, never a replacement for the planner:
-
-```bash
-python3 scripts/deploy_b3p_executor.py --target-sha <merged-main-sha> --confirm DEPLOY-B3P --basin <real-basin-id>
-```
-
-It additionally requires local `CONSORCIO_B3P_DEPLOY_ALLOW_EXECUTE=1` and local
-`E2E_ADMIN_EMAIL`/`E2E_ADMIN_PASSWORD`; credentials are not transferred in SSH
-arguments or written to evidence. It replays GitHub plus remote preflight before
-mutation, builds/backend-canaries only, tunnels loopback smoke, checks public
-health after cutover, and rolls back only post-cutover failures. It never runs
-migrations/workers/geo-worker, Compose down, prune, or global restarts; Biogas is
-captured before/after as a read-only equality baseline. Do not run it without an
-approved production change window and a real basin identifier.

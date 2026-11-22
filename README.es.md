@@ -123,22 +123,22 @@ La plataforma cubre cuatro áreas amplias:
 
 | Capa | Tecnologías |
 |------|-------------|
-| Backend | FastAPI, Python 3.14, SQLAlchemy 2.0, Alembic, Pydantic v2 |
-| Frontend | React 19, TypeScript, Vite 7, Mantine v8, TanStack Router, TanStack Query, Zustand |
+| Backend | FastAPI, Python 3.14+ (imagen prod 3.15), SQLAlchemy 2.1, Alembic, Pydantic v2 |
+| Frontend | React 19, TypeScript, Vite 8, Mantine 9, TanStack Router, TanStack Query, Zustand |
 | Base de datos | PostgreSQL, PostGIS, GeoAlchemy2 |
 | GIS e imágenes | Google Earth Engine, Rasterio, GDAL, WhiteboxTools, Shapely, PyVista |
-| Tiles vectoriales y mapas | MapLibre GL, PMTiles, Martin tile server |
+| Tiles vectoriales y mapas | MapLibre GL 6, PMTiles, Martin tile server |
 | Procesamiento en segundo plano | Celery, Redis |
 | Reportes | ReportLab, exportación de proyecto QGIS, exportación KMZ |
-| Testing | Pytest, Vitest, Playwright, Stryker |
-| Tooling | Ruff, Biome, Docker Compose, GitHub Actions |
+| Testing | Pytest, Vitest 5, Playwright, Cosmic Ray, Stryker 10 |
+| Tooling | Ruff, Biome 2, Docker Compose, GitHub Actions |
 | Hosting | Cloudflare Pages, Hetzner, GHCR |
 
 Las versiones reflejan los manifiestos en `gee-backend/requirements.txt` y `consorcio-web/package.json`. Los contenedores del backend se construyen sobre `python:3.15.2-slim-trixie`; el geo worker se construye sobre la imagen GDAL de OSGeo para tener el tooling raster/vectorial nativo.
 
 ## Arquitectura
 
-El backend sigue **Screaming Architecture**. La estructura del repositorio prioriza las capacidades de negocio por sobre las capas técnicas, así el código te dice qué hace el sistema: `padron`, `denuncias`, `tramites`, `finanzas`, `reuniones`, `capas`, `monitoring`, `settings`, `geo`.
+El backend sigue **Screaming Architecture**. La estructura del repositorio prioriza las capacidades de negocio por sobre las capas técnicas, así el código te dice qué hace el sistema: `padron`, `denuncias`, `tramites`, `finanzas`, `reuniones`, `capas`, `conocimiento` (detrás de feature flag, apagado por defecto), `monitoring`, `settings`, `geo`.
 
 Cada dominio bajo `gee-backend/app/domains/` es dueño de su propio corte interno:
 
@@ -251,6 +251,7 @@ Subáreas:
 - Catálogo de imágenes y capas respaldado en GEE.
 - Jobs de análisis con estado de ejecución asincrónico.
 - Un submódulo `intelligence` con endpoints para HCI, conflictos, zonificación, alertas y análisis compuesto.
+- Informes de área (`informe_area`) con generación PDF/KMZ y paquetes de campo offline por token (`/api/v2/public/campo/*`).
 - Soporte de visualización/exportación, incluida la generación de proyectos QGIS y salidas de terreno.
 
 ## Capacidades geoespaciales
@@ -304,8 +305,9 @@ Modelo de roles:
 
 Mecanismos de autenticación:
 
-- JWT vía tokens bearer de `fastapi-users`. El adaptador actual del frontend guarda la
-  sesión en `sessionStorage` y envía `Authorization: Bearer ...` a `/api/v2/*`.
+- JWT vía tokens bearer de `fastapi-users`. El adaptador del frontend guarda el
+  access token en `sessionStorage` (`Authorization: Bearer ...` hacia `/api/v2/*`)
+  combinado con una cookie HttpOnly `refresh_token` (`credentials: 'include'`).
 - Google OAuth opcional.
 - Refresh tokens con un flujo `logout-all` que revoca los JWT emitidos previamente.
 - Onboarding de operadores basado en invitaciones con tokens de activación.
@@ -544,14 +546,28 @@ El frontend y el backend están desacoplados a propósito, así la web app públ
 
 ## Notas de CI/CD
 
-El repositorio incluye workflows de GitHub Actions para backend, frontend, deploy, GitHub Pages, Fly y CodeQL (`.github/workflows/`).
+El repositorio ejecuta nueve workflows de GitHub Actions en `.github/workflows/`:
+`frontend.yml`, `backend.yml`, `deploy.yml`, `pages.yml`, `pages-prod-smoke.yml`,
+`e2e-canary.yml`, `sast.yml`, `codeql.yml` y `rainfall-multi-parcel-e2e.yml`.
 
 A alto nivel:
 
-- Los pushes al frontend pueden disparar builds de Cloudflare Pages automáticamente.
-- Los cambios en el backend corren chequeos de CI y pueden construir/publicar imágenes de contenedor.
-- El rollout de producción está documentado en `DEPLOY.md`, incluyendo actualizaciones opcionales del servidor por webhook.
-- El primer camino de build documentado en `DEPLOY.md` publica las imágenes de backend y geo-worker en GHCR.
+- Los PRs a `main` y corridas manuales del frontend (`frontend.yml`) cubren lint con
+  Biome, tests unitarios/smoke, typecheck, mutation testing con Stryker, la matriz
+  pineada de accesibilidad con Playwright y el build de producción.
+- Los PRs a `main` y corridas manuales del backend (`backend.yml`) cubren Ruff,
+  mypy estricto acotado, `alembic upgrade head` + gate de cobertura con Pytest,
+  `scripts/tests`, mutation testing con Cosmic Ray y gates de seguridad con Trivy.
+- `sast.yml` (Gitleaks + Semgrep) y `codeql.yml` (JavaScript/TypeScript y Python)
+  corren en PRs, pushes y cron programado.
+- `deploy.yml` publica las imágenes de backend y geo-worker en GHCR al pushear a `main`
+  después de que pasan `tests/new/` y `tests/unit/`; `pages-prod-smoke.yml`,
+  `e2e-canary.yml` y `rainfall-multi-parcel-e2e.yml` cubren smoke en producción,
+  journeys canario y el harness E2E de lluvias.
+- El rollout por webhook de producción está deshabilitado salvo que se configuren su URL
+  y `ENABLE_PRODUCTION_DEPLOY=true`. Ver `DEPLOY.md`.
+- Cloudflare Pages despliega producción desde la rama `pages-production`, que `pages.yml`
+  avanza (fast-forward) solo después de que `Frontend` CI pasa en `main`.
 
 ## Licencia
 
