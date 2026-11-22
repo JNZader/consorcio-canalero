@@ -9,26 +9,7 @@ from app.config import settings
 from app.db.base import Base
 
 # Import all models so Alembic autogenerate detects them
-from app.auth.models import User  # noqa: F401
-from app.domains.denuncias.models import Denuncia, DenunciaHistorial  # noqa: F401
-from app.domains.finanzas.models import Gasto, Ingreso, Presupuesto  # noqa: F401
-from app.domains.padron.models import Consorcista  # noqa: F401
-from app.domains.tramites.models import Tramite, TramiteSeguimiento  # noqa: F401
-from app.domains.capas.models import Capa  # noqa: F401
-from app.domains.monitoring.models import Sugerencia, AnalisisGee  # noqa: F401
-from app.domains.geo.models import GeoLayer, GeoJob, AnalisisGeo, GeoApprovedZoning  # noqa: F401
-from app.domains.geo.rainfall import models as rainfall_models  # noqa: F401
-from app.domains.geo.intelligence.models import (  # noqa: F401
-    ZonaOperativa,
-    IndiceHidrico,
-    PuntoConflicto,
-    AlertaGeo,
-)
-from app.domains.geo.puntos_interes.models import PuntoInteres  # noqa: F401
-from app.domains.reuniones.models import Reunion, AgendaItem, AgendaReferencia  # noqa: F401
-from app.domains.settings.models import SystemSettings  # noqa: F401
-from app.domains.conocimiento.models import RagCorpus, RagDocumento, RagUnidad  # noqa: F401
-from app.shared.celery_outbox import CeleryTaskOutbox  # noqa: F401
+import app.db.all_models  # noqa: F401
 
 # Alembic Config object
 config = context.config

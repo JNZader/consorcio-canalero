@@ -224,6 +224,7 @@ class IntelligenceRepositoryMetricsMixin:
             "mv_hci_por_zona",
             "mv_alertas_resumen",
             "mv_caminos_unificados",
+            "mv_suelos_por_zona",
             "vt_parcelas_catastro",
         )
         for view in views:

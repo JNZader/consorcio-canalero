@@ -124,6 +124,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "0.50"
           memory: 128M
     logging:
       driver: "json-file"
@@ -178,6 +179,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "0.50"
           memory: 256M
     logging:
       driver: "json-file"
@@ -209,6 +211,11 @@ services:
     network_mode: none
     read_only: true
     restart: "no"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
 
   # --- Backend FastAPI ---
   backend:
@@ -266,6 +273,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "1.50"
           memory: 512M
     logging:
       driver: "json-file"
@@ -311,6 +319,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "1.00"
           memory: 512M
     logging:
       driver: "json-file"
@@ -342,6 +351,11 @@ services:
     network_mode: none
     read_only: true
     restart: "no"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
 
   # --- Celery Beat (cron scheduler) ---
   # Phase 3 / F3-L. Without this service the beat_schedule entries in
@@ -394,6 +408,7 @@ services:
       replicas: 1
       resources:
         limits:
+          cpus: "0.25"
           memory: 128M
     logging:
       driver: "json-file"
@@ -435,6 +450,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "2.00"
           memory: 1536M
     logging:
       driver: "json-file"
@@ -474,6 +490,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "0.50"
           memory: 256M
     logging:
       driver: "json-file"
@@ -501,6 +518,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "1.00"
           memory: 512M
     networks:
       - backend
@@ -508,6 +526,11 @@ services:
 
   backup-volumes:
     <<: *hardening
+    # ``/app/uploads`` is mode 0750 owned by UID ``app`` in the backend image;
+    # run read-only archival traversal with DAC_READ_SEARCH (no write caps).
+    user: "0:0"
+    cap_add:
+      - DAC_READ_SEARCH
     profiles: ["backup"]
     build:
       context: ./scripts
@@ -524,6 +547,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "1.00"
           memory: 512M
     networks:
       - backend

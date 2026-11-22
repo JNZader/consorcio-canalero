@@ -39,18 +39,20 @@ def test_refresh_materialized_views_commits_each_view_and_includes_parcelas() ->
         "mv_hci_por_zona",
         "mv_alertas_resumen",
         "mv_caminos_unificados",
+        "mv_suelos_por_zona",
         "vt_parcelas_catastro",
     }
     assert results["mv_dashboard_geo_stats"] == "ok"
     assert results["mv_hci_por_zona"] == "ok (non-concurrent)"
     assert results["mv_alertas_resumen"].startswith("error:")
     assert results["mv_caminos_unificados"] == "ok"
+    assert results["mv_suelos_por_zona"] == "ok"
     assert results["vt_parcelas_catastro"] == "ok"
 
-    # 4 views succeeded (1 fallback), 1 failed both attempts -> 4 commits, 3 rollbacks.
-    assert commits == 4
+    # 5 views succeeded (1 fallback), 1 failed both attempts -> 5 commits, 3 rollbacks.
+    assert commits == 5
     assert rollbacks == 3
 
     timeout_calls = [s for s in executed_sql if "set_config('statement_timeout'" in s]
-    # Applied before each of the 5 views + re-applied on each of the 2 fallback attempts.
-    assert len(timeout_calls) == 7
+    # Applied before each of the 6 views + re-applied on each of the 2 fallback attempts.
+    assert len(timeout_calls) == 8

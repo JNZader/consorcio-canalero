@@ -6,7 +6,7 @@
 #   The canal data on the box went 2.5 months stale because every ETL was run by
 #   hand. This script is the whole periodic refresh, in dependency order, with one
 #   log line per step and a non-zero exit if ANY step failed — so the systemd
-#   timer that drives it (`etl-refresh.timer`, Sundays 03:00) turns a silent drift
+#   timer that drives it (`etl-refresh.timer`, Sundays 01:00) turns a silent drift
 #   into a failed unit you can see in `systemctl status`.
 #
 # WHAT IT RUNS, AND WHY ONLY THESE
@@ -14,7 +14,8 @@
 #   2. generate_canal_catchments   upstream basin per canal — MUST run AFTER (1):
 #                                  it iterates canal_consorcio and FKs onto it
 #   3. load_suelos_catastro        soils + REFRESH MATERIALIZED VIEW mv_suelos_por_zona
-#                                  (independent of 1/2; last because it is cheap)
+#   4. idecor_suelos_50mil         IDECOR 1:50k soils WFS full refresh (fails closed
+#                                  in one transaction; alerts via OnFailure on failure)
 #
 #   DELIBERATELY EXCLUDED:
 #   * `scripts/etl_canales`, `scripts/etl_pilar_verde`, `scripts/etl_escuelas` —
@@ -22,6 +23,14 @@
 #     operator's machine and write committed assets under `consorcio-web/public/`.
 #     Neither the inputs nor the outputs exist on the box; they are a manual,
 #     source-driven step, not a periodic refresh.
+#   * `vt_parcelas_catastro` and `mv_suelos_por_zona` — refreshed every 6 hours by
+#     Celery Beat (`geo.intelligence.refresh_materialized_views`), so running them
+#     weekly here would duplicate Beat's schedule.
+#   * `load_red_vial` — loads static committed package data (`red_vial.geojson`),
+#     so it only needs a manual run when that committed source file changes.
+#   * `idecor_coberturas` — downloads annual 10 m WCS campaign rasters (heavy,
+#     yearly cadence); run manually per campaign or set
+#     `ETL_INCLUDE_IDECOR_COBERTURAS=1` for an opt-in run.
 #   * `generate_chirps_normals` — its own docstring says it: the normals are STATIC
 #     reference data that change only when the 1991-2020 period or the consorcio
 #     extent changes. "There is no scheduled job and none is wanted." Re-running it
@@ -56,7 +65,8 @@
 #   ETL_LOG_RETENTION_DAYS  purge logs older than this, 0=off        (default 90)
 #   ETL_STACK_WAIT_S        how long to wait for the stack           (default 300)
 #   ETL_STACK_POLL_S        seconds between stack polls              (default 10)
-#   ETL_STEP_TIMEOUT_S      per-step wall-clock ceiling              (default 2100)
+#   ETL_STEP_TIMEOUT_S            per-step wall-clock ceiling (default 1500)
+#   ETL_INCLUDE_IDECOR_COBERTURAS set to 1 to append annual WCS step (default 0)
 set -Eeuo pipefail
 
 #: Directory holding the deployment's docker-compose.yml + .env (see DEPLOY.md).
@@ -79,10 +89,10 @@ STACK_WAIT_S="${ETL_STACK_WAIT_S:-300}"
 STACK_POLL_S="${ETL_STACK_POLL_S:-10}"
 
 #: Per-step wall-clock ceiling (seconds). The arithmetic is deliberate and must
-#: stay under the unit's `TimeoutStartSec=2h`: 300 s of stack wait + 3 steps x
-#: 2100 s = 110 min < 120 min, so a hung step is reported by THIS script (which
+#: stay under the unit's `TimeoutStartSec=2h`: 300 s of stack wait + 4 steps x
+#: 1500 s = 105 min < 120 min, so a hung step is reported by THIS script (which
 #: can name the module) instead of by systemd killing the whole run.
-STEP_TIMEOUT_S="${ETL_STEP_TIMEOUT_S:-2100}"
+STEP_TIMEOUT_S="${ETL_STEP_TIMEOUT_S:-1500}"
 #: Exit code GNU `timeout` uses when it had to kill the command.
 readonly TIMEOUT_EXIT=124
 
@@ -94,7 +104,11 @@ ETL_MODULES=(
   "app.domains.geo.etl.load_canales_consorcio"
   "app.domains.geo.etl.generate_canal_catchments"
   "app.domains.geo.etl.load_suelos_catastro"
+  "app.domains.geo.etl.idecor_suelos_50mil"
 )
+if [[ "${ETL_INCLUDE_IDECOR_COBERTURAS:-0}" == "1" ]]; then
+  ETL_MODULES+=("app.domains.geo.etl.idecor_coberturas")
+fi
 
 log() {
   printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$LOG_FILE"

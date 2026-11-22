@@ -3,7 +3,7 @@
 # GPU-accelerated, runs on-demand via profile
 # ==============================================
 
-FROM nvidia/cuda:13.5.0-devel-ubuntu22.04
+FROM nvidia/cuda:13.5.0-devel-ubuntu22.04@sha256:b44fc069ef34cf454cdeabadf6a4e8b1d093b973b7d08ac2768bbc99fba2f013
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Argentina/Buenos_Aires

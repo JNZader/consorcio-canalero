@@ -25,13 +25,23 @@ RUN apk add --no-cache \
       py3-pip \
       ca-certificates
 
-# Backblaze B2 CLI. ``--break-system-packages`` because Alpine 3.22
-# ships PEP 668 and we have no other Python on the image to pollute.
-RUN pip install --break-system-packages --no-cache-dir 'b2>=4.0.0'
+# Hash-pinned Backblaze B2 CLI. ``--break-system-packages`` because Alpine 3.22
+# ships PEP 668; remove py3-pip immediately after install.
+COPY requirements-backup.lock /tmp/requirements-backup.lock
+RUN pip install --break-system-packages --no-cache-dir --no-deps --require-hashes \
+        -r /tmp/requirements-backup.lock \
+    && rm -f /tmp/requirements-backup.lock \
+    && apk del py3-pip \
+    && rm -rf /root/.cache/pip
 
 WORKDIR /opt/backup
 COPY backup_postgres.sh backup_volumes.sh /opt/backup/
-RUN chmod +x /opt/backup/backup_postgres.sh /opt/backup/backup_volumes.sh
+RUN chmod 0755 /opt/backup/backup_postgres.sh /opt/backup/backup_volumes.sh \
+    && addgroup -S backup \
+    && adduser -S -G backup -h /home/backup backup \
+    && chown -R backup:backup /opt/backup /home/backup
+
+USER backup
 
 # Default command is a no-op — the compose service overrides it with
 # the specific backup script per invocation.

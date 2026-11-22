@@ -1,18 +1,62 @@
 # ==============================================
-# Celery Worker + Beat - GDAL + geo deps
+# Celery Worker + Beat - GDAL + geo deps (optional combined image)
+# Production uses Dockerfile (celery-worker / celery-beat) + Dockerfile.geo.
 # ==============================================
 
 FROM ghcr.io/osgeo/gdal:ubuntu-small-3.13.3@sha256:64250faf833c06d4b21afce4c27190039ba7ab58d70f0eebc87cf77d929c0b40
 
 WORKDIR /app
 
-# Install Python pip and build essentials
+# Install Python pip and temporary build essentials
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    adduser \
     python3-pip \
     python3-dev \
     gcc \
     g++ \
     && rm -rf /var/lib/apt/lists/*
+
+# Security hotfix (CVE-2026-92392)
+RUN set -eu; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends --only-upgrade \
+    libcurl3t64-gnutls \
+    libcurl4t64; \
+    fixed_version="8.18.0-1ubuntu2.8"; \
+    for package in libcurl3t64-gnutls libcurl4t64; do \
+        package_record="$(dpkg-query --show --showformat='${db:Status-Status}|${Version}' "$package")"; \
+        package_state="${package_record%%|*}"; \
+        installed_version="${package_record#*|}"; \
+        [ "$package_state" = "installed" ] || exit 1; \
+        dpkg --compare-versions "$installed_version" ge "$fixed_version" || exit 1; \
+    done; \
+    rm -rf /var/lib/apt/lists/*
+
+# Security hotfix (CVE-2026-111497)
+RUN set -eu; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends --only-upgrade libbrotli1; \
+    fixed_version="1.2.0-3ubuntu0.1"; \
+    package_record="$(dpkg-query --show --showformat='${db:Status-Status}|${Version}' libbrotli1)"; \
+    package_state="${package_record%%|*}"; \
+    installed_version="${package_record#*|}"; \
+    [ "$package_state" = "installed" ] || exit 1; \
+    dpkg --compare-versions "$installed_version" ge "$fixed_version" || exit 1; \
+    rm -rf /var/lib/apt/lists/*
+
+# Security hotfix (CVE-2026-109518)
+RUN set -eu; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends --only-upgrade apt libapt-pkg7.0; \
+    fixed_version="3.2.1ubuntu0.1"; \
+    for package in apt libapt-pkg7.0; do \
+        package_record="$(dpkg-query --show --showformat='${db:Status-Status}|${Version}' "$package")"; \
+        package_state="${package_record%%|*}"; \
+        installed_version="${package_record#*|}"; \
+        [ "$package_state" = "installed" ] || exit 1; \
+        dpkg --compare-versions "$installed_version" ge "$fixed_version" || exit 1; \
+    done; \
+    rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -20,12 +64,17 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # Install ALL dependencies (backend lock + geo). The hashed lock is a full
 # closure; --no-deps honours Wave C5's sqlalchemy 2.1 override past
 # fastapi-users-db-sqlalchemy's <2.1 metadata pin (see overrides.txt).
+# Bare --ignore-installed matches Dockerfile.geo (GDAL 3.13 / NumPy 2 ABI).
 COPY requirements.lock requirements-geo.txt ./
-# Force pip to ignore system numpy (installed by debian, cannot be upgraded)
-RUN pip install --no-cache-dir --break-system-packages --ignore-installed numpy \
+RUN pip install --no-cache-dir --break-system-packages --ignore-installed \
         --no-deps --require-hashes -r requirements.lock \
-    && pip install --no-cache-dir --break-system-packages --ignore-installed numpy \
-        -r requirements-geo.txt
+    && pip install --no-cache-dir --break-system-packages --ignore-installed \
+        -r requirements-geo.txt \
+        "setuptools==80.10.2" \
+        "wheel==0.46.3" \
+    && apt-get purge -y --auto-remove gcc g++ python3-dev python3-pip \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/* /root/.cache/pip
 
 # Copy application code
 COPY app/ ./app/
@@ -35,8 +84,10 @@ COPY alembic.ini ./
 RUN mkdir -p /data/geo
 
 # Create non-root user (mirrors gee-backend/Dockerfile production stage)
-# /app + /data/geo writable (raster/geo outputs; volume ownership applies on first init)
-RUN addgroup --system app && adduser --system --ingroup app app \
+RUN command -v addgroup >/dev/null \
+    && command -v adduser >/dev/null \
+    && addgroup --system app \
+    && adduser --system --ingroup app app \
     && chown -R app:app /app /data/geo
 
 # No EXPOSE, no HEALTHCHECK — worker has no HTTP

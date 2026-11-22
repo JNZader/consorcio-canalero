@@ -2,13 +2,13 @@
 
 The geo ETLs used to be run by hand, and the canal data on the box drifted 2.5
 months out of date without anyone noticing. This directory turns that into a
-system timer: **Sundays 03:00, with catch-up**.
+system timer: **Sundays 01:00, with catch-up**.
 
 | File | What it is |
 |------|------------|
 | `etl-refresh.sh` | The refresh itself. Runs on the HOST, drives `docker compose exec -T geo-worker python -m …` |
 | `etl-refresh.service` | `Type=oneshot` unit that runs the script as `javier` |
-| `etl-refresh.timer` | `OnCalendar=Sun *-*-* 03:00:00`, `Persistent=true` |
+| `etl-refresh.timer` | `OnCalendar=Sun *-*-* 01:00:00`, `Persistent=true` |
 
 ## What it runs (order is load-bearing)
 
@@ -16,8 +16,16 @@ system timer: **Sundays 03:00, with catch-up**.
 2. `app.domains.geo.etl.generate_canal_catchments` — upstream basin per canal.
    **After canales**: it iterates `canal_consorcio` and FKs onto it.
 3. `app.domains.geo.etl.load_suelos_catastro` — soils + `mv_suelos_por_zona` refresh.
+4. `app.domains.geo.etl.idecor_suelos_50mil` — IDECOR 1:50,000 soils WFS refresh (fails closed on upstream error).
 
 Not in the refresh, on purpose:
+
+- `vt_parcelas_catastro` and `mv_suelos_por_zona` — refreshed every 6 hours by Celery
+  Beat (`geo.intelligence.refresh_materialized_views`).
+- `app.domains.geo.etl.load_red_vial` — loads static committed package data
+  (`red_vial.geojson`); run manually only when that committed file changes.
+- `app.domains.geo.etl.idecor_coberturas` — annual 10 m WCS campaign rasters;
+  run manually per campaign (or pass `ETL_INCLUDE_IDECOR_COBERTURAS=1`).
 
 - `scripts/etl_canales`, `scripts/etl_pilar_verde`, `scripts/etl_escuelas` — offline
   KMZ → static GeoJSON converters. The KMZ inputs live on the operator's machine

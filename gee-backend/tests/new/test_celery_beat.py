@@ -190,3 +190,40 @@ def test_outbox_publisher_is_registered_and_scheduled():
         retention=timedelta(days=CELERY_OUTBOX_RETENTION_DAYS),
         cleanup_batch_size=CELERY_OUTBOX_CLEANUP_BATCH_SIZE,
     )
+
+
+def test_conocimiento_retention_purge_is_registered_and_scheduled():
+    from unittest.mock import MagicMock, patch
+
+    from celery.schedules import crontab
+
+    from app.core.celery_app import celery_app
+    from app.domains.conocimiento.tasks import purgar_retencion_conocimiento_task
+
+    assert "app.domains.conocimiento.tasks" in celery_app.conf.include
+    entry = celery_app.conf.beat_schedule["purgar-retencion-conocimiento"]
+    assert entry["task"] == "conocimiento.purgar_retencion"
+    assert entry["options"]["queue"] == "celery"
+    assert isinstance(entry["schedule"], crontab)
+    assert entry["schedule"].minute == {55}
+    assert entry["schedule"].hour == {4}
+    assert purgar_retencion_conocimiento_task.name == "conocimiento.purgar_retencion"
+
+    session = MagicMock()
+    cm = MagicMock()
+    cm.__enter__.return_value = session
+    cm.__exit__.return_value = False
+
+    with (
+        patch("app.db.session.SessionLocal", return_value=cm),
+        patch(
+            "app.domains.conocimiento.repository.purgar_decisiones_ruta", return_value=3
+        ) as p_dec,
+        patch("app.domains.conocimiento.repository.purgar_consultas", return_value=7) as p_con,
+    ):
+        result = purgar_retencion_conocimiento_task.run()
+
+    assert result == {"decisiones_borradas": 3, "consultas_borradas": 7}
+    p_dec.assert_called_once_with(session)
+    p_con.assert_called_once_with(session)
+    session.commit.assert_called_once()

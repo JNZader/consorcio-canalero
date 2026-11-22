@@ -81,6 +81,7 @@ celery_app = Celery(
         # Registers denuncias.notify_status on every prefork child so
         # outbox-published status mails are not dropped when the flag is on.
         "app.domains.denuncias.tasks",
+        "app.domains.conocimiento.tasks",
     ],
 )
 
@@ -204,6 +205,13 @@ celery_app.conf.update(
         "rainfall-revisit-stale": {
             "task": "rainfall.revisit_stale",
             "schedule": crontab(minute="30", hour="3"),
+            "options": {"queue": "celery"},
+        },
+        # Daily 90-day privacy retention purge for RAG routing decisions and
+        # consultation mailbox (amendments A3/A5). Clear of the 04:05..04:45 cluster.
+        "purgar-retencion-conocimiento": {
+            "task": "conocimiento.purgar_retencion",
+            "schedule": crontab(minute="55", hour="4"),
             "options": {"queue": "celery"},
         },
     },
