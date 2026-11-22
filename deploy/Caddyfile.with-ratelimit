@@ -68,6 +68,7 @@ tiles.consorcio.{$DOMAIN} {
 	}
 }
 
+# Variables de entorno: DOMAIN, ACME_EMAIL y opcional DEPLOY_WEBHOOK_UPSTREAM.
 deploy.consorcio.{$DOMAIN} {
 	import consorcio_edge
 	@metrics path /metrics /metrics/*
@@ -75,6 +76,6 @@ deploy.consorcio.{$DOMAIN} {
 		respond 404
 	}
 	handle {
-		reverse_proxy 127.0.0.1:8090
+		reverse_proxy {$DEPLOY_WEBHOOK_UPSTREAM:127.0.0.1:8090}
 	}
 }

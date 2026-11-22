@@ -16,7 +16,14 @@
 # El preload de un subdominio no entra en la lista; la sumisión es manual
 # e irreversible a escala de meses. Ver el runbook.
 #
-# Variables de entorno que Caddy expande: DOMAIN, ACME_EMAIL.
+# Variables de entorno que Caddy expande: DOMAIN, ACME_EMAIL y, opcionalmente,
+# DEPLOY_WEBHOOK_UPSTREAM (default 127.0.0.1:8090 si Caddy corre en el host;
+# usar host-gateway/host.docker.internal:8090 o la IP del bridge si Caddy corre
+# en contenedor Docker).
+#
+# Los bloques parametrizados `*.consorcio.{$DOMAIN}` son la plantilla canónica del
+# repo; en el VPS actual conviven con los alias DNS históricos
+# (`cc10demayo-api.javierzader.com`, `cc10demayo-tiles.javierzader.com`).
 {
 	email {$ACME_EMAIL}
 	servers {
@@ -75,10 +82,11 @@ tiles.consorcio.{$DOMAIN} {
 	}
 }
 
-# El receptor (deploy/deploy_webhook.py) solo escucha en 127.0.0.1:8090.
-# Si Caddy corre en el host (no en otra red Docker), este sitio lo publica.
-# El Bearer lo valida el receptor; Caddy no lo registra (el access log JSON
-# no incluye Authorization por defecto).
+# El receptor (deploy/deploy_webhook.py) escucha en 127.0.0.1:8090 en el host.
+# Con Caddy en el host vale el default 127.0.0.1:8090; si Caddy corre en Docker,
+# exportar DEPLOY_WEBHOOK_UPSTREAM (por ejemplo host.docker.internal:8090 con
+# extra_hosts). El Bearer lo valida el receptor; Caddy no lo registra (el access
+# log JSON no incluye Authorization por defecto).
 deploy.consorcio.{$DOMAIN} {
 	import consorcio_edge
 	@metrics path /metrics /metrics/*
@@ -86,6 +94,6 @@ deploy.consorcio.{$DOMAIN} {
 		respond 404
 	}
 	handle {
-		reverse_proxy 127.0.0.1:8090
+		reverse_proxy {$DEPLOY_WEBHOOK_UPSTREAM:127.0.0.1:8090}
 	}
 }

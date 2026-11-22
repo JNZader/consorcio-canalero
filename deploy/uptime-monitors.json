@@ -1,5 +1,5 @@
 {
-  "provider_note": "INF-04. Este archivo es el contrato de los chequeos. Crearlos en Uptime Kuma (ya está en el VPS) o en UptimeRobot es un paso manual: el repo no tiene token de ninguno de los dos. Intervalo en segundos.",
+  "provider_note": "INF-04 / W-INFRA-02. Contrato de chequeos externos (Uptime Kuma / UptimeRobot) y sondas internas del VPS.",
   "monitors": [
     {
       "name": "Consorcio API live",
@@ -18,6 +18,14 @@
       "note": "503 cuando Postgres o Redis no responden."
     },
     {
+      "name": "Consorcio Martin tiles health",
+      "url": "https://cc10demayo-tiles.javierzader.com/health",
+      "type": "https",
+      "interval_seconds": 300,
+      "expected_status": 200,
+      "note": "Sonda de salud del servidor de teselas vectoriales Martin vía Caddy."
+    },
+    {
       "name": "Consorcio frontend home",
       "url": "https://consorcio-canalero.pages.dev/",
       "type": "https",
@@ -30,7 +38,29 @@
       "type": "https",
       "interval_seconds": 300,
       "expected_status": 200,
-      "note": "La auditoría v6 vio /mapa en 404 por el fallback SPA. El monitor debe quedar en rojo hasta que eso se corrija; no lo marques como esperado 404."
+      "note": "Valida que el SPA fallback en Cloudflare Pages sirva rutas profundas en 200."
+    }
+  ],
+  "internal_checks": [
+    {
+      "name": "geo-worker HTTP health",
+      "target": "http://127.0.0.1:8001/health",
+      "mechanism": "docker healthcheck + deploy-box wait_for_health"
+    },
+    {
+      "name": "informes_area y cola Celery",
+      "target": "docker exec consorcio-celery-worker celery -A app.core.celery_app inspect ping",
+      "mechanism": "container healthcheck + OnFailure/alerting"
+    },
+    {
+      "name": "Uso de disco del VPS",
+      "target": "root filesystem >= 85%",
+      "mechanism": "host monitoring / Netdata / node_exporter alert"
+    },
+    {
+      "name": "Backups y ETLs semanales (incluye IDECOR suelos 1:50k)",
+      "target": "backup.service, backup-age-check.service, etl-refresh.service",
+      "mechanism": "systemd OnFailure=notify@%n.service"
     }
   ]
 }
