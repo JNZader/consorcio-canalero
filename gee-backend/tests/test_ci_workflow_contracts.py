@@ -525,6 +525,8 @@ def test_backend_production_runtime_is_pinned_and_dev_free() -> None:
     after_copy = production[packages_copy:]
     assert "/usr/local/lib/python3.15/ensurepip" in after_copy
     assert "/usr/local/lib/python3.15/site-packages/pip" in after_copy
+    assert "/usr/local/bin/pip3.15" in after_copy
+    assert "/usr/local/bin/pip3.14" not in production
     assert production.rsplit("USER ", 1)[1].startswith("app\n")
     assert 'CMD ["python", "-m", "app.server"]' in production
 

@@ -810,3 +810,65 @@ def test_wave2_compose_systemd_and_doc_redaction_contracts() -> None:
         content = _read(rel)
         assert "157.180.29.238" not in content, rel
         assert "hetzner_ghagga" not in content, rel
+
+
+def test_wave7_ops_docker_and_resource_limits_contracts() -> None:
+    dockerfiles = (
+        "consorcio-web/Dockerfile",
+        "gee-backend/Dockerfile",
+        "gee-backend/Dockerfile.geo",
+        "gee-backend/Dockerfile.worker",
+        "gee-backend/Dockerfile.trainer",
+        "docker/embed/Dockerfile",
+        "docker/postgres/Dockerfile",
+        "scripts/Dockerfile.backup",
+    )
+    for rel in dockerfiles:
+        text = _read(rel)
+        stages: set[str] = set()
+        for match in re.finditer(r"(?im)^FROM\s+(\S+)(?:\s+AS\s+(\S+))?", text):
+            base_ref, stage_name = match.group(1), match.group(2)
+            if base_ref not in stages:
+                assert "@sha256:" in base_ref, f"{rel}: unpinned base image {base_ref!r}"
+            if stage_name:
+                stages.add(stage_name)
+
+    geo = _read("gee-backend/Dockerfile.geo")
+    assert "HEALTHCHECK " in geo
+    assert "apt-get purge -y --auto-remove gcc python3-dev python3-pip" in geo
+
+    worker = _read("gee-backend/Dockerfile.worker")
+    assert "--ignore-installed numpy" not in worker
+    for version in ("8.18.0-1ubuntu2.8", "1.2.0-3ubuntu0.1", "3.2.1ubuntu0.1"):
+        assert version in worker, (worker, version)
+    assert "apt-get purge -y --auto-remove gcc g++ python3-dev python3-pip" in worker
+    assert worker.rsplit("USER ", 1)[1].startswith("app\n")
+
+    backup_df = _read("scripts/Dockerfile.backup")
+    assert "--require-hashes" in backup_df
+    assert "-r /tmp/requirements-backup.lock" in backup_df
+    assert "apk del py3-pip" in backup_df
+    assert backup_df.rsplit("USER ", 1)[1].startswith("backup\n")
+    backup_lock = _read("scripts/requirements-backup.lock")
+    assert "--hash=sha256:" in backup_lock
+
+    for compose_path in ("docker-compose.prod.yml", "docker-compose.deploy.yml"):
+        blocks = _service_blocks(compose_path)
+        for name, block in blocks.items():
+            assert "limits:" in block, (compose_path, name)
+            assert "cpus:" in block, (compose_path, name)
+            assert "memory:" in block, (compose_path, name)
+        assert "cap_add:\n      - DAC_READ_SEARCH" in blocks["backup-volumes"], compose_path
+
+    monitors = json.loads(_read("deploy/uptime-monitors.json"))
+    urls = {item["url"] for item in monitors["monitors"]}
+    assert "https://cc10demayo-tiles.javierzader.com/health" in urls
+    assert monitors["internal_checks"]
+
+    for caddy_path in ("deploy/Caddyfile", "deploy/Caddyfile.with-ratelimit"):
+        assert "{$DEPLOY_WEBHOOK_UPSTREAM:127.0.0.1:8090}" in _read(caddy_path), caddy_path
+
+    etl_sh = _read("deploy/etl-refresh.sh")
+    assert "app.domains.geo.etl.idecor_suelos_50mil" in etl_sh
+    for rel in ("deploy/backup.timer", "deploy/etl-refresh.sh", "deploy/README-etl-cron.md"):
+        assert "03:00" not in _read(rel), rel

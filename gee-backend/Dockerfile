@@ -391,7 +391,7 @@ RUN rm -rf \
 COPY --from=build /usr/local/lib/python3.15/site-packages /usr/local/lib/python3.15/site-packages
 COPY --from=build /usr/local/bin /usr/local/bin
 
-# python:3.14 slim vendors msgpack 1.1.2, urllib3 2.7.0 and setuptools 70.3.0
+# python:3.15 slim vendors msgpack 1.1.2, urllib3 2.7.0 and setuptools 70.3.0
 # inside pip/_vendor (and ensurepip's pip wheel). Trivy python-pkg reports
 # those with FixedVersion. Production does not need pip; drop it after COPY.
 RUN rm -rf \
@@ -400,7 +400,7 @@ RUN rm -rf \
     /usr/local/lib/python3.15/site-packages/pip-*.dist-info \
     /usr/local/bin/pip \
     /usr/local/bin/pip3 \
-    /usr/local/bin/pip3.14
+    /usr/local/bin/pip3.15
 
 # Create non-root user
 RUN addgroup --system app && adduser --system --ingroup app app
