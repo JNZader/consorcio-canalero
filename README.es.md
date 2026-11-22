@@ -546,9 +546,10 @@ El frontend y el backend están desacoplados a propósito, así la web app públ
 
 ## Notas de CI/CD
 
-El repositorio ejecuta nueve workflows de GitHub Actions en `.github/workflows/`:
+El repositorio ejecuta diez workflows de GitHub Actions en `.github/workflows/`:
 `frontend.yml`, `backend.yml`, `deploy.yml`, `pages.yml`, `pages-prod-smoke.yml`,
-`e2e-canary.yml`, `sast.yml`, `codeql.yml` y `rainfall-multi-parcel-e2e.yml`.
+`e2e-canary.yml`, `sast.yml`, `codeql.yml`, `rainfall-multi-parcel-e2e.yml` y
+`dast.yml`.
 
 A alto nivel:
 
@@ -559,7 +560,10 @@ A alto nivel:
   mypy estricto acotado, `alembic upgrade head` + gate de cobertura con Pytest,
   `scripts/tests`, mutation testing con Cosmic Ray y gates de seguridad con Trivy.
 - `sast.yml` (Gitleaks + Semgrep) y `codeql.yml` (JavaScript/TypeScript y Python)
-  corren en PRs, pushes y cron programado.
+  corren en PRs, pushes y cron programado; `dast.yml` ejecuta scans pasivos de
+  OWASP ZAP bajo demanda (`workflow_dispatch`).
+- Las pruebas de carga concurrentes bajo demanda sobre endpoints pesados
+  (público/geo/PDF) viven en `scripts/load_test.py` (bloquea hosts de producción salvo `--allow-prod`).
 - `deploy.yml` publica las imágenes de backend y geo-worker en GHCR al pushear a `main`
   después de que pasan `tests/new/` y `tests/unit/`; `pages-prod-smoke.yml`,
   `e2e-canary.yml` y `rainfall-multi-parcel-e2e.yml` cubren smoke en producción,

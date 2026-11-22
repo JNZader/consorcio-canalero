@@ -918,3 +918,27 @@ def test_wave7b_dead_residues_removed_and_docs_aligned() -> None:
     assert "`openspec/changes/<change>/` — **trackeados en git**" in backlog_and_locations
     assert "hoy untracked" not in backlog_and_locations.lower()
     assert "`openspec/changes/<change>/` — **untracked**" not in backlog_and_locations.lower()
+
+
+def test_load_test_and_dast_workflow_contracts() -> None:
+    dast = _read(".github/workflows/dast.yml")
+    assert "workflow_dispatch:" in dast
+    assert "\npull_request:" not in dast
+    assert "\npush:" not in dast
+    assert (
+        "ghcr.io/zaproxy/zaproxy:stable@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af"
+        in dast
+    )
+    assert "consorcio-canalero.pages.dev" in dast
+    assert "cc10demayo-api.javierzader.com" in dast
+    assert "zap-baseline.py" in dast
+    assert "zap-full-scan.py" not in dast
+    assert ".zap/rules.tsv" in dast
+    assert (REPO_ROOT / ".zap" / "rules.tsv").is_file()
+
+    load_src = _read("scripts/load_test.py")
+    compile(load_src, "scripts/load_test.py", "exec")
+    assert "--allow-prod" in load_src
+    assert "LOAD_TEST_BEARER_TOKEN" in load_src
+    assert '"--token"' not in load_src
+    assert '"--bearer-token"' not in load_src
