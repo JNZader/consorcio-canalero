@@ -76,6 +76,7 @@ const SPA_ROUTES = new Set([
   '/admin/reports',
   '/admin/sugerencias',
   '/admin/tramites',
+  '/admin/documentos',
   '/admin/reuniones',
   '/admin/padron',
   '/admin/finanzas',
