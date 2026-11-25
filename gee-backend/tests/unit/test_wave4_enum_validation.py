@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import os
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.auth import require_admin_or_operator
-from app.db.session import get_db
-from app.main import app
+os.environ.setdefault("UPLOADS_ROOT", "/tmp/consorcio-unit-uploads")
+os.environ.setdefault("DOCUMENTOS_ROOT", "/tmp/consorcio-unit-documentos")
+
+from app.auth import require_admin_or_operator  # noqa: E402
+from app.db.session import get_db  # noqa: E402
+from app.main import app  # noqa: E402
 
 
 @pytest.fixture

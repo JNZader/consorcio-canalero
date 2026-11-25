@@ -8,9 +8,10 @@ from urllib.parse import unquote
 
 import pytest
 
-# app.main creates the configured upload root during import. Keep that side
-# effect in a writable test-only location for this unit-test module.
+# app.main creates the configured upload/documentos roots during import.
+# Keep those side effects in writable test-only locations.
 os.environ.setdefault("UPLOADS_ROOT", "/tmp/consorcio-codeql-photo-tests")
+os.environ.setdefault("DOCUMENTOS_ROOT", "/tmp/consorcio-codeql-documentos-tests")
 os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173")
 os.environ.setdefault("DEBUG", "true")
 

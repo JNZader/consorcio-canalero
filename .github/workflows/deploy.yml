@@ -145,6 +145,7 @@ jobs:
       - name: Run pure unit suite (separate process after tests/new/)
         env:
           UPLOADS_ROOT: /tmp/uploads-test
+          DOCUMENTOS_ROOT: /tmp/documentos-test
         run: python3 -m pytest tests/unit/ -q --no-header --tb=short
 
   mutation-backend:

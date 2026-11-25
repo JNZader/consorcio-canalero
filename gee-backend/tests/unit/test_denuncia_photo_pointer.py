@@ -1,6 +1,10 @@
+import os
 from types import SimpleNamespace
 
-from app.main import _is_current_live_denuncia_photo, _parse_denuncia_photo_filename
+os.environ.setdefault("UPLOADS_ROOT", "/tmp/consorcio-unit-uploads")
+os.environ.setdefault("DOCUMENTOS_ROOT", "/tmp/consorcio-unit-documentos")
+
+from app.main import _is_current_live_denuncia_photo, _parse_denuncia_photo_filename  # noqa: E402
 
 
 DENUNCIA_ID = "11111111-1111-4111-8111-111111111111"
