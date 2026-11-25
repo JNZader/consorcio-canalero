@@ -165,9 +165,11 @@ def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001 — pytest hook s
 # Workers share the host filesystem. A per-worker uploads dir keeps photo
 # tests from racing on the same path when pytest-xdist is on (TEST-02).
 _uploads_root = "/tmp/consorcio-test-uploads"
+_documentos_root = "/tmp/consorcio-test-documentos"
 _xdist_worker = os.environ.get("PYTEST_XDIST_WORKER")
 if _xdist_worker:
     _uploads_root = f"{_uploads_root}-{_xdist_worker}"
+    _documentos_root = f"{_documentos_root}-{_xdist_worker}"
 
 os.environ.update(
     {
@@ -182,6 +184,8 @@ os.environ.update(
         # auth-gate tests. The production default ``/app/uploads`` is
         # not writable from a local dev shell.
         "UPLOADS_ROOT": _uploads_root,
+        # Documentos Wave 1: same local-shell constraint as uploads.
+        "DOCUMENTOS_ROOT": _documentos_root,
     }
 )
 

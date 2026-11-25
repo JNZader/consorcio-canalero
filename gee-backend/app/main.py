@@ -326,6 +326,7 @@ app.include_router(api_v2_router, prefix="/api/v2")
 # it together with ``LocalPhotoStorage`` and switch the frontend to
 # signed URLs the storage backend mints.
 os.makedirs(settings.uploads_root, exist_ok=True)
+os.makedirs(settings.documentos_root, exist_ok=True)
 
 
 _DENUNCIA_FILENAME_RE = re.compile(

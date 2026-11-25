@@ -568,6 +568,9 @@ class Settings(BaseSettings):
     # when persisting; `app.mount("/uploads", StaticFiles(...))` serves it.
     uploads_root: str = "/app/uploads"
     uploads_public_base: str = "/uploads"
+    # Confidential administrative dossiers (Documentos Wave 1). Dedicated volume
+    # ``consorcio-documentos`` on the box — never nested under denuncia uploads.
+    documentos_root: str = "/app/documentos"
     # SEG-1 (audit 2026-10-23): decoded-pixel cap for denuncia photo uploads.
     # MAX_PHOTO_BYTES bounds only the COMPRESSED bytes — a 10 MB JPEG can
     # still declare ~100-150 Mpx, and Pillow decodes it twice (verify +
