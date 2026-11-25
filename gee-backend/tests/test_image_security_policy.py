@@ -558,6 +558,7 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
         "CVE-2026-119373": ["libsqlite3-0"],
         "CVE-2026-119374": ["libsqlite3-0"],
         "CVE-2026-119379": ["libsqlite3-0"],
+        "CVE-2026-107494": sorted(OPENSSL_HOTFIX_PACKAGES),
         "CVE-2026-124709": sorted(OPENSSL_HOTFIX_PACKAGES),
         "CVE-2026-16742": ["libsystemd0", "libudev1"],
         "CVE-2026-54369": ["libacl1"],
