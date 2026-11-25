@@ -62,6 +62,7 @@ const ParticipacionPanel = lazy(
   () => import('./components/admin/participacion/ParticipacionPanel')
 );
 const TramitesPanel = lazy(() => import('./components/admin/management/TramitesPanel'));
+const DocumentosPanel = lazy(() => import('./components/admin/management/DocumentosPanel'));
 const ReunionesPanel = lazy(() => import('./components/admin/management/ReunionesPanel'));
 const PadronPanel = lazy(() => import('./components/admin/management/PadronPanel'));
 const FinanzasPanel = lazy(() => import('./components/admin/management/FinanzasPanel'));
@@ -686,6 +687,12 @@ const adminTramitesRoute = createRoute({
   component: () => <TramitesPanel />,
 });
 
+const adminDocumentosRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/documentos',
+  component: () => <DocumentosPanel />,
+});
+
 const adminReunionesRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: '/reuniones',
@@ -746,6 +753,7 @@ const adminRouteTree = adminLayoutRoute.addChildren([
   adminReportsRoute,
   adminSugerenciasRoute,
   adminTramitesRoute,
+  adminDocumentosRoute,
   adminReunionesRoute,
   adminPadronRoute,
   adminFinanzasRoute,
