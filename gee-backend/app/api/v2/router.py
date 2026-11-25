@@ -16,6 +16,7 @@ from app.domains.padron.router import router as padron_router
 from app.domains.finanzas.router import router as finanzas_router
 from app.domains.reuniones.router import router as reuniones_router
 from app.domains.tramites.router import router as tramites_router
+from app.domains.documentos.router import router as documentos_router
 from app.domains.capas.router import router as capas_router
 from app.domains.conocimiento.router import router as conocimiento_router
 from app.domains.geo.router import router as geo_router
@@ -34,6 +35,7 @@ api_router.include_router(denuncias_router)
 api_router.include_router(padron_router)
 api_router.include_router(finanzas_router)
 api_router.include_router(tramites_router)
+api_router.include_router(documentos_router)
 api_router.include_router(reuniones_router)
 api_router.include_router(capas_router)
 

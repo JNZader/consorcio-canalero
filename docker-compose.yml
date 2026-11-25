@@ -98,6 +98,7 @@ services:
       - backend-cache:/app/.cache
       - geo-data:/data/geo
       - denuncia-uploads:/app/uploads
+      - documentos-data:/app/documentos
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - DEBUG=${DEBUG:-true}
@@ -527,6 +528,8 @@ volumes:
     name: consorcio-geo-data
   denuncia-uploads:
     name: consorcio-denuncia-uploads
+  documentos-data:
+    name: consorcio-documentos
   celery-beat-schedule:
     name: consorcio-celery-beat-schedule
   conocimiento-embed-cache:

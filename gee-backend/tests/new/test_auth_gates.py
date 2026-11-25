@@ -32,6 +32,7 @@ def client() -> TestClient:
     import os
 
     os.environ.setdefault("UPLOADS_ROOT", "/tmp/uploads-test-auth-gates")
+    os.environ.setdefault("DOCUMENTOS_ROOT", "/tmp/documentos-test-auth-gates")
     # Make sure ``localhost`` is in CORS_ORIGINS so the dev derivation
     # of trusted_hosts includes it. In prod the fail-fast refuses
     # localhost there — fine, this only fires in tests.
@@ -136,6 +137,27 @@ class TestFinanzasAuthGates:
             headers={"Content-Type": "application/json"},
         )
         assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Documentos — operator+ catalog + authenticated download
+# ---------------------------------------------------------------------------
+
+
+class TestDocumentosAuthGates:
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/api/v2/documentos",
+            "/api/v2/documentos/codist-p-ach",
+            "/api/v2/documentos/codist-p-ach/archivo/codist-p-ach__p-ach-pdf",
+        ],
+    )
+    def test_unauthenticated_401(self, client: TestClient, path: str):
+        resp = client.get(path)
+        assert resp.status_code == 401, (
+            f"Documentos endpoint {path} MUST require auth — got {resp.status_code}"
+        )
 
 
 # ---------------------------------------------------------------------------

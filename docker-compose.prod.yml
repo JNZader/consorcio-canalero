@@ -204,10 +204,12 @@ services:
       - sh
       - -ec
       - |
-        chown -R app:app /app/uploads
-        chmod 0750 /app/uploads
+        chown -R app:app /app/uploads /app/documentos
+        chmod 0750 /app/uploads /app/documentos
     volumes:
       - denuncia-uploads:/app/uploads
+      # Documentos Wave 1 — confidential admin dossiers (sample for the box).
+      - documentos-data:/app/documentos
     network_mode: none
     read_only: true
     restart: "no"
@@ -240,6 +242,9 @@ services:
       # files vanish on every `docker compose up -d --pull` (image rebuild),
       # which is exactly what happened in past deploys.
       - denuncia-uploads:/app/uploads
+      # Documentos Wave 1 — operator-only administrative attachments.
+      # The live box compose is edited by hand; keep this sample in sync.
+      - documentos-data:/app/documentos
       # GEE-01: JSON de la service account. Vacío cae al env var. Rotar es
       # reemplazar el archivo; el proceso relee mtime sin rebuild.
       - ${GEE_CREDENTIALS_DIR:-./secrets/gee}:/app/credentials:ro
@@ -543,6 +548,7 @@ services:
       # read-only so a backup run can't accidentally mutate them.
       - geo-data:/data/geo:ro
       - denuncia-uploads:/app/uploads:ro
+      - documentos-data:/app/documentos:ro
     command: ["/opt/backup/backup_volumes.sh"]
     deploy:
       resources:
@@ -572,6 +578,11 @@ volumes:
   # image rebuilds. Back up with `docker run --rm -v consorcio-denuncia-uploads:/data ...`.
   denuncia-uploads:
     name: consorcio-denuncia-uploads
+  # Confidential Documentos catalog blobs (not in git / not on Pages).
+  # Sync via rsync from the private tramites-consorcio clone — see
+  # docs/runbooks/documentos-box.md.
+  documentos-data:
+    name: consorcio-documentos
   # Scratch volume for the celery-beat schedule db. Beat re-reads the
   # schedule from code on startup so this doesn't need to be backed up.
   celery-beat-schedule:

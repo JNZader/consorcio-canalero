@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 #
 # Encrypted incremental backups of the file-backed Docker volumes using
-# ``restic``. Default scope: denuncia photos + geo-data (DEM tiles,
-# processed rasters, bundle imports). Configurable via env.
+# ``restic``. Default scope: denuncia photos + Documentos attachments +
+# geo-data (DEM tiles, processed rasters, bundle imports). Configurable
+# via env.
 #
 # Required env:
 #   RESTIC_PASSWORD               — passphrase. Generate with
@@ -16,7 +17,10 @@
 # Optional:
 #   BACKUP_SOURCES                — colon-separated list of paths to back
 #                                   up; defaults to
-#                                   ``/app/uploads:/data/geo``.
+#                                   ``/app/uploads:/app/documentos:/data/geo``.
+#                                   On the box, keep ``/app/documentos`` in
+#                                   this list whenever the Documentos volume
+#                                   is mounted (see docs/runbooks/documentos-box.md).
 #   BACKUP_RETENTION_KEEP_DAILY=7
 #   BACKUP_RETENTION_KEEP_WEEKLY=4
 #   BACKUP_RETENTION_KEEP_MONTHLY=6
@@ -28,7 +32,7 @@ set -euo pipefail
 : "${RESTIC_PASSWORD:?RESTIC_PASSWORD is required}"
 : "${RESTIC_REPOSITORY:?RESTIC_REPOSITORY is required}"
 
-SOURCES_RAW="${BACKUP_SOURCES:-/app/uploads:/data/geo}"
+SOURCES_RAW="${BACKUP_SOURCES:-/app/uploads:/app/documentos:/data/geo}"
 IFS=':' read -ra SOURCES <<<"$SOURCES_RAW"
 
 # Filter to paths that exist — backing up a missing source is a fast
