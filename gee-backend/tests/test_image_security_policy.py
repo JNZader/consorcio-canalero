@@ -481,13 +481,17 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
     # (OpenSSL QUIC stream-handling memory leak; drift de trixie visto en
     # PR #774 / run 44965196948). Multiset regenerado del reporte Trivy de ese
     # run de CI y validado contra el antes del commit.
-    assert len(backend_findings) == 58
-    assert sum(finding["count"] for finding in backend_findings) == 58
+    # 58 -> 61 el 2026-11-25: CVE-2026-107494 sobre los mismos tres paquetes
+    # openssl 3.5.9-1~deb13u1, HIGH affected, sin FixedVersion (drift de
+    # trixie visto al rebuildar backend por sqlalchemy 2.1.9 / PR #777 run
+    # 45538550175). Multiset regenerado del reporte Trivy de ese run.
+    assert len(backend_findings) == 61
+    assert sum(finding["count"] for finding in backend_findings) == 61
     assert {finding["count"] for finding in backend_findings} == {1}
     assert {finding["target"] for finding in backend_findings} == {"<image> (debian 13.7)"}
-    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 57
+    assert sum(finding["severity"] == "HIGH" for finding in backend_findings) == 60
     assert sum(finding["severity"] == "CRITICAL" for finding in backend_findings) == 1
-    assert sum(finding["status"] == "affected" for finding in backend_findings) == 57
+    assert sum(finding["status"] == "affected" for finding in backend_findings) == 60
     assert sum(finding["status"] == "fix_deferred" for finding in backend_findings) == 1
     assert all(finding["fixed"] == "" for finding in backend_findings)
     assert all("layer" not in finding for finding in backend_findings)
@@ -554,6 +558,7 @@ def test_repository_policy_is_active_with_exact_stage2b2_observations() -> None:
         "CVE-2026-119373": ["libsqlite3-0"],
         "CVE-2026-119374": ["libsqlite3-0"],
         "CVE-2026-119379": ["libsqlite3-0"],
+        "CVE-2026-107494": sorted(OPENSSL_HOTFIX_PACKAGES),
         "CVE-2026-124709": sorted(OPENSSL_HOTFIX_PACKAGES),
         "CVE-2026-16742": ["libsystemd0", "libudev1"],
         "CVE-2026-54369": ["libacl1"],
