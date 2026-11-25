@@ -70,11 +70,18 @@ Las 10 unidades de `consorcio-conocimiento-semantico` mergeadas: U1 #217 · U2 #
 - Follow-ups RAG fuera del gate: re-chunk de las 10 unidades gigantes (fix principled de D-8), más gold de retrieval, juicio abierto del decreto 3780-C/65 (matchea por PDF de OTRO documento).
 - ~~Limpieza worktrees + containers de ablación~~ ✅ 2026-09-24: 52 worktrees mergeados removidos; `consorcio-rag-o3` / `consorcio-rag-eval-pg` borrados (estaban Exited). Queda eventual leftover `consorcio-expat-20260831` (cache trivy root-owned) si `sudo rm` no corre. Imágenes rmeh: sin apuro.
 
+## 📎 Documentos (admin bodega) — en curso
+
+SDD `openspec/changes/documentos/` (Wave 1: catálogo en código + descarga autenticada).
+Ops de box / rsync / backup / teardown Pages: `docs/runbooks/documentos-box.md`.
+Roadmap de producto (no en este change): Wave 2 RAG → Wave 3 editor de notas con IA.
+
 ## 🔑 Dónde vive cada cosa
 
 | Qué | Dónde |
 |---|---|
 | Artefactos SDD (proposal/design/specs/tasks) | `openspec/changes/<change>/` — **trackeados en git** |
+| Documentos (adjuntos confidenciales) | Volumen box `consorcio-documentos` + runbook `docs/runbooks/documentos-box.md` (bytes fuera de git/Pages) |
 | Reportes empíricos RAG (eval, diagnóstico, reranker, campaña recall) | `docs/rag/*.md` (untracked) + `gee-backend/artifacts/rag/` (gitignored — incluye gold del router ratificado) |
 | Gold privado de retrieval + corpus legal | `~/Escritorio/consorcio/` (fuera del repo, checkout pineado `12043582`) |
 | Memoria de decisiones/lecciones | engram, proyecto `consorcio-canalero` (topic keys `sdd/*`, `rag/*`, `backlog/*`) |

@@ -24,6 +24,7 @@ import {
   IconChartBar,
   IconCoin,
   IconColorSwatch,
+  IconFileDescription,
   IconHome,
   IconInbox,
   IconLogout,
@@ -63,6 +64,7 @@ const NAV_SECTIONS: ReadonlyArray<NavSection> = [
     items: [
       { label: 'Participación', to: '/admin/participacion', icon: IconUsers },
       { label: 'Trámites', to: '/admin/tramites', icon: IconSettings },
+      { label: 'Documentos', to: '/admin/documentos', icon: IconFileDescription },
       { label: 'Reuniones', to: '/admin/reuniones', icon: IconCalendar },
       { label: 'Padrón', to: '/admin/padron', icon: IconUser },
       { label: 'Finanzas', to: '/admin/finanzas', icon: IconCoin },
